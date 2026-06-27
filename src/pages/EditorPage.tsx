@@ -125,7 +125,8 @@ function SaveStatus({
 
   return (
     <span
-      className="flex items-center gap-1 text-2xs"
+      key={status}
+      className="save-status-anim flex items-center gap-1 text-2xs"
       style={{ color: cfg.color }}
     >
       {cfg.icon}

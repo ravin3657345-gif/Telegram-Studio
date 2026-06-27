@@ -53,7 +53,7 @@ export function AttachmentZone({ onAddClick }: AttachmentZoneProps) {
             files.map((f) => (
               <div
                 key={f.id}
-                className="flex items-center gap-1.5 pl-2 pr-1 py-1 rounded-md flex-shrink-0"
+                className="attachment-chip flex items-center gap-1.5 pl-2 pr-1 py-1 rounded-md flex-shrink-0"
                 style={{
                   backgroundColor: "var(--bg-elevated)",
                   border: "1px solid var(--border-default)",

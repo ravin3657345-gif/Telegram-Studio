@@ -448,14 +448,18 @@ export function PostEditor({ draftId: initialDraftId }: PostEditorProps) {
       {/* Drop overlay */}
       {isDraggingOver && (
         <div
-          className="absolute inset-0 flex items-center justify-center pointer-events-none z-10"
-          style={{
-            background: "rgba(42,171,238,0.08)",
-            border: "2px dashed var(--accent)",
-            borderRadius: 8,
-          }}
+          className="editor-drop-overlay absolute inset-0 flex items-center justify-center pointer-events-none z-10"
+          style={{ border: "2px dashed var(--accent)", borderRadius: 8 }}
         >
-          <p className="text-sm font-medium" style={{ color: "var(--accent)" }}>
+          <p
+            className="text-sm font-semibold px-4 py-2 rounded-lg"
+            style={{
+              color: "var(--accent)",
+              background: "rgba(42,171,238,0.1)",
+              border: "1px solid rgba(42,171,238,0.25)",
+              backdropFilter: "blur(6px)",
+            }}
+          >
             {t("editor.dropHint")}
           </p>
         </div>

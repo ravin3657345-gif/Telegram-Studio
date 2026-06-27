@@ -1,4 +1,4 @@
-import { useMemo, useState, useRef, createContext, useContext } from "react";
+import { useMemo, useState, useRef, useEffect, createContext, useContext } from "react";
 import { Play, FileText, Search, MoreVertical, ArrowLeft, Eye } from "lucide-react";
 import DOMPurify from "dompurify";
 import { useEditorStore } from "@/store/editorStore";
@@ -150,6 +150,20 @@ function nlToBr(html: string): string { return html.replace(/\n/g, "<br/>"); }
 // ─── Dynamic CSS ──────────────────────────────────────────────────────────────
 
 function previewStyles(tg: TGPalette): string { return `
+  @keyframes tgBubbleIn {
+    from { opacity: 0; transform: translateY(6px) scale(0.98); }
+    to   { opacity: 1; transform: translateY(0)   scale(1);    }
+  }
+  @keyframes tgModeSwitch {
+    from { opacity: 0; transform: translateY(4px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  .tg-bubble-enter {
+    animation: tgBubbleIn 0.2s cubic-bezier(0.34, 1.2, 0.64, 1) both;
+  }
+  .tg-mode-content {
+    animation: tgModeSwitch 0.2s ease-out both;
+  }
   .tg-preview-text b, .tg-preview-text strong { font-weight: 600 }
   .tg-preview-text i, .tg-preview-text em     { font-style: italic }
   .tg-preview-text u                           { text-decoration: underline }
@@ -605,6 +619,17 @@ export function TelegramPreview() {
   const isEmpty = segments.length === 0 ||
     segments.every((s) => s.type === "text" && !s.html.trim());
 
+  const chatAreaRef = useRef<HTMLDivElement>(null);
+
+  // Smooth scroll to bottom when content or mode changes
+  useEffect(() => {
+    const el = chatAreaRef.current;
+    if (!el) return;
+    requestAnimationFrame(() => {
+      el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+    });
+  }, [segments.length, publishMode]);
+
   return (
     <TGCtx.Provider value={tg}>
       <style>{previewStyles(tg)}</style>
@@ -614,19 +639,26 @@ export function TelegramPreview() {
         <ChatHeader channelName={channelName} />
 
         {/* Chat area */}
-        <div style={{
-          flex: 1, overflowY: "auto", overflowX: "hidden",
-          backgroundColor: tg.chatBg,
-          backgroundImage: `${tg.chatDotPattern}, ${tg.chatGradient}`,
-          padding: "8px 12px 12px",
-          display: "flex", flexDirection: "column", justifyContent: "flex-end",
-        }}>
+        <div
+          ref={chatAreaRef}
+          style={{
+            flex: 1, overflowY: "auto", overflowX: "hidden",
+            backgroundColor: tg.chatBg,
+            backgroundImage: `${tg.chatDotPattern}, ${tg.chatGradient}`,
+            padding: "8px 12px 12px",
+            display: "flex", flexDirection: "column", justifyContent: "flex-end",
+          }}
+        >
           {isEmpty ? (
             <div style={{ textAlign: "center", color: tg.emptyText, fontSize: 13, padding: "32px 0" }}>
               Начните писать или прикрепите медиа
             </div>
           ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <div
+              key={publishMode}
+              className="tg-mode-content"
+              style={{ display: "flex", flexDirection: "column", gap: 6 }}
+            >
               <DateSeparator />
               {publishMode === "rich" ? (
                 <RichBubble html={richHtml} segments={segments} />

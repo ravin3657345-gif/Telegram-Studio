@@ -1,3 +1,4 @@
+import { useRef, useEffect } from "react";
 import clsx from "clsx";
 import { Tooltip } from "@/components/ui/Tooltip";
 
@@ -23,8 +24,27 @@ export function ToolbarButton({
   label,
   size = 15,
 }: ToolbarButtonProps) {
+  const btnRef   = useRef<HTMLButtonElement>(null);
+  const wasActive = useRef(isActive);
+
+  // Pulse ring fires once when the button transitions to active
+  useEffect(() => {
+    if (isActive && !wasActive.current) {
+      const el = btnRef.current;
+      if (el) {
+        el.classList.remove("toolbar-btn-pulse");
+        void el.offsetWidth; // force reflow to restart animation
+        el.classList.add("toolbar-btn-pulse");
+        const t = setTimeout(() => el.classList.remove("toolbar-btn-pulse"), 500);
+        return () => clearTimeout(t);
+      }
+    }
+    wasActive.current = isActive;
+  }, [isActive]);
+
   const btn = (
     <button
+      ref={btnRef}
       type="button"
       aria-label={title}
       aria-pressed={isActive}
@@ -32,7 +52,7 @@ export function ToolbarButton({
       onMouseDown={(e) => e.preventDefault()}
       onClick={onClick}
       className={clsx(
-        "relative flex items-center justify-center w-8 h-8 rounded-md transition-all select-none",
+        "toolbar-btn relative flex items-center justify-center w-8 h-8 rounded-md select-none",
         "disabled:opacity-40 disabled:cursor-not-allowed",
         isActive
           ? "bg-[var(--accent-subtle)] text-[var(--accent)]"
