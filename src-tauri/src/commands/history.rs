@@ -19,6 +19,25 @@ pub struct HistoryItem {
     pub error_message: Option<String>,
     pub published_at: String,
     pub delete_at: Option<String>,
+    pub content_preview: Option<String>,
+}
+
+fn strip_html_preview(html: &str, max_len: usize) -> Option<String> {
+    let mut result = String::new();
+    let mut in_tag = false;
+    for c in html.chars() {
+        match c {
+            '<' => in_tag = true,
+            '>' => in_tag = false,
+            _ if !in_tag => {
+                if c != '\n' && c != '\r' { result.push(c); }
+                if result.len() >= max_len { break; }
+            }
+            _ => {}
+        }
+    }
+    let text = result.trim().to_string();
+    if text.is_empty() { None } else { Some(text) }
 }
 
 #[derive(Debug, Deserialize)]
@@ -39,7 +58,8 @@ pub async fn get_history(
         .prepare(
             "SELECT h.id, h.channel_id, c.title, h.bot_id,
                     h.telegram_msg_id, c.telegram_id,
-                    h.status, h.error_message, h.published_at, h.delete_at
+                    h.status, h.error_message, h.published_at, h.delete_at,
+                    COALESCE(h.content_json, '') as raw_html
              FROM publication_history h
              LEFT JOIN channels c ON c.id = h.channel_id
              ORDER BY h.published_at DESC
@@ -49,6 +69,8 @@ pub async fn get_history(
 
     let rows = stmt
         .query_map([], |row| {
+            let raw_html: String = row.get(10)?;
+            let preview = strip_html_preview(&raw_html, 120);
             Ok(HistoryItem {
                 id:               row.get(0)?,
                 channel_id:       row.get(1)?,
@@ -60,6 +82,7 @@ pub async fn get_history(
                 error_message:    row.get(7)?,
                 published_at:     row.get(8)?,
                 delete_at:        row.get(9)?,
+                content_preview:  preview,
             })
         })
         .map_err(|e| e.to_string())?;

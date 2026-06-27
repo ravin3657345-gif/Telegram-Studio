@@ -21,6 +21,7 @@ interface HistoryItem {
   errorMessage: string | null;
   publishedAt: string;
   deleteAt: string | null;
+  contentPreview: string | null;
 }
 
 function getDeleteOptions() {
@@ -178,6 +179,20 @@ function HistoryCard({
             {pubDate}
           </span>
         </div>
+
+        {item.contentPreview && !item.errorMessage && (
+          <p
+            className="text-2xs mt-0.5 overflow-hidden"
+            style={{
+              color: "var(--text-muted)",
+              display: "-webkit-box",
+              WebkitLineClamp: 1,
+              WebkitBoxOrient: "vertical",
+            }}
+          >
+            {item.contentPreview}
+          </p>
+        )}
 
         {item.errorMessage && (
           <p className="text-2xs mt-0.5 truncate" style={{ color: "var(--danger)" }}>

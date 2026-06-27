@@ -106,20 +106,27 @@ function EditorSection() {
       </Field>
 
       <Field label={t("settings.autosave")}>
-        <select
-          value={autosaveInterval}
-          onChange={(e) => setAutosaveInterval(Number(e.target.value))}
-          className="h-8 rounded-md border px-2 text-sm"
-          style={{
-            backgroundColor: "var(--bg-input)",
-            borderColor: "var(--border-default)",
-            color: "var(--text-primary)",
-          }}
+        <div
+          className="flex rounded-lg border overflow-hidden"
+          style={{ borderColor: "var(--border-default)" }}
         >
-          {[1000, 2000, 3000, 5000].map((ms) => (
-            <option key={ms} value={ms}>{ms / 1000} с</option>
+          {[1000, 2000, 3000, 5000].map((ms, i, arr) => (
+            <button
+              key={ms}
+              onClick={() => setAutosaveInterval(ms)}
+              className="flex items-center justify-center px-3 h-8 text-sm transition-colors"
+              style={{
+                backgroundColor: autosaveInterval === ms ? "var(--bg-active)"  : "var(--bg-elevated)",
+                color:           autosaveInterval === ms ? "var(--accent)"      : "var(--text-secondary)",
+                fontWeight:      autosaveInterval === ms ? 600 : 400,
+                borderRight:     i < arr.length - 1 ? "1px solid var(--border-default)" : "none",
+                minWidth: 40,
+              }}
+            >
+              {ms / 1000}с
+            </button>
           ))}
-        </select>
+        </div>
       </Field>
     </Section>
   );
@@ -184,21 +191,42 @@ function TelegraphSection() {
 function AboutSection() {
   return (
     <Section title={t("settings.about")}>
-      <div className="flex flex-col items-center gap-2 py-4">
+      <div
+        className="flex flex-col items-center gap-3 py-6 px-4"
+        style={{
+          background: "linear-gradient(160deg, var(--accent-subtle) 0%, transparent 60%)",
+        }}
+      >
         <div
-          className="w-12 h-12 rounded-xl flex items-center justify-center"
+          className="w-14 h-14 rounded-2xl flex items-center justify-center shadow-md"
           style={{ backgroundColor: "var(--accent)" }}
         >
-          <svg width="22" height="22" viewBox="0 0 16 16" fill="none">
+          <svg width="26" height="26" viewBox="0 0 16 16" fill="none">
             <path d="M8 1L14 4.5V11.5L8 15L2 11.5V4.5L8 1Z" fill="white" />
           </svg>
         </div>
-        <p className="text-base font-semibold" style={{ color: "var(--text-primary)" }}>
-          Telegram Studio
+        <div className="text-center">
+          <p className="text-base font-semibold" style={{ color: "var(--text-primary)" }}>
+            Telegram Studio
+          </p>
+          <p className="text-sm mt-0.5" style={{ color: "var(--text-muted)" }}>
+            {t("settings.version")} 0.5.0
+          </p>
+        </div>
+        <p className="text-xs text-center max-w-xs" style={{ color: "var(--text-muted)" }}>
+          Локальный десктоп-клиент для публикации постов в Telegram-каналы
         </p>
-        <p className="text-sm" style={{ color: "var(--text-muted)" }}>
-          {t("settings.version")} 0.5.0
-        </p>
+        <div
+          className="flex items-center gap-1.5 text-2xs px-3 py-1 rounded-full"
+          style={{
+            backgroundColor: "var(--success-subtle)",
+            color: "var(--success)",
+            border: "1px solid var(--success-subtle)",
+          }}
+        >
+          <span>●</span>
+          <span>Работает полностью локально</span>
+        </div>
       </div>
     </Section>
   );

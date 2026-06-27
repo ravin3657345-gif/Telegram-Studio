@@ -124,3 +124,33 @@ textarea,
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
+
+/* Input focus ring (overrides outline:none on inputs) */
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: 2px solid var(--accent) !important;
+  outline-offset: 0;
+  border-color: var(--accent) !important;
+}
+
+/* ── Page transition ────────────────────────────────────── */
+@keyframes pageFadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.page-fade-in {
+  animation: pageFadeIn 0.14s ease-out both;
+}
+
+/* ── Theme switch smooth transition ─────────────────────── */
+.theme-transitioning *,
+.theme-transitioning *::before,
+.theme-transitioning *::after {
+  transition:
+    background-color 220ms ease,
+    border-color     220ms ease,
+    color            220ms ease,
+    box-shadow       220ms ease !important;
+}

@@ -15,7 +15,7 @@ export function EditorPage() {
   // Subscribe to language so labels re-render on change
   useSettingsStore((s) => s.language);
 
-  const { draftTitle, contentJson, saveStatus, lastSavedAt, draftId: storeDraftId } =
+  const { draftTitle, postTitle, contentJson, saveStatus, lastSavedAt, draftId: storeDraftId } =
     useEditorStore();
 
   // URL param draftId (when opening existing draft) OR autosave-created draft id
@@ -35,6 +35,11 @@ export function EditorPage() {
     <>
       {/* ── TopBar ──────────────────────────────────────────────────────────── */}
       <TopBar
+        title={
+          <span style={{ color: "var(--text-primary)" }}>
+            {postTitle || draftTitle || t("editor.untitled")}
+          </span>
+        }
         actions={
           <div className="flex items-center gap-2">
             <button

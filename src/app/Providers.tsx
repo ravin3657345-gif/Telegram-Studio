@@ -7,7 +7,6 @@ interface ProvidersProps {
 
 export function Providers({ children }: ProvidersProps) {
   const theme = useSettingsStore((s) => s.theme);
-  // language is applied synchronously in setLanguage (store) and onRehydrateStorage
 
   useEffect(() => {
     const resolved =
@@ -16,17 +15,22 @@ export function Providers({ children }: ProvidersProps) {
           ? "dark"
           : "light"
         : theme;
+
+    // Animate color transition
+    document.documentElement.classList.add("theme-transitioning");
     document.documentElement.setAttribute("data-theme", resolved);
+    const t = setTimeout(() => document.documentElement.classList.remove("theme-transitioning"), 280);
+    return () => clearTimeout(t);
   }, [theme]);
 
   useEffect(() => {
     if (theme !== "system") return;
     const mq = window.matchMedia("(prefers-color-scheme: dark)");
     const handler = (e: MediaQueryListEvent) => {
-      document.documentElement.setAttribute(
-        "data-theme",
-        e.matches ? "dark" : "light"
-      );
+      document.documentElement.classList.add("theme-transitioning");
+      document.documentElement.setAttribute("data-theme", e.matches ? "dark" : "light");
+      const t = setTimeout(() => document.documentElement.classList.remove("theme-transitioning"), 280);
+      return () => clearTimeout(t);
     };
     mq.addEventListener("change", handler);
     return () => mq.removeEventListener("change", handler);

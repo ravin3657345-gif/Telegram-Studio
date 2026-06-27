@@ -3,7 +3,7 @@ import type { ButtonHTMLAttributes } from "react";
 import clsx from "clsx";
 import { Spinner } from "./Spinner";
 
-export type ButtonVariant = "primary" | "secondary" | "ghost" | "danger";
+export type ButtonVariant = "primary" | "secondary" | "ghost" | "danger" | "danger-solid";
 export type ButtonSize    = "sm" | "md" | "lg";
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
@@ -15,10 +15,11 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 const VARIANT_STYLES: Record<ButtonVariant, string> = {
-  primary:   "bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-white",
-  secondary: "bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] border border-[var(--border-default)]",
-  ghost:     "bg-transparent hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]",
-  danger:    "bg-transparent hover:bg-[var(--danger-subtle)] text-[var(--danger)] border border-[var(--danger)]",
+  primary:      "bg-[var(--accent)] hover:bg-[var(--accent-hover)] active:scale-[0.97] text-white shadow-sm",
+  secondary:    "bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)] active:scale-[0.97] text-[var(--text-primary)] border border-[var(--border-default)]",
+  ghost:        "bg-transparent hover:bg-[var(--bg-hover)] active:scale-[0.97] text-[var(--text-secondary)] hover:text-[var(--text-primary)]",
+  danger:       "bg-transparent hover:bg-[var(--danger-subtle)] active:scale-[0.97] text-[var(--danger)] border border-[var(--danger)]",
+  "danger-solid": "bg-[var(--danger)] hover:opacity-90 active:scale-[0.97] text-white shadow-sm",
 };
 
 const SIZE_STYLES: Record<ButtonSize, string> = {
@@ -47,8 +48,8 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
         ref={ref}
         disabled={disabled || loading}
         className={clsx(
-          "inline-flex items-center justify-center font-medium rounded-md transition-colors",
-          "disabled:opacity-50 disabled:cursor-not-allowed",
+          "inline-flex items-center justify-center font-medium rounded-md transition-all select-none",
+          "disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100",
           VARIANT_STYLES[variant],
           SIZE_STYLES[size],
           fullWidth && "w-full",

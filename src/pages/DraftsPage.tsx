@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Files, Plus, Trash2 } from "lucide-react";
+import { Files, Plus, Trash2, Image } from "lucide-react";
 import { TopBar } from "@/components/layout/TopBar";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -14,19 +14,17 @@ import { useSettingsStore } from "@/store/settingsStore";
 const DRAFT_LIMIT = 20;
 
 export function DraftsPage() {
-  const navigate   = useNavigate();
-  const drafts     = useDraftsStore((s) => s.drafts);
-  const isLoading  = useDraftsStore((s) => s.isLoading);
-  const setDrafts  = useDraftsStore((s) => s.setDrafts);
+  const navigate    = useNavigate();
+  const drafts      = useDraftsStore((s) => s.drafts);
+  const isLoading   = useDraftsStore((s) => s.isLoading);
+  const setDrafts   = useDraftsStore((s) => s.setDrafts);
   const removeDraft = useDraftsStore((s) => s.removeDraft);
-  const setLoading = useDraftsStore((s) => s.setLoading);
+  const setLoading  = useDraftsStore((s) => s.setLoading);
   useSettingsStore((s) => s.language);
 
   useEffect(() => {
     setLoading(true);
-    getDrafts()
-      .then(setDrafts)
-      .finally(() => setLoading(false));
+    getDrafts().then(setDrafts).finally(() => setLoading(false));
   }, [setDrafts, setLoading]);
 
   async function handleDelete(e: React.MouseEvent, id: string) {
@@ -40,7 +38,7 @@ export function DraftsPage() {
     }
   }
 
-  const count = drafts.length;
+  const count     = drafts.length;
   const nearLimit = count >= DRAFT_LIMIT - 2;
 
   return (
@@ -111,44 +109,50 @@ function DraftCard({ title, preview, mediaCount, updatedAt, onClick, onDelete }:
   useSettingsStore((s) => s.language);
 
   const date = new Date(updatedAt).toLocaleString("ru", {
-    day: "numeric",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
+    day: "numeric", month: "short", hour: "2-digit", minute: "2-digit",
   });
 
   return (
     <button
       onClick={onClick}
-      className="text-left rounded-lg border p-4 transition-all hover:shadow-[var(--shadow-sm)] cursor-pointer relative"
+      className="group text-left rounded-xl border p-4 transition-all cursor-pointer relative"
       style={{
         backgroundColor: "var(--bg-surface)",
         borderColor: hovered ? "var(--border-default)" : "var(--border-subtle)",
+        boxShadow: hovered ? "var(--shadow-sm)" : "none",
+        transform: hovered ? "translateY(-1px)" : "translateY(0)",
       }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
-      {/* Delete button */}
-      {hovered && (
-        <button
-          onClick={onDelete}
-          className="absolute top-2 right-2 flex items-center justify-center w-6 h-6 rounded transition-colors"
-          style={{
-            backgroundColor: "var(--bg-elevated)",
-            color: "var(--text-muted)",
-          }}
-          onMouseEnter={(e) => (e.currentTarget.style.color = "var(--danger)")}
-          onMouseLeave={(e) => (e.currentTarget.style.color = "var(--text-muted)")}
-          title={t("drafts.delete")}
-        >
-          <Trash2 size={12} />
-        </button>
-      )}
-
-      <p
-        className="text-sm font-semibold mb-1 truncate pr-7"
-        style={{ color: "var(--text-primary)" }}
+      {/* Delete button — always in DOM for keyboard accessibility */}
+      <button
+        onClick={onDelete}
+        className="absolute top-2 right-2 flex items-center justify-center w-6 h-6 rounded transition-all"
+        style={{
+          backgroundColor: "var(--bg-elevated)",
+          color: "var(--text-muted)",
+          opacity:   hovered ? 1 : 0,
+          transform: hovered ? "scale(1)" : "scale(0.8)",
+        }}
+        onFocus={(e) => {
+          e.currentTarget.style.opacity = "1";
+          e.currentTarget.style.transform = "scale(1)";
+        }}
+        onBlur={(e) => {
+          if (!hovered) {
+            e.currentTarget.style.opacity = "0";
+            e.currentTarget.style.transform = "scale(0.8)";
+          }
+        }}
+        onMouseEnter={(e) => (e.currentTarget.style.color = "var(--danger)")}
+        onMouseLeave={(e) => (e.currentTarget.style.color = "var(--text-muted)")}
+        title={t("drafts.delete")}
       >
+        <Trash2 size={12} />
+      </button>
+
+      <p className="text-sm font-semibold mb-1 truncate pr-7" style={{ color: "var(--text-primary)" }}>
         {title}
       </p>
       <p
@@ -166,8 +170,9 @@ function DraftCard({ title, preview, mediaCount, updatedAt, onClick, onDelete }:
       </p>
 
       {mediaCount > 0 && (
-        <p className="text-2xs mb-2" style={{ color: "var(--text-muted)" }}>
-          🖼 × {mediaCount}
+        <p className="text-2xs mb-2 flex items-center gap-1" style={{ color: "var(--accent)" }}>
+          <Image size={11} />
+          <span>{mediaCount}</span>
         </p>
       )}
 

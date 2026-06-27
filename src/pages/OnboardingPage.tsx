@@ -82,37 +82,43 @@ export function OnboardingPage() {
 
       {/* Card */}
       <div
-        className="w-full max-w-md rounded-xl border p-8"
+        className="w-full max-w-md rounded-xl border overflow-hidden"
         style={{
           backgroundColor: "var(--bg-surface)",
           borderColor: "var(--border-default)",
           boxShadow: "var(--shadow-lg)",
         }}
       >
-        {step === "bot" && (
-          <BotStep
-            token={token}
-            showToken={showToken}
-            loading={loading}
-            onChange={setToken}
-            onToggleShow={() => setShowToken((v) => !v)}
-            onSubmit={handleConnectBot}
-          />
-        )}
+        <div
+          key={step}
+          className="p-8"
+          style={{ animation: "pageFadeIn 0.18s ease-out both" }}
+        >
+          {step === "bot" && (
+            <BotStep
+              token={token}
+              showToken={showToken}
+              loading={loading}
+              onChange={setToken}
+              onToggleShow={() => setShowToken((v) => !v)}
+              onSubmit={handleConnectBot}
+            />
+          )}
 
-        {step === "channel" && (
-          <ChannelStep
-            value={channelUsername}
-            loading={loading}
-            onChange={setChannelUsername}
-            onSubmit={handleConnectChannel}
-            onSkip={() => navigate("/")}
-          />
-        )}
+          {step === "channel" && (
+            <ChannelStep
+              value={channelUsername}
+              loading={loading}
+              onChange={setChannelUsername}
+              onSubmit={handleConnectChannel}
+              onSkip={() => navigate("/")}
+            />
+          )}
 
-        {step === "done" && (
-          <DoneStep onStart={() => navigate("/")} />
-        )}
+          {step === "done" && (
+            <DoneStep onStart={() => navigate("/")} />
+          )}
+        </div>
       </div>
     </div>
   );

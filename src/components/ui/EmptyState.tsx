@@ -13,15 +13,22 @@ interface EmptyStateProps {
 
 export function EmptyState({ icon: Icon, title, description, action }: EmptyStateProps) {
   return (
-    <div className="flex flex-col items-center justify-center flex-1 gap-3 py-20">
+    <div
+      className="flex flex-col items-center justify-center flex-1 gap-3 py-20"
+      style={{ animation: "pageFadeIn 0.25s ease-out both" }}
+    >
       <div
-        className="flex items-center justify-center w-14 h-14 rounded-2xl mb-2"
-        style={{ backgroundColor: "var(--bg-elevated)" }}
+        className="flex items-center justify-center w-16 h-16 rounded-2xl mb-2"
+        style={{
+          background: "linear-gradient(135deg, var(--accent-subtle) 0%, var(--bg-elevated) 100%)",
+          border: "1px solid var(--border-subtle)",
+          boxShadow: "0 2px 12px rgba(42,171,238,0.08), var(--shadow-sm)",
+        }}
       >
-        <Icon size={28} strokeWidth={1.5} style={{ color: "var(--text-muted)" }} />
+        <Icon size={28} strokeWidth={1.5} style={{ color: "var(--accent)" }} />
       </div>
 
-      <p className="text-base font-semibold" style={{ color: "var(--text-secondary)" }}>
+      <p className="text-base font-semibold" style={{ color: "var(--text-primary)" }}>
         {title}
       </p>
 
@@ -35,7 +42,7 @@ export function EmptyState({ icon: Icon, title, description, action }: EmptyStat
       )}
 
       {action && (
-        <Button variant="secondary" size="md" onClick={action.onClick} className="mt-2">
+        <Button variant="primary" size="md" onClick={action.onClick} className="mt-2">
           {action.label}
         </Button>
       )}
