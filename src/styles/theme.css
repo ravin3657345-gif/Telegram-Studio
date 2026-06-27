@@ -1,0 +1,90 @@
+/* ═══════════════════════════════════════════════════════════
+   ТЁМНАЯ ТЕМА (по умолчанию)
+═══════════════════════════════════════════════════════════ */
+:root,
+[data-theme="dark"] {
+  --bg-app:        #141414;
+  --bg-sidebar:    #1c1c1c;
+  --bg-surface:    #222222;
+  --bg-elevated:   #2a2a2a;
+  --bg-hover:      #2e2e2e;
+  --bg-active:     #333333;
+  --bg-input:      #1e1e1e;
+
+  --border-subtle:  #2a2a2a;
+  --border-default: #333333;
+  --border-strong:  #444444;
+
+  --text-primary:   #e8e8e8;
+  --text-secondary: #8a8a8a;
+  --text-muted:     #555555;
+  --text-inverse:   #141414;
+
+  --accent:         #2aabee;
+  --accent-hover:   #1a9bd9;
+  --accent-subtle:  rgba(42, 171, 238, 0.1);
+
+  --success:        #3dd68c;
+  --success-subtle: rgba(61, 214, 140, 0.1);
+  --warning:        #f0b429;
+  --warning-subtle: rgba(240, 180, 41, 0.1);
+  --danger:         #ff4d4f;
+  --danger-subtle:  rgba(255, 77, 79, 0.1);
+
+  --tg-bubble-bg:   #1e3a5f;
+  --tg-preview-bg:  #0f1923;
+
+  --shadow-sm:   0 1px 3px rgba(0, 0, 0, 0.15);
+  --shadow-md:   0 4px 12px rgba(0, 0, 0, 0.18);
+  --shadow-lg:   0 8px 24px rgba(0, 0, 0, 0.22);
+  --shadow-modal: 0 16px 48px rgba(0, 0, 0, 0.28);
+
+  --scrollbar-track: #1c1c1c;
+  --scrollbar-thumb: #333333;
+  --scrollbar-thumb-hover: #444444;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   СВЕТЛАЯ ТЕМА
+═══════════════════════════════════════════════════════════ */
+[data-theme="light"] {
+  --bg-app:        #fafafa;
+  --bg-sidebar:    #f0f0f0;
+  --bg-surface:    #ffffff;
+  --bg-elevated:   #f7f7f7;
+  --bg-hover:      #f2f2f2;
+  --bg-active:     #e8e8e8;
+  --bg-input:      #ffffff;
+
+  --border-subtle:  #ebebeb;
+  --border-default: #e0e0e0;
+  --border-strong:  #cccccc;
+
+  --text-primary:   #1a1a1a;
+  --text-secondary: #5a5a5a;
+  --text-muted:     #9a9a9a;
+  --text-inverse:   #ffffff;
+
+  --accent:         #2aabee;
+  --accent-hover:   #1a9bd9;
+  --accent-subtle:  rgba(42, 171, 238, 0.1);
+
+  --success:        #16a34a;
+  --success-subtle: rgba(22, 163, 74, 0.08);
+  --warning:        #d97706;
+  --warning-subtle: rgba(217, 119, 6, 0.08);
+  --danger:         #dc2626;
+  --danger-subtle:  rgba(220, 38, 38, 0.08);
+
+  --tg-bubble-bg:   #effdde;
+  --tg-preview-bg:  #e5ddd5;
+
+  --shadow-sm:   0 1px 2px rgba(0, 0, 0, 0.06);
+  --shadow-md:   0 4px 12px rgba(0, 0, 0, 0.08);
+  --shadow-lg:   0 8px 24px rgba(0, 0, 0, 0.12);
+  --shadow-modal: 0 20px 60px rgba(0, 0, 0, 0.2);
+
+  --scrollbar-track: #f0f0f0;
+  --scrollbar-thumb: #d0d0d0;
+  --scrollbar-thumb-hover: #b0b0b0;
+}

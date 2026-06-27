@@ -1,0 +1,365 @@
+import { Bot, Plus, Trash2, Eye, EyeOff, CheckCircle, AlertCircle, Loader } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import { TopBar } from "@/components/layout/TopBar";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { useChannelsStore } from "@/store/channelsStore";
+import { validateBotToken, addBot, deleteBot, getBots } from "@/lib/tauriApi";
+import { toast } from "@/store/uiStore";
+import { t } from "@/lib/i18n";
+import { useSettingsStore } from "@/store/settingsStore";
+import type { Bot as BotType } from "@/types/bot";
+
+const MAX_BOTS = 10;
+
+// ─── Add-bot modal ────────────────────────────────────────────────────────────
+
+interface AddBotModalProps {
+  onClose: () => void;
+  onAdded: (bot: BotType) => void;
+}
+
+function AddBotModal({ onClose, onAdded }: AddBotModalProps) {
+  const [token, setToken]     = useState("");
+  const [stage, setStage]     = useState<"input" | "validating" | "preview">("input");
+  const [adding, setAdding]   = useState(false);
+  const [botInfo, setBotInfo] = useState<{ name: string; username: string } | null>(null);
+  const [error, setError]     = useState<string | null>(null);
+  const inputRef              = useRef<HTMLInputElement>(null);
+  useSettingsStore((s) => s.language);
+
+  useEffect(() => { inputRef.current?.focus(); }, []);
+
+  async function handleValidate() {
+    const tok = token.trim();
+    if (!tok) return;
+    setError(null);
+    setStage("validating");
+    try {
+      const info = await validateBotToken(tok);
+      setBotInfo({
+        name:     info.firstName,
+        username: info.username ?? "",
+      });
+      setStage("preview");
+    } catch (e) {
+      setError(String(e));
+      setStage("input");
+    }
+  }
+
+  async function handleAdd() {
+    setAdding(true);
+    try {
+      const bot = await addBot(token.trim());
+      onAdded(bot);
+      toast.success(`Бот @${bot.username} добавлен`);
+      onClose();
+    } catch (e) {
+      setError(String(e));
+      setAdding(false);
+    }
+  }
+
+  return (
+    <div
+      style={{
+        position: "fixed", inset: 0, zIndex: 1000,
+        backgroundColor: "rgba(0,0,0,0.55)",
+        display: "flex", alignItems: "center", justifyContent: "center",
+        backdropFilter: "blur(2px)",
+      }}
+      onClick={(e) => e.target === e.currentTarget && onClose()}
+    >
+      <div
+        style={{
+          width: 440, backgroundColor: "var(--bg-surface)",
+          border: "1px solid var(--border-subtle)",
+          borderRadius: 14, padding: 24,
+          boxShadow: "0 20px 60px rgba(0,0,0,0.5)",
+        }}
+      >
+        <h2 style={{ fontSize: 16, fontWeight: 700, color: "var(--text-primary)", marginBottom: 6 }}>
+          Добавить бота
+        </h2>
+        <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 18, lineHeight: 1.5 }}>
+          Создайте бота через <span style={{ color: "var(--accent)" }}>@BotFather</span> и вставьте токен.
+        </p>
+
+        {/* Token input */}
+        <div style={{ marginBottom: 12 }}>
+          <label style={{ fontSize: 12, color: "var(--text-secondary)", display: "block", marginBottom: 6 }}>
+            Токен бота
+          </label>
+          <input
+            ref={inputRef}
+            value={token}
+            onChange={(e) => { setToken(e.target.value); setStage("input"); setBotInfo(null); setError(null); }}
+            onKeyDown={(e) => e.key === "Enter" && stage === "input" && handleValidate()}
+            placeholder="1234567890:AAExx..."
+            disabled={stage === "validating" || adding}
+            style={{
+              width: "100%", padding: "9px 12px", borderRadius: 8, fontSize: 13,
+              fontFamily: "monospace",
+              backgroundColor: "var(--bg-elevated)",
+              border: `1.5px solid ${error ? "var(--danger)" : "var(--border-default)"}`,
+              color: "var(--text-primary)", outline: "none",
+            }}
+          />
+        </div>
+
+        {/* Error */}
+        {error && (
+          <div style={{
+            display: "flex", alignItems: "flex-start", gap: 8, marginBottom: 12,
+            padding: "8px 10px", borderRadius: 8,
+            backgroundColor: "rgba(231,76,60,0.10)", border: "1px solid rgba(231,76,60,0.2)",
+          }}>
+            <AlertCircle size={14} style={{ color: "var(--danger)", flexShrink: 0, marginTop: 1 }} />
+            <span style={{ fontSize: 12, color: "var(--danger)", lineHeight: 1.5 }}>{error}</span>
+          </div>
+        )}
+
+        {/* Bot preview */}
+        {botInfo && stage === "preview" && (
+          <div style={{
+            display: "flex", alignItems: "center", gap: 12, marginBottom: 16,
+            padding: "10px 12px", borderRadius: 10,
+            backgroundColor: "rgba(42,171,238,0.08)", border: "1px solid rgba(42,171,238,0.2)",
+          }}>
+            <CheckCircle size={18} style={{ color: "var(--accent)", flexShrink: 0 }} />
+            <div>
+              <p style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)" }}>{botInfo.name}</p>
+              {botInfo.username && (
+                <p style={{ fontSize: 12, color: "var(--text-muted)" }}>@{botInfo.username}</p>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Actions */}
+        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+          <button
+            onClick={onClose}
+            style={{
+              padding: "8px 16px", borderRadius: 8, fontSize: 13, fontWeight: 500,
+              border: "1px solid var(--border-default)", background: "none",
+              color: "var(--text-secondary)", cursor: "pointer",
+            }}
+          >
+            Отмена
+          </button>
+
+          {stage !== "preview" ? (
+            <button
+              onClick={handleValidate}
+              disabled={!token.trim() || stage === "validating"}
+              style={{
+                display: "flex", alignItems: "center", gap: 6,
+                padding: "8px 18px", borderRadius: 8, fontSize: 13, fontWeight: 600,
+                backgroundColor: !token.trim() ? "var(--bg-elevated)" : "var(--accent)",
+                border: "none",
+                color: !token.trim() ? "var(--text-muted)" : "#fff",
+                cursor: !token.trim() ? "default" : "pointer",
+              }}
+            >
+              {stage === "validating" && <Loader size={13} style={{ animation: "spin 1s linear infinite" }} />}
+              Проверить
+            </button>
+          ) : (
+            <button
+              onClick={handleAdd}
+              disabled={adding}
+              style={{
+                display: "flex", alignItems: "center", gap: 6,
+                padding: "8px 18px", borderRadius: 8, fontSize: 13, fontWeight: 600,
+                backgroundColor: "var(--accent)", border: "none", color: "#fff", cursor: "pointer",
+              }}
+            >
+              {adding && <Loader size={13} style={{ animation: "spin 1s linear infinite" }} />}
+              Добавить
+            </button>
+          )}
+        </div>
+      </div>
+      <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
+    </div>
+  );
+}
+
+// ─── Bot card ─────────────────────────────────────────────────────────────────
+
+function BotCard({ bot, onDelete }: { bot: BotType; onDelete: () => void }) {
+  const [showToken, setShowToken] = useState(false);
+  const [deleting, setDeleting]   = useState(false);
+  const masked = bot.token.replace(/:.+/, ":••••••••••••••••••••");
+  useSettingsStore((s) => s.language);
+
+  async function handleDelete() {
+    if (!confirm(`Удалить бота @${bot.username}? Все связанные каналы тоже будут удалены.`)) return;
+    setDeleting(true);
+    try {
+      await deleteBot(bot.id);
+      onDelete();
+      toast.success(`Бот @${bot.username} удалён`);
+    } catch (e) {
+      toast.error(String(e));
+      setDeleting(false);
+    }
+  }
+
+  return (
+    <div style={{
+      borderRadius: 12, border: "1px solid var(--border-subtle)",
+      backgroundColor: "var(--bg-surface)", overflow: "hidden",
+    }}>
+      {/* Header */}
+      <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 16px" }}>
+        <div style={{
+          width: 42, height: 42, borderRadius: "50%", flexShrink: 0,
+          backgroundColor: "rgba(42,171,238,0.12)",
+          border: "1.5px solid rgba(42,171,238,0.25)",
+          display: "flex", alignItems: "center", justifyContent: "center",
+        }}>
+          <Bot size={19} style={{ color: "var(--accent)" }} />
+        </div>
+
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <p style={{ fontSize: 14, fontWeight: 600, color: "var(--text-primary)" }}>{bot.name}</p>
+          <p style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 1 }}>@{bot.username}</p>
+        </div>
+
+        <span style={{
+          fontSize: 11, fontWeight: 500, padding: "3px 8px", borderRadius: 20,
+          backgroundColor: "rgba(39,174,96,0.12)", color: "var(--success)",
+        }}>
+          {t("bots.active")}
+        </span>
+      </div>
+
+      {/* Token row */}
+      <div style={{
+        display: "flex", alignItems: "center", gap: 8,
+        margin: "0 16px 12px",
+        padding: "8px 12px", borderRadius: 8,
+        backgroundColor: "var(--bg-elevated)", border: "1px solid var(--border-subtle)",
+      }}>
+        <code style={{
+          flex: 1, fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+          color: "var(--text-secondary)", fontFamily: "monospace",
+        }}>
+          {showToken ? bot.token : masked}
+        </code>
+        <button
+          onClick={() => setShowToken((v) => !v)}
+          style={{ background: "none", border: "none", cursor: "pointer", padding: 2, color: "var(--text-muted)" }}
+        >
+          {showToken ? <EyeOff size={14} /> : <Eye size={14} />}
+        </button>
+      </div>
+
+      {/* Footer */}
+      <div style={{
+        display: "flex", alignItems: "center", gap: 8,
+        padding: "10px 16px", borderTop: "1px solid var(--border-subtle)",
+        backgroundColor: "var(--bg-elevated)",
+      }}>
+        <button
+          onClick={handleDelete}
+          disabled={deleting}
+          style={{
+            display: "flex", alignItems: "center", gap: 5,
+            padding: "5px 12px", borderRadius: 8, fontSize: 12, fontWeight: 500,
+            border: "1px solid rgba(231,76,60,0.3)",
+            backgroundColor: "rgba(231,76,60,0.07)",
+            color: "var(--danger)", cursor: deleting ? "default" : "pointer",
+          }}
+        >
+          {deleting
+            ? <Loader size={12} style={{ animation: "spin 1s linear infinite" }} />
+            : <Trash2 size={12} />}
+          {t("bots.delete")}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Page ─────────────────────────────────────────────────────────────────────
+
+export function BotsPage() {
+  const { bots, setBots, addBot: storeAddBot, removeBot } = useChannelsStore();
+  const [showAdd, setShowAdd] = useState(false);
+  const atLimit = bots.length >= MAX_BOTS;
+  useSettingsStore((s) => s.language);
+
+  // Sync from DB on mount
+  useEffect(() => {
+    getBots().then(setBots).catch(() => {});
+  }, []);
+
+  return (
+    <>
+      <TopBar
+        actions={
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
+              {bots.length}/{MAX_BOTS}
+            </span>
+            <button
+              onClick={() => !atLimit && setShowAdd(true)}
+              disabled={atLimit}
+              style={{
+                display: "flex", alignItems: "center", gap: 6,
+                padding: "7px 14px", borderRadius: 8, fontSize: 13, fontWeight: 600,
+                backgroundColor: atLimit ? "var(--bg-elevated)" : "var(--accent)",
+                border: atLimit ? "1px solid var(--border-default)" : "none",
+                color: atLimit ? "var(--text-muted)" : "#fff",
+                cursor: atLimit ? "default" : "pointer",
+              }}
+              title={atLimit ? `Достигнут лимит ${MAX_BOTS} ботов` : "Добавить бота"}
+            >
+              <Plus size={14} />
+              {t("bots.add")}
+            </button>
+          </div>
+        }
+      />
+
+      <div className="page-content max-w-3xl">
+        {atLimit && (
+          <div style={{
+            display: "flex", alignItems: "center", gap: 8, marginBottom: 16,
+            padding: "10px 14px", borderRadius: 10,
+            backgroundColor: "rgba(243,156,18,0.10)", border: "1px solid rgba(243,156,18,0.25)",
+          }}>
+            <AlertCircle size={15} style={{ color: "var(--warning)", flexShrink: 0 }} />
+            <span style={{ fontSize: 13, color: "var(--warning)" }}>
+              Достигнут лимит: максимум {MAX_BOTS} ботов
+            </span>
+          </div>
+        )}
+
+        {bots.length === 0 ? (
+          <EmptyState icon={Bot} title={t("bots.empty")} description={t("bots.emptyDesc")} />
+        ) : (
+          <div className="space-y-3">
+            {bots.map((bot) => (
+              <BotCard
+                key={bot.id}
+                bot={bot}
+                onDelete={() => removeBot(bot.id)}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+
+      {showAdd && (
+        <AddBotModal
+          onClose={() => setShowAdd(false)}
+          onAdded={(bot) => storeAddBot(bot)}
+        />
+      )}
+    </>
+  );
+}
