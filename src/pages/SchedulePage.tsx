@@ -7,6 +7,7 @@ import { toast } from "@/store/uiStore";
 import { getScheduledPosts, cancelScheduledPost } from "@/lib/tauriApi";
 import { t } from "@/lib/i18n";
 import { useSettingsStore } from "@/store/settingsStore";
+import { useDraftsStore } from "@/store/draftsStore";
 import type { ScheduledPostInfo } from "@/types/publish";
 
 // ── Calendar helpers ──────────────────────────────────────────────────────────
@@ -65,6 +66,7 @@ export function SchedulePage() {
   const [loading, setLoading]     = useState(true);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   useSettingsStore((s) => s.language);
+  const drafts = useDraftsStore((s) => s.drafts);
 
   const today      = new Date();
   const [viewYear, setViewYear]   = useState(today.getFullYear());
@@ -269,7 +271,7 @@ export function SchedulePage() {
                                   }}
                                   onMouseEnter={() => setHoveredId(post.id)}
                                   onMouseLeave={() => setHoveredId(null)}
-                                  onClick={() => navigate("/editor")}
+                                  onClick={() => post.draftId ? navigate(`/editor/${post.draftId}`) : navigate("/editor")}
                                 >
                                   <span style={{ flexShrink: 0, fontWeight: 600 }}>{time}</span>
                                   <span
@@ -280,7 +282,10 @@ export function SchedulePage() {
                                       flex: 1,
                                     }}
                                   >
-                                    {post.draftId ? post.draftId.slice(0, 8) : t("editor.untitled")}
+                                    {(() => {
+                                      const draft = drafts.find((d) => d.id === post.draftId);
+                                      return draft?.postTitle || draft?.title || t("editor.untitled");
+                                    })()}
                                   </span>
                                   {hoveredId === post.id && (
                                     <button
