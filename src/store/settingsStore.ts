@@ -12,6 +12,10 @@ interface SettingsState {
   defaultChannelId: string;
   showCharCounter: boolean;
   confirmBeforePublish: boolean;
+  accentColor: string;
+  compactMode: boolean;
+  largeFontEditor: boolean;
+  showTelegramPreview: boolean;
 
   setTheme: (theme: Theme) => void;
   setLanguage: (lang: Language) => void;
@@ -21,6 +25,10 @@ interface SettingsState {
   setDefaultChannelId: (id: string) => void;
   setShowCharCounter: (v: boolean) => void;
   setConfirmBeforePublish: (v: boolean) => void;
+  setAccentColor: (color: string) => void;
+  setCompactMode: (v: boolean) => void;
+  setLargeFontEditor: (v: boolean) => void;
+  setShowTelegramPreview: (v: boolean) => void;
 }
 
 export const useSettingsStore = create<SettingsState>()(
@@ -34,6 +42,10 @@ export const useSettingsStore = create<SettingsState>()(
       defaultChannelId:     "",
       showCharCounter:      true,
       confirmBeforePublish: true,
+      accentColor:          "#2c87c9",
+      compactMode:          false,
+      largeFontEditor:      false,
+      showTelegramPreview:  true,
 
       setTheme:                (theme)   => set({ theme }),
       setLanguage:             (language) => { set({ language }); setI18nLanguage(language); },
@@ -43,6 +55,14 @@ export const useSettingsStore = create<SettingsState>()(
       setDefaultChannelId:     (id)      => set({ defaultChannelId: id }),
       setShowCharCounter:      (v)       => set({ showCharCounter: v }),
       setConfirmBeforePublish: (v)       => set({ confirmBeforePublish: v }),
+      setAccentColor:          (color)   => {
+        set({ accentColor: color });
+        document.documentElement.style.setProperty("--accent", color);
+        document.documentElement.style.setProperty("--accent-hover", color);
+      },
+      setCompactMode:          (v)       => set({ compactMode: v }),
+      setLargeFontEditor:      (v)       => set({ largeFontEditor: v }),
+      setShowTelegramPreview:  (v)       => set({ showTelegramPreview: v }),
     }),
     {
       name: "ts-settings",
@@ -55,8 +75,11 @@ export const useSettingsStore = create<SettingsState>()(
                 : "light"
               : state.theme;
           document.documentElement.setAttribute("data-theme", resolved);
-          // Apply saved language immediately so t() works on first render
           setI18nLanguage(state.language ?? "ru");
+          if (state.accentColor && state.accentColor !== "#2c87c9") {
+            document.documentElement.style.setProperty("--accent", state.accentColor);
+            document.documentElement.style.setProperty("--accent-hover", state.accentColor);
+          }
         }
       },
     }

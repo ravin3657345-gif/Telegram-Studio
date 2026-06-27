@@ -1,20 +1,74 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { CalendarClock, Trash2, RefreshCw } from "lucide-react";
+import { ChevronLeft, ChevronRight, Trash2, RefreshCw } from "lucide-react";
 import { TopBar } from "@/components/layout/TopBar";
-import { EmptyState } from "@/components/ui/EmptyState";
 import { Spinner } from "@/components/ui/Spinner";
 import { toast } from "@/store/uiStore";
 import { getScheduledPosts, cancelScheduledPost } from "@/lib/tauriApi";
-import { t, ti } from "@/lib/i18n";
+import { t } from "@/lib/i18n";
 import { useSettingsStore } from "@/store/settingsStore";
 import type { ScheduledPostInfo } from "@/types/publish";
 
+// ── Calendar helpers ──────────────────────────────────────────────────────────
+
+const RU_MONTHS = [
+  "Январь","Февраль","Март","Апрель","Май","Июнь",
+  "Июль","Август","Сентябрь","Октябрь","Ноябрь","Декабрь",
+];
+
+const RU_DAYS_SHORT = ["Пн","Вт","Ср","Чт","Пт","Сб","Вс"];
+
+function startOfMonth(year: number, month: number): Date {
+  return new Date(year, month, 1);
+}
+
+function daysInMonth(year: number, month: number): number {
+  return new Date(year, month + 1, 0).getDate();
+}
+
+/** Return Monday-based weekday index (0=Mon … 6=Sun) */
+function weekdayMon(date: Date): number {
+  return (date.getDay() + 6) % 7;
+}
+
+// Build calendar grid (always 6 rows × 7 cols, padded with null)
+function buildCalendarGrid(year: number, month: number): Array<Date | null> {
+  const firstDay = startOfMonth(year, month);
+  const startPad = weekdayMon(firstDay);
+  const days = daysInMonth(year, month);
+  const grid: Array<Date | null> = [];
+
+  for (let i = 0; i < startPad; i++) grid.push(null);
+  for (let d = 1; d <= days; d++) grid.push(new Date(year, month, d));
+  while (grid.length % 7 !== 0) grid.push(null);
+  return grid;
+}
+
+function sameDay(a: Date, b: Date): boolean {
+  return a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate();
+}
+
+// ── Chip colors ───────────────────────────────────────────────────────────────
+
+function chipStyle(isPast: boolean) {
+  if (isPast) return { color: "var(--status-ready-color)", bg: "var(--status-ready-bg)" };
+  return { color: "var(--status-sched-color)", bg: "var(--status-sched-bg)" };
+}
+
+// ── Main component ─────────────────────────────────────────────────────────────
+
 export function SchedulePage() {
-  const navigate  = useNavigate();
-  const [posts, setPosts]     = useState<ScheduledPostInfo[]>([]);
-  const [loading, setLoading] = useState(true);
+  const navigate                  = useNavigate();
+  const [posts, setPosts]         = useState<ScheduledPostInfo[]>([]);
+  const [loading, setLoading]     = useState(true);
+  const [hoveredId, setHoveredId] = useState<string | null>(null);
   useSettingsStore((s) => s.language);
+
+  const today      = new Date();
+  const [viewYear, setViewYear]   = useState(today.getFullYear());
+  const [viewMonth, setViewMonth] = useState(today.getMonth());
 
   const load = () => {
     setLoading(true);
@@ -26,7 +80,8 @@ export function SchedulePage() {
 
   useEffect(load, []);
 
-  async function handleCancel(id: string) {
+  async function handleCancel(e: React.MouseEvent, id: string) {
+    e.stopPropagation();
     try {
       await cancelScheduledPost(id);
       setPosts((prev) => prev.filter((p) => p.id !== id));
@@ -34,6 +89,27 @@ export function SchedulePage() {
     } catch {
       toast.error(t("sched.cancelError"));
     }
+  }
+
+  const grid = buildCalendarGrid(viewYear, viewMonth);
+
+  function prevMonth() {
+    if (viewMonth === 0) { setViewYear((y) => y - 1); setViewMonth(11); }
+    else setViewMonth((m) => m - 1);
+  }
+
+  function nextMonth() {
+    if (viewMonth === 11) { setViewYear((y) => y + 1); setViewMonth(0); }
+    else setViewMonth((m) => m + 1);
+  }
+
+  function goToday() {
+    setViewYear(today.getFullYear());
+    setViewMonth(today.getMonth());
+  }
+
+  function postsForDay(day: Date): ScheduledPostInfo[] {
+    return posts.filter((p) => sameDay(new Date(p.scheduledAt), day));
   }
 
   return (
@@ -50,23 +126,182 @@ export function SchedulePage() {
           </button>
         }
       />
-      <div className="page-content">
+
+      <div className="page-content" style={{ padding: "24px" }}>
         {loading ? (
           <div className="flex justify-center py-20">
             <Spinner size={24} color="var(--text-muted)" />
           </div>
-        ) : posts.length === 0 ? (
-          <EmptyState
-            icon={CalendarClock}
-            title={t("sched.empty")}
-            description={t("sched.emptyDesc")}
-            action={{ label: t("sched.createPost"), onClick: () => navigate("/editor") }}
-          />
         ) : (
-          <div className="flex flex-col gap-2 max-w-2xl">
-            {posts.map((post) => (
-              <ScheduledCard key={post.id} post={post} onCancel={() => handleCancel(post.id)} />
-            ))}
+          <div style={{ maxWidth: 900 }}>
+            {/* ── Calendar header ─────────────────────────────────────── */}
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <h1 className="text-xl font-bold" style={{ color: "var(--text-primary)" }}>
+                  {RU_MONTHS[viewMonth]} {viewYear}
+                </h1>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={prevMonth}
+                    className="w-7 h-7 flex items-center justify-center rounded-md transition-colors"
+                    style={{ color: "var(--text-secondary)" }}
+                    onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.backgroundColor = "var(--bg-hover)")}
+                    onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.backgroundColor = "transparent")}
+                  >
+                    <ChevronLeft size={16} />
+                  </button>
+                  <button
+                    onClick={nextMonth}
+                    className="w-7 h-7 flex items-center justify-center rounded-md transition-colors"
+                    style={{ color: "var(--text-secondary)" }}
+                    onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.backgroundColor = "var(--bg-hover)")}
+                    onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.backgroundColor = "transparent")}
+                  >
+                    <ChevronRight size={16} />
+                  </button>
+                </div>
+                <button
+                  onClick={goToday}
+                  className="px-2.5 h-7 rounded-md text-xs font-medium transition-colors border"
+                  style={{
+                    color: "var(--text-secondary)",
+                    backgroundColor: "var(--bg-surface)",
+                    borderColor: "var(--border-default)",
+                  }}
+                  onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.backgroundColor = "var(--bg-hover)")}
+                  onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.backgroundColor = "var(--bg-surface)")}
+                >
+                  {t("sched.today")}
+                </button>
+              </div>
+
+              {/* Legend */}
+              <div className="flex items-center gap-3" style={{ fontSize: 11 }}>
+                <LegendItem color="var(--status-ready-color)" label={t("sched.legend.published")} />
+                <LegendItem color="var(--status-sched-color)" label={t("sched.legend.scheduled")} />
+                <LegendItem color="var(--status-draft-color)" label={t("sched.legend.draft")} />
+              </div>
+            </div>
+
+            {/* ── Calendar grid ───────────────────────────────────────── */}
+            <div
+              className="rounded-xl border overflow-hidden"
+              style={{ borderColor: "var(--border-subtle)" }}
+            >
+              {/* Weekday header */}
+              <div
+                className="grid"
+                style={{
+                  gridTemplateColumns: "repeat(7, 1fr)",
+                  borderBottom: "1px solid var(--border-subtle)",
+                  backgroundColor: "var(--bg-elevated)",
+                }}
+              >
+                {RU_DAYS_SHORT.map((day, i) => (
+                  <div
+                    key={day}
+                    className="text-center py-2"
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 600,
+                      color: i >= 5 ? "#b08a8a" : "var(--text-muted)",
+                      letterSpacing: "0.03em",
+                    }}
+                  >
+                    {day}
+                  </div>
+                ))}
+              </div>
+
+              {/* Day cells */}
+              <div
+                className="grid"
+                style={{ gridTemplateColumns: "repeat(7, 1fr)" }}
+              >
+                {grid.map((day, idx) => {
+                  const isToday = day ? sameDay(day, today) : false;
+                  const dayPosts = day ? postsForDay(day) : [];
+                  const colIndex = idx % 7;
+                  const isWeekend = colIndex >= 5;
+
+                  return (
+                    <div
+                      key={idx}
+                      style={{
+                        minHeight: 96,
+                        borderRight: colIndex < 6 ? "1px solid var(--border-subtle)" : "none",
+                        borderBottom: idx < grid.length - 7 ? "1px solid var(--border-subtle)" : "none",
+                        backgroundColor: day ? "var(--bg-surface)" : "var(--bg-elevated)",
+                        padding: "6px 6px 4px",
+                      }}
+                    >
+                      {day && (
+                        <>
+                          {/* Day number */}
+                          <div className="flex justify-end mb-1">
+                            <span
+                              className="w-6 h-6 flex items-center justify-center rounded-full text-xs font-medium"
+                              style={{
+                                color: isToday ? "#fff" : isWeekend ? "#b08a8a" : "var(--text-secondary)",
+                                backgroundColor: isToday ? "var(--accent)" : "transparent",
+                              }}
+                            >
+                              {day.getDate()}
+                            </span>
+                          </div>
+
+                          {/* Post chips */}
+                          <div className="flex flex-col gap-0.5">
+                            {dayPosts.map((post) => {
+                              const isPast = new Date(post.scheduledAt) < today;
+                              const cs = chipStyle(isPast);
+                              const time = new Date(post.scheduledAt).toLocaleTimeString("ru", { hour: "2-digit", minute: "2-digit" });
+                              return (
+                                <div
+                                  key={post.id}
+                                  className="relative rounded px-1.5 flex items-center gap-1 group cursor-pointer"
+                                  style={{
+                                    height: 20,
+                                    backgroundColor: cs.bg,
+                                    color: cs.color,
+                                    fontSize: 10,
+                                    overflow: "hidden",
+                                  }}
+                                  onMouseEnter={() => setHoveredId(post.id)}
+                                  onMouseLeave={() => setHoveredId(null)}
+                                  onClick={() => navigate("/editor")}
+                                >
+                                  <span style={{ flexShrink: 0, fontWeight: 600 }}>{time}</span>
+                                  <span
+                                    style={{
+                                      overflow: "hidden",
+                                      whiteSpace: "nowrap",
+                                      textOverflow: "ellipsis",
+                                      flex: 1,
+                                    }}
+                                  >
+                                    {post.draftId ? post.draftId.slice(0, 8) : t("editor.untitled")}
+                                  </span>
+                                  {hoveredId === post.id && (
+                                    <button
+                                      onClick={(e) => handleCancel(e, post.id)}
+                                      className="ml-auto flex-shrink-0"
+                                      style={{ color: cs.color }}
+                                    >
+                                      <Trash2 size={10} />
+                                    </button>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           </div>
         )}
       </div>
@@ -74,73 +309,11 @@ export function SchedulePage() {
   );
 }
 
-function ScheduledCard({
-  post,
-  onCancel,
-}: {
-  post: ScheduledPostInfo;
-  onCancel: () => void;
-}) {
-  const [hovered, setHovered] = useState(false);
-  useSettingsStore((s) => s.language);
-
-  const schedDate = new Date(post.scheduledAt).toLocaleString("ru", {
-    weekday: "short",
-    day: "numeric",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-
-  const isPast = new Date(post.scheduledAt) < new Date();
-
+function LegendItem({ color, label }: { color: string; label: string }) {
   return (
-    <div
-      className="rounded-lg border p-3 flex items-center gap-3"
-      style={{
-        backgroundColor: "var(--bg-surface)",
-        borderColor: hovered ? "var(--border-default)" : "var(--border-subtle)",
-      }}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-    >
-      <CalendarClock
-        size={16}
-        style={{ color: isPast ? "var(--warning, #f59e0b)" : "var(--accent)", flexShrink: 0 }}
-      />
-
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>
-          {schedDate}
-        </p>
-        <p className="text-2xs truncate" style={{ color: "var(--text-muted)" }}>
-          {ti("sched.channel", { id: post.channelId })}
-          {post.draftId && ` · ${ti("sched.draft", { id: post.draftId.slice(0, 8) })}`}
-        </p>
-      </div>
-
-      <div
-        className="flex items-center gap-1.5 px-2 py-0.5 rounded text-2xs flex-shrink-0"
-        style={{
-          backgroundColor: isPast ? "rgba(245,158,11,0.12)" : "rgba(42,171,238,0.1)",
-          color: isPast ? "var(--warning, #f59e0b)" : "var(--accent)",
-        }}
-      >
-        {isPast ? t("sched.pending") : t("sched.scheduled")}
-      </div>
-
-      {hovered && (
-        <button
-          onClick={onCancel}
-          className="flex items-center justify-center w-6 h-6 rounded transition-colors flex-shrink-0"
-          style={{ backgroundColor: "var(--bg-elevated)", color: "var(--text-muted)" }}
-          onMouseEnter={(e) => (e.currentTarget.style.color = "var(--danger)")}
-          onMouseLeave={(e) => (e.currentTarget.style.color = "var(--text-muted)")}
-          title={t("sched.cancel")}
-        >
-          <Trash2 size={12} />
-        </button>
-      )}
+    <div className="flex items-center gap-1.5">
+      <span className="w-2 h-2 rounded-full" style={{ backgroundColor: color }} />
+      <span style={{ color: "var(--text-muted)" }}>{label}</span>
     </div>
   );
 }

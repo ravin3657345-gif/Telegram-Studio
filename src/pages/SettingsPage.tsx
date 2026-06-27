@@ -1,136 +1,271 @@
-import { Sun, Moon, Monitor } from "lucide-react";
+import { Sun, Moon, Monitor, User, Bot, Radio, Send, Palette, Bell } from "lucide-react";
 import { useState } from "react";
 import { TopBar } from "@/components/layout/TopBar";
 import { useSettingsStore } from "@/store/settingsStore";
 import { telegraphOpenLogin } from "@/lib/tauriApi";
 import { t, setI18nLanguage } from "@/lib/i18n";
 import type { Theme, Language } from "@/types/settings";
-import clsx from "clsx";
+
+// ── Local nav definition ──────────────────────────────────────────────────────
+
+type NavSection = "profile" | "bots" | "channels" | "publish" | "appearance" | "notifications";
+
+const NAV_ITEMS: Array<{ key: NavSection; icon: React.ReactNode; labelKey: string }> = [
+  { key: "profile",       icon: <User   size={15} />, labelKey: "settings.nav.profile"       },
+  { key: "bots",          icon: <Bot    size={15} />, labelKey: "settings.nav.bots"          },
+  { key: "channels",      icon: <Radio  size={15} />, labelKey: "settings.nav.channels"      },
+  { key: "publish",       icon: <Send   size={15} />, labelKey: "settings.nav.publish"       },
+  { key: "appearance",    icon: <Palette size={15} />, labelKey: "settings.nav.appearance"  },
+  { key: "notifications", icon: <Bell   size={15} />, labelKey: "settings.nav.notifications" },
+];
+
+// ── Accent color presets ──────────────────────────────────────────────────────
+
+const ACCENT_PRESETS = [
+  { color: "#2c87c9", label: "Синий" },
+  { color: "#7a4fe0", label: "Фиолетовый" },
+  { color: "#3f9d5f", label: "Зелёный" },
+  { color: "#c77d33", label: "Оранжевый" },
+  { color: "#e03e8a", label: "Розовый" },
+  { color: "#37352f", label: "Чёрный" },
+];
+
+// ── Main page ─────────────────────────────────────────────────────────────────
 
 export function SettingsPage() {
+  const [activeSection, setActiveSection] = useState<NavSection>("appearance");
+
   return (
     <>
       <TopBar />
-      <div className="page-content max-w-2xl space-y-8">
-        <AppearanceSection />
-        <EditorSection />
-        <PublishSection />
-        <TelegraphSection />
-        <AboutSection />
+      <div className="flex flex-1 overflow-hidden">
+        {/* ── Local nav ──────────────────────────────────────────────────── */}
+        <div
+          className="flex-shrink-0 border-r overflow-y-auto"
+          style={{
+            width: 220,
+            backgroundColor: "var(--bg-sidebar)",
+            borderColor: "var(--border-subtle)",
+          }}
+        >
+          <div className="py-4 px-2">
+            {NAV_ITEMS.map(({ key, icon, labelKey }) => {
+              const isActive = activeSection === key;
+              return (
+                <button
+                  key={key}
+                  onClick={() => setActiveSection(key)}
+                  className="flex items-center gap-2.5 w-full px-3 h-8 rounded-md mb-0.5 text-sm transition-colors text-left"
+                  style={{
+                    backgroundColor: isActive ? "var(--bg-active)" : "transparent",
+                    color: isActive ? "var(--text-primary)" : "var(--text-secondary)",
+                    fontWeight: isActive ? 500 : 400,
+                  }}
+                  onMouseEnter={(e) => {
+                    if (!isActive) (e.currentTarget as HTMLElement).style.backgroundColor = "var(--bg-hover)";
+                  }}
+                  onMouseLeave={(e) => {
+                    if (!isActive) (e.currentTarget as HTMLElement).style.backgroundColor = "transparent";
+                  }}
+                >
+                  <span style={{ color: isActive ? "var(--accent)" : "var(--text-muted)", flexShrink: 0 }}>
+                    {icon}
+                  </span>
+                  {t(labelKey as any)}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* ── Section content ─────────────────────────────────────────────── */}
+        <div className="flex-1 overflow-y-auto">
+          <div className="page-content max-w-2xl space-y-8">
+            {activeSection === "appearance" && <AppearanceSection />}
+            {activeSection === "publish" && (
+              <>
+                <PublishSection />
+                <TelegraphSection />
+              </>
+            )}
+            {activeSection === "bots"     && <BotsStub />}
+            {activeSection === "channels" && <ChannelsStub />}
+            {activeSection === "profile"  && <ProfileStub />}
+            {activeSection === "notifications" && <NotificationsStub />}
+            <AboutSection />
+          </div>
+        </div>
       </div>
     </>
   );
 }
 
-/* ── Sections ───────────────────────────────────────────── */
+// ── Appearance section ─────────────────────────────────────────────────────────
 
 function AppearanceSection() {
-  const theme       = useSettingsStore((s) => s.theme);
-  const setTheme    = useSettingsStore((s) => s.setTheme);
-  const language    = useSettingsStore((s) => s.language);
-  const setLanguage = useSettingsStore((s) => s.setLanguage);
+  const theme              = useSettingsStore((s) => s.theme);
+  const setTheme           = useSettingsStore((s) => s.setTheme);
+  const language           = useSettingsStore((s) => s.language);
+  const setLanguage        = useSettingsStore((s) => s.setLanguage);
+  const accentColor        = useSettingsStore((s) => s.accentColor);
+  const setAccentColor     = useSettingsStore((s) => s.setAccentColor);
+  const compactMode        = useSettingsStore((s) => s.compactMode);
+  const setCompactMode     = useSettingsStore((s) => s.setCompactMode);
+  const largeFontEditor    = useSettingsStore((s) => s.largeFontEditor);
+  const setLargeFontEditor = useSettingsStore((s) => s.setLargeFontEditor);
+  const showPreview        = useSettingsStore((s) => s.showTelegramPreview);
+  const setShowPreview     = useSettingsStore((s) => s.setShowTelegramPreview);
+  const showCharCounter    = useSettingsStore((s) => s.showCharCounter);
+  const setShowCharCounter = useSettingsStore((s) => s.setShowCharCounter);
 
-  const themeOptions: { value: Theme; labelKey: string; icon: React.ReactNode }[] = [
-    { value: "dark",   labelKey: "settings.theme.dark",   icon: <Moon size={14} /> },
-    { value: "light",  labelKey: "settings.theme.light",  icon: <Sun  size={14} /> },
-    { value: "system", labelKey: "settings.theme.system", icon: <Monitor size={14} /> },
+  const themeOptions: Array<{ value: Theme; labelKey: string; icon: React.ReactNode }> = [
+    { value: "light",  labelKey: "settings.theme.light",  icon: <Sun     size={18} strokeWidth={1.75} /> },
+    { value: "dark",   labelKey: "settings.theme.dark",   icon: <Moon    size={18} strokeWidth={1.75} /> },
+    { value: "system", labelKey: "settings.theme.system", icon: <Monitor size={18} strokeWidth={1.75} /> },
   ];
 
-  const langOptions: { value: Language; label: string; flag: string }[] = [
-    { value: "ru", label: "Русский",    flag: "🇷🇺" },
-    { value: "en", label: "English",    flag: "🇬🇧" },
-    { value: "fr", label: "Français",   flag: "🇫🇷" },
-    { value: "pl", label: "Polski",     flag: "🇵🇱" },
-    { value: "es", label: "Español",    flag: "🇪🇸" },
+  const langOptions: Array<{ value: Language; label: string; flag: string }> = [
+    { value: "ru", label: "Русский",  flag: "🇷🇺" },
+    { value: "en", label: "English",  flag: "🇬🇧" },
+    { value: "fr", label: "Français", flag: "🇫🇷" },
+    { value: "pl", label: "Polski",   flag: "🇵🇱" },
+    { value: "es", label: "Español",  flag: "🇪🇸" },
   ];
 
   return (
-    <Section title={t("settings.appearance")}>
-      <Field label={t("settings.theme")}>
-        <div
-          className="flex rounded-lg border overflow-hidden"
-          style={{ borderColor: "var(--border-default)", width: "fit-content" }}
-        >
-          {themeOptions.map(({ value, labelKey, icon }) => (
-            <button
-              key={value}
-              onClick={() => setTheme(value)}
-              className={clsx("flex items-center gap-1.5 px-4 h-8 text-sm transition-colors")}
-              style={{
-                backgroundColor: theme === value ? "var(--bg-active)"   : "var(--bg-elevated)",
-                color:           theme === value ? "var(--accent)"       : "var(--text-secondary)",
-                borderRight: "1px solid var(--border-default)",
-              }}
-            >
-              {icon}
-              {t(labelKey as any)}
-            </button>
-          ))}
-        </div>
-      </Field>
+    <>
+      <Section title={t("settings.appearance")}>
+        {/* ── Theme cards ─────────────────────────────────────────── */}
+        <Field label={t("settings.theme")}>
+          <div className="flex gap-3 flex-wrap">
+            {themeOptions.map(({ value, labelKey, icon }) => {
+              const isActive = theme === value;
+              return (
+                <button
+                  key={value}
+                  onClick={() => setTheme(value)}
+                  className="flex flex-col items-center gap-2 p-3 rounded-xl border transition-all"
+                  style={{
+                    width: 88,
+                    backgroundColor: isActive ? "var(--accent-subtle)" : "var(--bg-elevated)",
+                    borderColor: isActive ? "var(--accent)" : "var(--border-default)",
+                  }}
+                >
+                  <span style={{ color: isActive ? "var(--accent)" : "var(--text-secondary)" }}>
+                    {icon}
+                  </span>
+                  <span className="text-xs font-medium" style={{ color: isActive ? "var(--accent)" : "var(--text-secondary)" }}>
+                    {t(labelKey as any)}
+                  </span>
+                  <span
+                    className="w-3.5 h-3.5 rounded-full border-2 flex items-center justify-center"
+                    style={{ borderColor: isActive ? "var(--accent)" : "var(--border-strong)" }}
+                  >
+                    {isActive && (
+                      <span className="w-2 h-2 rounded-full" style={{ backgroundColor: "var(--accent)" }} />
+                    )}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </Field>
 
-      <Field label={t("settings.language")}>
-        <div className="flex gap-1.5 flex-wrap justify-end">
-          {langOptions.map(({ value, label, flag }) => (
-            <button
-              key={value}
-              onClick={() => { setLanguage(value); setI18nLanguage(value); }}
-              className="flex items-center gap-1.5 px-3 h-8 rounded-lg text-sm transition-colors border"
-              style={{
-                backgroundColor: language === value ? "var(--bg-active)"   : "var(--bg-elevated)",
-                color:           language === value ? "var(--accent)"       : "var(--text-secondary)",
-                borderColor:     language === value ? "var(--accent)"       : "var(--border-default)",
-                fontWeight:      language === value ? 600                   : 400,
-              }}
-            >
-              <span>{flag}</span>
-              <span>{label}</span>
-            </button>
-          ))}
-        </div>
-      </Field>
-    </Section>
+        {/* ── Accent color ─────────────────────────────────────────── */}
+        <Field label={t("settings.accentColor")}>
+          <div className="flex items-center gap-2">
+            {ACCENT_PRESETS.map(({ color, label }) => {
+              const isSelected = accentColor === color;
+              return (
+                <button
+                  key={color}
+                  onClick={() => setAccentColor(color)}
+                  title={label}
+                  className="w-7 h-7 rounded-full transition-transform"
+                  style={{
+                    backgroundColor: color,
+                    outline: isSelected ? `2px solid ${color}` : "none",
+                    outlineOffset: isSelected ? 3 : 0,
+                    transform: isSelected ? "scale(1.15)" : "scale(1)",
+                    boxShadow: isSelected ? `0 0 0 1px var(--bg-surface)` : "none",
+                  }}
+                />
+              );
+            })}
+          </div>
+        </Field>
+
+        {/* ── Language ─────────────────────────────────────────────── */}
+        <Field label={t("settings.language")}>
+          <div className="flex gap-1.5 flex-wrap justify-end">
+            {langOptions.map(({ value, label, flag }) => (
+              <button
+                key={value}
+                onClick={() => { setLanguage(value); setI18nLanguage(value); }}
+                className="flex items-center gap-1.5 px-3 h-8 rounded-lg text-sm transition-colors border"
+                style={{
+                  backgroundColor: language === value ? "var(--bg-active)"  : "var(--bg-elevated)",
+                  color:           language === value ? "var(--accent)"      : "var(--text-secondary)",
+                  borderColor:     language === value ? "var(--accent)"      : "var(--border-default)",
+                  fontWeight:      language === value ? 600                  : 400,
+                }}
+              >
+                <span>{flag}</span>
+                <span>{label}</span>
+              </button>
+            ))}
+          </div>
+        </Field>
+      </Section>
+
+      {/* ── Display toggles ──────────────────────────────────────────── */}
+      <Section title={t("settings.editor")}>
+        <Field label={t("settings.compactMode")}>
+          <Toggle checked={compactMode} onChange={setCompactMode} />
+        </Field>
+        <Field label={t("settings.showPreview")}>
+          <Toggle checked={showPreview} onChange={setShowPreview} />
+        </Field>
+        <Field label={t("settings.largeFontEditor")}>
+          <Toggle checked={largeFontEditor} onChange={setLargeFontEditor} />
+        </Field>
+        <Field label={t("settings.charCounter")}>
+          <Toggle checked={showCharCounter} onChange={setShowCharCounter} />
+        </Field>
+        <Field label={t("settings.autosave")}>
+          <AutosaveControl />
+        </Field>
+      </Section>
+    </>
   );
 }
 
-function EditorSection() {
-  const showCharCounter      = useSettingsStore((s) => s.showCharCounter);
-  const setShowCharCounter   = useSettingsStore((s) => s.setShowCharCounter);
-  const autosaveInterval     = useSettingsStore((s) => s.autosaveInterval);
-  const setAutosaveInterval  = useSettingsStore((s) => s.setAutosaveInterval);
-
+function AutosaveControl() {
+  const autosaveInterval    = useSettingsStore((s) => s.autosaveInterval);
+  const setAutosaveInterval = useSettingsStore((s) => s.setAutosaveInterval);
   return (
-    <Section title={t("settings.editor")}>
-      <Field label={t("settings.charCounter")}>
-        <Toggle checked={showCharCounter} onChange={setShowCharCounter} />
-      </Field>
-
-      <Field label={t("settings.autosave")}>
-        <div
-          className="flex rounded-lg border overflow-hidden"
-          style={{ borderColor: "var(--border-default)" }}
+    <div className="flex rounded-lg border overflow-hidden" style={{ borderColor: "var(--border-default)" }}>
+      {[1000, 2000, 3000, 5000].map((ms, i, arr) => (
+        <button
+          key={ms}
+          onClick={() => setAutosaveInterval(ms)}
+          className="flex items-center justify-center px-3 h-8 text-sm transition-colors"
+          style={{
+            backgroundColor: autosaveInterval === ms ? "var(--bg-active)"  : "var(--bg-elevated)",
+            color:           autosaveInterval === ms ? "var(--accent)"      : "var(--text-secondary)",
+            fontWeight:      autosaveInterval === ms ? 600 : 400,
+            borderRight: i < arr.length - 1 ? "1px solid var(--border-default)" : "none",
+            minWidth: 40,
+          }}
         >
-          {[1000, 2000, 3000, 5000].map((ms, i, arr) => (
-            <button
-              key={ms}
-              onClick={() => setAutosaveInterval(ms)}
-              className="flex items-center justify-center px-3 h-8 text-sm transition-colors"
-              style={{
-                backgroundColor: autosaveInterval === ms ? "var(--bg-active)"  : "var(--bg-elevated)",
-                color:           autosaveInterval === ms ? "var(--accent)"      : "var(--text-secondary)",
-                fontWeight:      autosaveInterval === ms ? 600 : 400,
-                borderRight:     i < arr.length - 1 ? "1px solid var(--border-default)" : "none",
-                minWidth: 40,
-              }}
-            >
-              {ms / 1000}с
-            </button>
-          ))}
-        </div>
-      </Field>
-    </Section>
+          {ms / 1000}с
+        </button>
+      ))}
+    </div>
   );
 }
+
+// ── Publish section ───────────────────────────────────────────────────────────
 
 function PublishSection() {
   const confirmBeforePublish    = useSettingsStore((s) => s.confirmBeforePublish);
@@ -144,6 +279,8 @@ function PublishSection() {
     </Section>
   );
 }
+
+// ── Telegraph section ─────────────────────────────────────────────────────────
 
 function TelegraphSection() {
   const [loading, setLoading] = useState(false);
@@ -188,6 +325,8 @@ function TelegraphSection() {
   );
 }
 
+// ── About section ─────────────────────────────────────────────────────────────
+
 function AboutSection() {
   return (
     <Section title={t("settings.about")}>
@@ -217,7 +356,7 @@ function AboutSection() {
           Локальный десктоп-клиент для публикации постов в Telegram-каналы
         </p>
         <div
-          className="flex items-center gap-1.5 text-2xs px-3 py-1 rounded-full"
+          className="flex items-center gap-1.5 text-xs px-3 py-1 rounded-full"
           style={{
             backgroundColor: "var(--success-subtle)",
             color: "var(--success)",
@@ -232,7 +371,49 @@ function AboutSection() {
   );
 }
 
-/* ── Primitives ─────────────────────────────────────────── */
+// ── Stub sections for other nav items ────────────────────────────────────────
+
+function ProfileStub() {
+  return (
+    <Section title={t("settings.nav.profile")}>
+      <div className="px-4 py-6 text-center" style={{ color: "var(--text-muted)", fontSize: 13 }}>
+        Профиль настраивается через управление ботами и каналами
+      </div>
+    </Section>
+  );
+}
+
+function BotsStub() {
+  return (
+    <Section title={t("settings.nav.bots")}>
+      <div className="px-4 py-6 text-center" style={{ color: "var(--text-muted)", fontSize: 13 }}>
+        Управление ботами доступно в разделе «Боты» в боковом меню
+      </div>
+    </Section>
+  );
+}
+
+function ChannelsStub() {
+  return (
+    <Section title={t("settings.nav.channels")}>
+      <div className="px-4 py-6 text-center" style={{ color: "var(--text-muted)", fontSize: 13 }}>
+        Управление каналами доступно в разделе «Каналы» в боковом меню
+      </div>
+    </Section>
+  );
+}
+
+function NotificationsStub() {
+  return (
+    <Section title={t("settings.nav.notifications")}>
+      <div className="px-4 py-6 text-center" style={{ color: "var(--text-muted)", fontSize: 13 }}>
+        Уведомления будут доступны в следующей версии
+      </div>
+    </Section>
+  );
+}
+
+// ── Primitives ────────────────────────────────────────────────────────────────
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -269,14 +450,25 @@ function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean
   return (
     <button
       onClick={() => onChange(!checked)}
-      className="relative w-10 h-6 rounded-full transition-colors flex-shrink-0"
-      style={{ backgroundColor: checked ? "var(--accent)" : "var(--bg-active)" }}
+      className="relative flex-shrink-0 transition-colors"
+      style={{
+        width: 38,
+        height: 22,
+        borderRadius: 11,
+        backgroundColor: checked ? "var(--accent)" : "var(--bg-active)",
+      }}
       role="switch"
       aria-checked={checked}
     >
       <span
-        className="absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white transition-transform shadow-sm"
-        style={{ transform: checked ? "translateX(16px)" : "translateX(0)" }}
+        className="absolute bg-white rounded-full shadow-sm transition-transform"
+        style={{
+          width: 18,
+          height: 18,
+          top: 2,
+          left: 2,
+          transform: checked ? "translateX(16px)" : "translateX(0)",
+        }}
       />
     </button>
   );

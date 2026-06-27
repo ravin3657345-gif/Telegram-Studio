@@ -1,5 +1,5 @@
-import { useParams } from "react-router-dom";
-import { CheckCircle2, AlertCircle, Loader2, LayoutTemplate } from "lucide-react";
+import { useParams, useNavigate } from "react-router-dom";
+import { CheckCircle2, AlertCircle, Loader2, LayoutTemplate, ChevronRight } from "lucide-react";
 import { TopBar } from "@/components/layout/TopBar";
 import { PostEditor } from "@/components/editor/PostEditor";
 import { PublishPanel } from "@/components/editor/PublishPanel";
@@ -10,16 +10,40 @@ import { toast } from "@/store/uiStore";
 import { t, ti } from "@/lib/i18n";
 import { useSettingsStore } from "@/store/settingsStore";
 
+// ── Word count helper ─────────────────────────────────────────────────────────
+
+function countWordsFromJson(json: string): { words: number; chars: number } {
+  try {
+    const doc = JSON.parse(json) as { content?: unknown[] };
+    let text = "";
+    function walk(node: { type?: string; text?: string; content?: unknown[] }) {
+      if (node.text) text += node.text + " ";
+      for (const child of node.content ?? []) walk(child as typeof node);
+    }
+    walk(doc as { type?: string; text?: string; content?: unknown[] });
+    const words = text.trim() ? text.trim().split(/\s+/).length : 0;
+    const chars = text.replace(/\s/g, "").length;
+    return { words, chars };
+  } catch {
+    return { words: 0, chars: 0 };
+  }
+}
+
+// ── EditorPage ────────────────────────────────────────────────────────────────
+
 export function EditorPage() {
   const { draftId } = useParams<{ draftId?: string }>();
-  // Subscribe to language so labels re-render on change
+  const navigate    = useNavigate();
   useSettingsStore((s) => s.language);
+  const showPreview = useSettingsStore((s) => s.showTelegramPreview);
 
   const { draftTitle, postTitle, contentJson, saveStatus, lastSavedAt, draftId: storeDraftId } =
     useEditorStore();
 
-  // URL param draftId (when opening existing draft) OR autosave-created draft id
   const effectiveDraftId = draftId ?? storeDraftId ?? undefined;
+  const displayTitle     = postTitle || draftTitle || t("editor.untitled");
+  const { words, chars } = countWordsFromJson(contentJson || "{}");
+  const MAX_CHARS        = 30000;
 
   async function handleSaveAsTemplate() {
     const name = draftTitle.trim() || t("editor.untitled");
@@ -33,12 +57,22 @@ export function EditorPage() {
 
   return (
     <>
-      {/* ── TopBar ──────────────────────────────────────────────────────────── */}
+      {/* ── TopBar with breadcrumbs ─────────────────────────────────────── */}
       <TopBar
         title={
-          <span style={{ color: "var(--text-primary)" }}>
-            {postTitle || draftTitle || t("editor.untitled")}
-          </span>
+          <div className="flex items-center gap-1.5" style={{ color: "var(--text-secondary)", fontSize: 13 }}>
+            <button
+              onClick={() => navigate("/drafts")}
+              className="transition-colors hover:text-[var(--text-primary)]"
+              style={{ color: "var(--text-secondary)" }}
+            >
+              {t("nav.drafts")}
+            </button>
+            <ChevronRight size={13} style={{ color: "var(--text-muted)" }} />
+            <span style={{ color: "var(--text-primary)", fontWeight: 500 }}>
+              {displayTitle}
+            </span>
+          </div>
         }
         actions={
           <div className="flex items-center gap-2">
@@ -58,59 +92,80 @@ export function EditorPage() {
         }
       />
 
-      {/* ── Body ────────────────────────────────────────────────────────────── */}
+      {/* ── Body ─────────────────────────────────────────────────────────── */}
       <div className="flex flex-1 overflow-hidden">
 
-        {/* ── Editor column ───────────────────────────────────────────────── */}
+        {/* ── Editor column ───────────────────────────────────────────── */}
         <div className="flex flex-col flex-1 overflow-hidden">
-          <PostEditor draftId={draftId} />  {/* URL param — controls which draft to load */}
-        </div>
+          <PostEditor draftId={draftId} />
 
-        {/* ── Right panel ─────────────────────────────────────────────────── */}
-        <div
-          className="flex flex-col flex-shrink-0 border-l overflow-hidden"
-          style={{
-            width: 300,
-            borderColor: "var(--border-subtle)",
-            backgroundColor: "var(--bg-surface)",
-          }}
-        >
-          {/* Preview label */}
+          {/* ── Word count footer bar ────────────────────────────────── */}
           <div
-            className="px-4 py-2.5 text-xs font-semibold uppercase tracking-wide border-b flex-shrink-0"
+            className="flex items-center justify-end px-6 border-t flex-shrink-0"
             style={{
+              height: 30,
               borderColor: "var(--border-subtle)",
-              color: "var(--text-muted)",
+              gap: 16,
             }}
           >
-            {t("editor.preview")}
-          </div>
-
-          {/* Telegram preview */}
-          <div
-            className="flex-1 overflow-y-auto"
-            style={{ minHeight: 0 }}
-          >
-            <TelegramPreview />
-          </div>
-
-          {/* Publish panel */}
-          <div
-            className="border-t flex-shrink-0 overflow-y-auto"
-            style={{
-              borderColor: "var(--border-subtle)",
-              maxHeight: "60%",
-            }}
-          >
-            <PublishPanel draftId={effectiveDraftId} />
+            <span style={{ color: "var(--text-muted)", fontSize: 11 }}>
+              {words} {words === 1 ? "слово" : words < 5 ? "слова" : "слов"}
+            </span>
+            <span
+              style={{
+                color: chars > MAX_CHARS ? "var(--danger)" : "var(--text-muted)",
+                fontSize: 11,
+              }}
+            >
+              {chars.toLocaleString("ru")} / {MAX_CHARS.toLocaleString("ru")}
+            </span>
           </div>
         </div>
+
+        {/* ── Right panel ─────────────────────────────────────────────── */}
+        {showPreview && (
+          <div
+            className="flex flex-col flex-shrink-0 border-l overflow-hidden"
+            style={{
+              width: 300,
+              borderColor: "var(--border-subtle)",
+              backgroundColor: "var(--bg-surface)",
+            }}
+          >
+            {/* Preview label */}
+            <div
+              className="px-4 py-2.5 text-xs font-semibold uppercase tracking-wide border-b flex-shrink-0"
+              style={{
+                borderColor: "var(--border-subtle)",
+                color: "var(--text-muted)",
+              }}
+            >
+              {t("editor.preview")}
+            </div>
+
+            {/* Telegram preview */}
+            <div className="flex-1 overflow-y-auto" style={{ minHeight: 0 }}>
+              <TelegramPreview />
+            </div>
+
+            {/* Publish panel */}
+            <div
+              className="border-t flex-shrink-0 overflow-y-auto"
+              style={{
+                borderColor: "var(--border-subtle)",
+                maxHeight: "60%",
+              }}
+            >
+              <PublishPanel draftId={effectiveDraftId} />
+            </div>
+          </div>
+        )}
       </div>
     </>
   );
 }
 
-// ── Sub-components ────────────────────────────────────────────────────────────
+// ── SaveStatus sub-component ──────────────────────────────────────────────────
 
 function SaveStatus({
   status,
@@ -122,7 +177,7 @@ function SaveStatus({
   if (status === "idle") return null;
 
   const cfg = {
-    saving: { icon: <Loader2 size={12} className="animate-spin" />, label: t("editor.saving"), color: "var(--text-muted)" },
+    saving: { icon: <Loader2 size={12} className="animate-spin" />, label: t("editor.saving"),  color: "var(--text-muted)" },
     saved:  { icon: <CheckCircle2 size={12} />, label: lastSavedAt ? ti("editor.savedAt", { time: formatTime(lastSavedAt) }) : t("editor.saved"), color: "var(--success)" },
     error:  { icon: <AlertCircle size={12} />,  label: t("editor.saveError"), color: "var(--danger)" },
     idle:   { icon: null, label: "", color: "" },
