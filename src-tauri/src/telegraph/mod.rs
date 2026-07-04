@@ -60,8 +60,7 @@ pub async fn upload_image(
     // Telegraph accepts JPEG/GIF reliably; PNG with alpha/ICC often rejected → force JPEG.
     let (bytes, mime_type, _file_name) = crate::image_utils::normalize_to_jpeg(bytes, file_name)?;
 
-    #[cfg(debug_assertions)]
-    eprintln!("[telegraph] uploading image as {} ({} bytes)", mime_type, bytes.len());
+    log::debug!("[telegraph] uploading image as {} ({} bytes)", mime_type, bytes.len());
 
     let part = reqwest::multipart::Part::bytes(bytes)
         .file_name("photo.jpg".to_string())
@@ -82,8 +81,7 @@ pub async fn upload_image(
 
     let status = response.status();
 
-    #[cfg(debug_assertions)]
-    eprintln!("[telegraph] upload status={}", status);
+    log::debug!("[telegraph] upload status={}", status);
 
     let text = response
         .text()

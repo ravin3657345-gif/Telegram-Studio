@@ -108,7 +108,7 @@ pub fn compress_to_limit(bytes: Vec<u8>, max_bytes: usize) -> Vec<u8> {
         if img.write_with_encoder(enc).is_ok() {
             let compressed = out.into_inner();
             if compressed.len() <= max_bytes {
-                eprintln!(
+                log::debug!(
                     "[compress] {} → {} bytes at quality {}",
                     bytes.len(), compressed.len(), quality
                 );

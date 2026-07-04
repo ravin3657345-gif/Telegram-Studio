@@ -341,10 +341,10 @@ pub async fn execute_pending_deletes(state: &AppState) {
                         rusqlite::params![id],
                     );
                 }
-                eprintln!("[delete] deleted msg {} in {}", msg_id, chat_id);
+                log::info!("[delete] deleted msg {} in {}", msg_id, chat_id);
             }
             Err(e) => {
-                eprintln!("[delete] failed to delete msg {} in {}: {}", msg_id, chat_id, e);
+                log::warn!("[delete] failed to delete msg {} in {}: {}", msg_id, chat_id, e);
             }
         }
     }

@@ -51,8 +51,7 @@ impl TelegramClient {
         B: Serialize,
     {
         let url = format!("{}/{}", self.base_url, method);
-        #[cfg(debug_assertions)]
-        eprintln!("[tg] POST {} (json)", method);
+        log::debug!("[tg] POST {} (json)", method);
 
         let resp = self
             .http
@@ -65,8 +64,7 @@ impl TelegramClient {
         let status = resp.status();
         let body_text = resp.text().await.map_err(|e| TelegramError::Network(e.to_string()))?;
 
-        #[cfg(debug_assertions)]
-        eprintln!("[tg] response ({}) status={} ok={}", method, status, status.is_success());
+        log::debug!("[tg] response ({}) status={} ok={}", method, status, status.is_success());
 
         let tg: TelegramResponse<T> = serde_json::from_str(&body_text)
             .map_err(|e| TelegramError::Parse(format!("{}: response body omitted", e)))?;
@@ -89,8 +87,7 @@ impl TelegramClient {
         T: for<'de> serde::Deserialize<'de>,
     {
         let url = format!("{}/{}", self.base_url, method);
-        #[cfg(debug_assertions)]
-        eprintln!("[tg] POST {} (multipart)", method);
+        log::debug!("[tg] POST {} (multipart)", method);
 
         let resp = self
             .http
@@ -103,8 +100,7 @@ impl TelegramClient {
         let status = resp.status();
         let body = resp.text().await.map_err(|e| TelegramError::Network(e.to_string()))?;
 
-        #[cfg(debug_assertions)]
-        eprintln!("[tg] response ({}) status={} ok={}", method, status, status.is_success());
+        log::debug!("[tg] response ({}) status={} ok={}", method, status, status.is_success());
 
         let tg: TelegramResponse<T> = serde_json::from_str(&body)
             .map_err(|e| TelegramError::Parse(format!("{}: response body omitted", e)))?;

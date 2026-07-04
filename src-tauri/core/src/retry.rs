@@ -11,13 +11,36 @@ const PERMANENT_ERROR_MARKERS: &[&str] = &[
     "bot was kicked",
     "not a member",
     "have no rights",
+    "not enough rights",
+    "peer_id_invalid",
+    "bad request: chat_id",
+    "invalid token",
 ];
 
 /// True if `msg` looks like a permanent (bot/permission) failure rather than
-/// a transient network/API issue (timeout, 5xx, connection reset, etc.).
+/// a transient network/API issue (timeout, 5xx, connection reset, flood wait).
 pub fn is_permanent_telegram_error(msg: &str) -> bool {
     let lower = msg.to_lowercase();
     PERMANENT_ERROR_MARKERS.iter().any(|m| lower.contains(m))
+}
+
+/// Parses the `retry_after` hint Telegram embeds in 429 ("Too Many Requests")
+/// error descriptions, e.g. `"Too Many Requests: retry after 30"` → `Some(30)`.
+///
+/// Telegram also sends this as a structured `parameters.retry_after` field,
+/// but by the time an error reaches call sites it's already been flattened to
+/// a display string — so we parse it back out here rather than threading a
+/// new field through every Telegram API call site.
+pub fn parse_retry_after_secs(msg: &str) -> Option<u64> {
+    let lower = msg.to_lowercase();
+    let idx = lower.find("retry after")?;
+    let rest = lower[idx + "retry after".len()..].trim_start();
+    let digits: String = rest.chars().take_while(|c| c.is_ascii_digit()).collect();
+    if digits.is_empty() {
+        None
+    } else {
+        digits.parse().ok()
+    }
 }
 
 /// What the scheduler should do with a post after a transient send failure.
@@ -105,5 +128,42 @@ mod tests {
             next_retry_decision(0, 1),
             RetryDecision::GiveUp { attempts: 1 }
         );
+    }
+
+    #[test]
+    fn detects_the_additional_permanent_markers() {
+        assert!(is_permanent_telegram_error("Forbidden: not enough rights to send text messages"));
+        assert!(is_permanent_telegram_error("Bad Request: PEER_ID_INVALID"));
+        assert!(is_permanent_telegram_error("Bad Request: chat_id is empty"));
+        assert!(is_permanent_telegram_error("Unauthorized: invalid token"));
+    }
+
+    #[test]
+    fn parses_retry_after_from_telegram_description() {
+        assert_eq!(
+            parse_retry_after_secs("Too Many Requests: retry after 30"),
+            Some(30)
+        );
+        assert_eq!(
+            parse_retry_after_secs("Ошибка Telegram API: Too Many Requests: retry after 5"),
+            Some(5)
+        );
+    }
+
+    #[test]
+    fn parse_retry_after_is_case_insensitive() {
+        assert_eq!(parse_retry_after_secs("RETRY AFTER 12"), Some(12));
+    }
+
+    #[test]
+    fn parse_retry_after_returns_none_when_absent() {
+        assert_eq!(parse_retry_after_secs("Internal Server Error"), None);
+        assert_eq!(parse_retry_after_secs(""), None);
+    }
+
+    #[test]
+    fn parse_retry_after_returns_none_for_malformed_number() {
+        assert_eq!(parse_retry_after_secs("Too Many Requests: retry after soon"), None);
+        assert_eq!(parse_retry_after_secs("Too Many Requests: retry after"), None);
     }
 }

@@ -63,23 +63,17 @@ pub struct ScheduledPostInfo {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-/// Permanent Telegram errors that should not be retried (token invalid, no access, etc.)
-fn is_permanent_error(msg: &str) -> bool {
-    let m = msg.to_lowercase();
-    m.contains("unauthorized")
-        || m.contains("forbidden")
-        || m.contains("chat not found")
-        || m.contains("bot was kicked")
-        || m.contains("bot is not a member")
-        || m.contains("have no rights")
-        || m.contains("not enough rights")
-        || m.contains("peer_id_invalid")
-        || m.contains("bad request: chat_id")
-        || m.contains("invalid token")
-}
+use tstudio_core::retry::{is_permanent_telegram_error as is_permanent_error, parse_retry_after_secs};
+
+/// Cap on how long a single retry wait is allowed to block a publish action,
+/// even if Telegram asks for longer via `retry_after`.
+const MAX_RETRY_AFTER_WAIT: u64 = 30;
 
 /// Retry `f` up to 2 times with 2s + 5s delays. Returns last error if all fail.
 /// Permanent errors (auth, access denied) are returned immediately without retry.
+/// If Telegram responds 429 with a `retry_after` hint, that wait is honored
+/// (capped at MAX_RETRY_AFTER_WAIT) instead of the fixed delay — retrying
+/// sooner than Telegram asked just extends the flood-control window.
 async fn with_retry<F, Fut, T>(f: F) -> Result<T, String>
 where
     F: Fn() -> Fut,
@@ -89,13 +83,15 @@ where
     let mut last_err = String::new();
     for (attempt, delay) in std::iter::once(0u64).chain(delays.iter().copied()).enumerate() {
         if attempt > 0 {
-            tokio::time::sleep(std::time::Duration::from_secs(delay)).await;
+            let wait = parse_retry_after_secs(&last_err)
+                .map(|s| s.min(MAX_RETRY_AFTER_WAIT))
+                .unwrap_or(delay);
+            tokio::time::sleep(std::time::Duration::from_secs(wait)).await;
         }
         match f().await {
             Ok(v) => return Ok(v),
             Err(e) => {
-                #[cfg(debug_assertions)]
-                eprintln!("[publish] attempt {} failed: {}", attempt + 1, e);
+                log::debug!("[publish] attempt {} failed: {}", attempt + 1, e);
                 if is_permanent_error(&e) {
                     return Err(e);
                 }
@@ -492,11 +488,11 @@ pub async fn publish_rich_post(
             async move { crate::hosting::upload_file(bytes, &mime, &name).await }
         }).await {
             Ok(url) => {
-                eprintln!("[rich] {} → {}", p.attach_name, &url[..url.len().min(60)]);
+                log::debug!("[rich] {} → {}", p.attach_name, &url[..url.len().min(60)]);
                 html = html.replace(&placeholder, &url);
             }
             Err(e) => {
-                eprintln!("[rich] photo host failed for {}: {}", p.attach_name, e);
+                log::warn!("[rich] photo host failed for {}: {}", p.attach_name, e);
                 if html.trim_start().starts_with('[') {
                     // Blocks format: remove the photo/video block with this placeholder
                     html = remove_unresolved_media_block(&html, &placeholder);
@@ -790,11 +786,11 @@ pub async fn republish_rich_post(
             async move { crate::hosting::upload_file(bytes, &mime, &name).await }
         }).await {
             Ok(url) => {
-                eprintln!("[republish_rich] {} → {}", p.attach_name, &url[..url.len().min(60)]);
+                log::debug!("[republish_rich] {} → {}", p.attach_name, &url[..url.len().min(60)]);
                 html = html.replace(&placeholder, &url);
             }
             Err(e) => {
-                eprintln!("[republish_rich] photo host failed for {}: {}", p.attach_name, e);
+                log::warn!("[republish_rich] photo host failed for {}: {}", p.attach_name, e);
                 if html.trim_start().starts_with('[') {
                     html = remove_unresolved_media_block(&html, &placeholder);
                 } else {

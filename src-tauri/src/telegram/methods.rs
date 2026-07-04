@@ -211,7 +211,7 @@ pub async fn send_photo(
     let raw_len = raw.len();
     let (bytes, mime, name) = crate::image_utils::normalize_image(raw, &media.file_name)
         .map_err(TelegramError::Api)?;
-    eprintln!("[photo] raw={} bytes, normalized={} bytes, mime={}, name={}", raw_len, bytes.len(), mime, name);
+    log::debug!("[photo] raw={} bytes, normalized={} bytes, mime={}, name={}", raw_len, bytes.len(), mime, name);
 
     let part = reqwest::multipart::Part::bytes(bytes)
         .file_name(name)
@@ -311,7 +311,7 @@ pub async fn send_rich_message(
     if html.is_empty() {
         return Err(TelegramError::Api("Rich message HTML пустой".to_string()));
     }
-    eprintln!("[rich] sending html len={}", html.len());
+    log::debug!("[rich] sending html len={}", html.len());
     let body = serde_json::json!({
         "chat_id": chat_id,
         "rich_message": { "html": html }

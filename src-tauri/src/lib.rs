@@ -1,3 +1,4 @@
+pub mod backup;
 pub mod commands;
 pub mod crypto;
 pub mod db;
@@ -21,6 +22,18 @@ use tauri::{
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_notification::init())
+        .plugin(
+            tauri_plugin_log::Builder::new()
+                .level(log::LevelFilter::Info)
+                .level_for("tauri", log::LevelFilter::Warn)
+                .targets([
+                    tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::Stdout),
+                    tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::LogDir {
+                        file_name: None,
+                    }),
+                ])
+                .build(),
+        )
         .setup(|app| {
             let app_dir = app
                 .path()
@@ -37,6 +50,10 @@ pub fn run() {
                 .expect("failed to open database");
 
             db::migrations::run(&conn).expect("failed to run migrations");
+
+            // Daily consistent snapshot — cheap no-op on every launch after the
+            // first one today. Never blocks startup on failure (logs only).
+            backup::maybe_backup(&conn, &app_dir);
 
             app.manage(AppState {
                 db: std::sync::Mutex::new(conn),

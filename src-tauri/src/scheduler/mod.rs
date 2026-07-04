@@ -21,7 +21,7 @@ pub fn start(app: AppHandle) {
         loop {
             ticker.tick().await;
             if let Err(e) = process_pending(&app).await {
-                eprintln!("[scheduler] ошибка: {}", e);
+                log::error!("[scheduler] ошибка: {}", e);
             }
             // Выполняем отложенные удаления опубликованных постов
             let state = app.state::<AppState>();

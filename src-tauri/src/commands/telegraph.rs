@@ -150,7 +150,7 @@ pub async fn upload_via_webview(
         tokio::time::sleep(std::time::Duration::from_millis(400)).await;
         if let Ok(title) = webview.title() {
             if title != last_stage && (title.starts_with("__TG") ) {
-                eprintln!("[telegraph-wv] title = {}", title);
+                log::debug!("[telegraph-wv] title = {}", title);
                 last_stage = title.clone();
             }
             if let Some(url) = title.strip_prefix("__TGUP_OK__:") {
@@ -235,7 +235,7 @@ pub async fn telegraph_publish(
     for img in &payload.images {
         use base64::Engine;
         if img.data_base64.len() > 8_000_000 {
-            eprintln!(
+            log::warn!(
                 "Telegraph: пропуск {} — base64 слишком большой",
                 img.file_name
             );
@@ -251,7 +251,7 @@ pub async fn telegraph_publish(
         );
 
         if !supported || bytes.len() > MAX_BYTES {
-            eprintln!(
+            log::warn!(
                 "Telegraph: пропуск {} — формат {} или размер {} > 5MB",
                 img.file_name, img.mime_type, bytes.len()
             );
@@ -261,7 +261,7 @@ pub async fn telegraph_publish(
         match crate::telegraph::upload_image(bytes, &img.mime_type, &img.file_name).await {
             Ok(url) => { url_map.insert(img.file_id.clone(), url); }
             Err(e) => {
-                eprintln!("Telegraph: ошибка загрузки {} — {}", img.file_name, e);
+                log::warn!("Telegraph: ошибка загрузки {} — {}", img.file_name, e);
                 // не прерываем — пропускаем это изображение
             }
         }
