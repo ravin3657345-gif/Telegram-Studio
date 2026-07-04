@@ -1,0 +1,17 @@
+[package]
+name = "tstudio-core"
+version = "1.0.0"
+edition = "2021"
+description = "Pure, dependency-light core logic (crypto, license) for TElega Studio. No Tauri deps → fast, CI-friendly unit tests."
+
+[lib]
+name = "tstudio_core"
+
+[dependencies]
+aes-gcm = "0.10"
+sha2 = "0.10"
+hex = "0.4"
+
+[target.'cfg(windows)'.dependencies]
+winreg = "0.52"
+winapi = { version = "0.3", features = ["dpapi", "wincrypt", "winbase"] }
