@@ -225,6 +225,7 @@ function DraftsTable({
   onOpen: (id: string) => void;
   onDelete: (e: React.MouseEvent, id: string) => void;
 }) {
+  const navigate = useNavigate();
   useSettingsStore((s) => s.language);
 
   return (
@@ -270,7 +271,7 @@ function DraftsTable({
 
       {/* New row */}
       <button
-        onClick={() => {}}
+        onClick={() => navigate("/editor")}
         className="flex items-center w-full px-6 border-b transition-colors"
         style={{
           height: 42,

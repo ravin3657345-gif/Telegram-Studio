@@ -1,6 +1,7 @@
 import { Minus, Square, X } from "lucide-react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import clsx from "clsx";
+import { t } from "@/lib/i18n";
 
 const appWindow = getCurrentWindow();
 
@@ -41,21 +42,21 @@ export function WindowControls() {
       <div className="flex items-center gap-0.5" style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}>
         <WinBtn
           onClick={() => appWindow.minimize()}
-          aria-label="Свернуть"
+          aria-label={t("window.minimize")}
         >
           <Minus size={10} strokeWidth={2} />
         </WinBtn>
 
         <WinBtn
           onClick={() => appWindow.toggleMaximize()}
-          aria-label="Развернуть"
+          aria-label={t("window.maximize")}
         >
           <Square size={9} strokeWidth={2} />
         </WinBtn>
 
         <WinBtn
           onClick={() => appWindow.close()}
-          aria-label="Закрыть"
+          aria-label={t("window.close")}
           danger
         >
           <X size={11} strokeWidth={2} />

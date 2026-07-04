@@ -1,4 +1,5 @@
 import { Upload } from "lucide-react";
+import { t } from "@/lib/i18n";
 
 interface MediaUploadZoneProps {
   visible: boolean;
@@ -35,13 +36,13 @@ export function MediaUploadZone({ visible }: MediaUploadZoneProps) {
             className="text-base font-semibold"
             style={{ color: "var(--text-primary)" }}
           >
-            Отпустите для загрузки
+            {t("drop.release")}
           </p>
           <p
             className="text-sm mt-1"
             style={{ color: "var(--text-secondary)" }}
           >
-            Изображения, видео или файлы — до 10 штук
+            {t("drop.hint")}
           </p>
         </div>
       </div>

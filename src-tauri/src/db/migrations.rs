@@ -5,6 +5,10 @@ pub fn run(conn: &Connection) -> Result<()> {
     migrate_v2(conn)?;
     migrate_v3(conn)?;
     migrate_v4(conn)?;
+    migrate_v5(conn)?;
+    migrate_v6(conn)?;
+    migrate_v7(conn)?;
+    migrate_v8(conn)?;
     seed_settings(conn)?;
     Ok(())
 }
@@ -82,6 +86,40 @@ fn migrate_v4(conn: &Connection) -> Result<()> {
         PRAGMA foreign_keys = ON;
     ")?;
 
+    Ok(())
+}
+
+fn migrate_v5(conn: &Connection) -> Result<()> {
+    let _ = conn.execute_batch(
+        "ALTER TABLE templates ADD COLUMN category TEXT NOT NULL DEFAULT 'other';"
+    );
+    Ok(())
+}
+
+fn migrate_v6(conn: &Connection) -> Result<()> {
+    let _ = conn.execute_batch(
+        "ALTER TABLE publication_history ADD COLUMN publish_mode TEXT NOT NULL DEFAULT 'normal';"
+    );
+    Ok(())
+}
+
+fn migrate_v7(conn: &Connection) -> Result<()> {
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS license (
+            id           INTEGER PRIMARY KEY CHECK (id = 1),
+            key          TEXT NOT NULL,
+            activated_at TEXT NOT NULL
+        );"
+    )?;
+    Ok(())
+}
+
+fn migrate_v8(conn: &Connection) -> Result<()> {
+    // Tracks transient-failure retries for scheduled posts so a temporary
+    // network blip doesn't permanently fail a post (see scheduler::process_pending).
+    let _ = conn.execute_batch(
+        "ALTER TABLE scheduled_posts ADD COLUMN retry_count INTEGER NOT NULL DEFAULT 0;"
+    );
     Ok(())
 }
 
@@ -174,6 +212,7 @@ CREATE TABLE IF NOT EXISTS scheduled_posts (
     scheduled_at    TEXT NOT NULL,
     status          TEXT NOT NULL DEFAULT 'pending',
     error_message   TEXT,
+    retry_count     INTEGER NOT NULL DEFAULT 0,
     created_at      TEXT NOT NULL,
     updated_at      TEXT NOT NULL,
     FOREIGN KEY (draft_id) REFERENCES drafts(id),

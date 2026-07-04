@@ -19,6 +19,9 @@ import { EditorContextMenu } from "./EditorContextMenu";
 import { toast } from "@/store/uiStore";
 import { t, ti } from "@/lib/i18n";
 import { useAttachmentStore } from "@/store/attachmentStore";
+import { useAutoSplit } from "@/hooks/useAutoSplit";
+import { SplitOverlay } from "./SplitOverlay";
+import { Scissors, RefreshCw } from "lucide-react";
 import {
   TELEGRAM_MAX_PHOTO_SIZE,
   TELEGRAM_MAX_VIDEO_SIZE,
@@ -38,6 +41,11 @@ interface PostEditorProps {
 export function PostEditor({ draftId: initialDraftId }: PostEditorProps) {
   const containerRef  = useRef<HTMLDivElement>(null);
   const draftLoadedRef = useRef(false);
+
+  // Separate state refs for SplitOverlay — must be state (not useRef) so React
+  // re-renders when the DOM nodes mount, passing non-null values to SplitOverlay.
+  const [scrollEl, setScrollEl]   = useState<HTMLDivElement | null>(null);
+  const [wrapperEl, setWrapperEl] = useState<HTMLDivElement | null>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef  = useRef<HTMLInputElement>(null);
@@ -48,10 +56,12 @@ export function PostEditor({ draftId: initialDraftId }: PostEditorProps) {
   const [emojiAnchor, setEmojiAnchor]         = useState<DOMRect | undefined>();
   const [isDraggingOver, setIsDraggingOver]   = useState(false);
   const [contextMenu, setContextMenu]         = useState<{ x: number; y: number } | null>(null);
+  const tauriDropHandledRef = useRef(false);
 
   const { contentJson, setContentJson, setPostTitle, setDraftTitle, resetEditor, setDraftId } =
     useEditorStore();
   const setEditingHistoryId = useEditorStore((s) => s.setEditingHistoryId);
+  const setPublishMode      = useEditorStore((s) => s.setPublishMode);
   const addRegistered       = useAttachmentStore((s) => s.addRegistered);
   const historyLoadedRef    = useRef(false);
   const autosaveEnabled = useSettingsStore((s) => s.autosaveInterval > 0);
@@ -77,6 +87,10 @@ export function PostEditor({ draftId: initialDraftId }: PostEditorProps) {
       setContentJson(JSON.stringify(e.getJSON()));
     },
   });
+
+  // ── Auto-split hook ───────────────────────────────────────────────────────
+  const { splitCount, recalculate } = useAutoSplit(editor);
+  const publishMode = useEditorStore((s) => s.publishMode);
 
   // ── Insert media block helper ──────────────────────────────────────────────
   const insertMedia = useCallback((file: File) => {
@@ -115,6 +129,7 @@ export function PostEditor({ draftId: initialDraftId }: PostEditorProps) {
 
     getHistoryForEdit(histState._histId).then((data) => {
       setEditingHistoryId(data.historyId);
+      if (data.publishMode) setPublishMode(data.publishMode as "normal" | "rich" | "telegraph");
       if (data.postTitle) setPostTitle(data.postTitle);
 
       // Restore each file into fileRegistry → get fresh blob URLs
@@ -173,7 +188,7 @@ export function PostEditor({ draftId: initialDraftId }: PostEditorProps) {
         if (!inlineIds.has(f.id)) addRegistered(f.id, f.name, f.size, f.mimeType);
       }
 
-    }).catch(() => toast.error("Не удалось загрузить пост"));
+    }).catch(() => toast.error(t("editor.postLoadError")));
   }, [editor, histState._histId]);
 
   // ── Load existing draft ────────────────────────────────────────────────────
@@ -250,7 +265,15 @@ export function PostEditor({ draftId: initialDraftId }: PostEditorProps) {
     const handler = (e: KeyboardEvent) => {
       if (!editor?.isFocused) return;
       const ctrl = e.ctrlKey || e.metaKey;
-      if (ctrl && e.key === "k") { e.preventDefault(); setShowLinkDialog(true); }
+      if (ctrl && e.key === "k") {
+        e.preventDefault();
+        const { from, to } = editor.state.selection;
+        let hasMedia = false;
+        editor.state.doc.nodesBetween(from, to, (node) => {
+          if (node.type.name === "blockImage" || node.type.name === "blockVideo") hasMedia = true;
+        });
+        if (!hasMedia) setShowLinkDialog(true);
+      }
       // Heading shortcuts
       if (ctrl && e.shiftKey && e.key === "1") { e.preventDefault(); editor.chain().focus().toggleHeading({ level: 1 }).run(); }
       if (ctrl && e.shiftKey && e.key === "2") { e.preventDefault(); editor.chain().focus().toggleHeading({ level: 2 }).run(); }
@@ -292,14 +315,14 @@ export function PostEditor({ draftId: initialDraftId }: PostEditorProps) {
 
     for (const file of files) {
       if (!allowed.includes(file.type)) {
-        toast.error(`Неподдерживаемый тип файла: ${file.type}`);
+        toast.error(ti("editor.unsupportedType", { type: file.type }));
         continue;
       }
       const isVideo = ALLOWED_VIDEO.includes(file.type);
       const sizeLimit = isVideo ? TELEGRAM_MAX_VIDEO_SIZE : TELEGRAM_MAX_PHOTO_SIZE;
       if (file.size > sizeLimit) {
         const mb = (sizeLimit / (1024 * 1024)).toFixed(0);
-        toast.error(`Файл слишком большой — лимит Telegram ${mb} МБ`);
+        toast.error(ti("editor.fileTooBig", { mb }));
         continue;
       }
       const { id, src } = fileRegistry.add(file);
@@ -316,7 +339,7 @@ export function PostEditor({ draftId: initialDraftId }: PostEditorProps) {
     }
   }
 
-  // ── Container drag-over highlight + file drop handler ────────────────────
+  // ── Container drag-over highlight ─────────────────────────────────────────
   function onDragEnter(e: React.DragEvent) {
     const hasFiles = Array.from(e.dataTransfer.types).some(t => t.toLowerCase() === "files");
     if (hasFiles) setIsDraggingOver(true);
@@ -325,24 +348,23 @@ export function PostEditor({ draftId: initialDraftId }: PostEditorProps) {
     if (!containerRef.current?.contains(e.relatedTarget as Node)) setIsDraggingOver(false);
   }
   function onDragOver(e: React.DragEvent) {
-    // Always preventDefault so browser allows drop (for both files and block drag)
     e.preventDefault();
   }
   function onDrop(e: React.DragEvent) {
     setIsDraggingOver(false);
-    const hasFiles = Array.from(e.dataTransfer.types).some(t => t.toLowerCase() === "files");
-    if (!hasFiles) return;
-    // MediaPasteHandler (ProseMirror plugin) handles drops on the editor content itself.
-    // This handler catches drops on toolbar / title area outside editor.
-    if (e.defaultPrevented) return;
-    e.preventDefault();
-    Array.from(e.dataTransfer.files).forEach(insertMedia);
+    // If the Tauri native event already handled this drop, skip to avoid double insertion
+    if (tauriDropHandledRef.current) { tauriDropHandledRef.current = false; return; }
+    const files = Array.from(e.dataTransfer.files ?? []);
+    if (files.length > 0) {
+      e.preventDefault();
+      files.forEach(insertMedia);
+    }
   }
 
-  // ── Tauri native file-drop fallback (WebView2 may not populate dataTransfer.files) ──
+  // ── Tauri native drag-drop (works when WebView2 doesn't populate dataTransfer.files) ──
   useEffect(() => {
     let active = true;
-    let unlisten: (() => void) | null = null;
+    const unlisteners: Array<() => void> = [];
 
     const MIME: Record<string, string> = {
       jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png",
@@ -350,24 +372,56 @@ export function PostEditor({ draftId: initialDraftId }: PostEditorProps) {
       mp4: "video/mp4", mpeg: "video/mpeg",
     };
 
+    async function insertFromPath(filePath: string) {
+      const { convertFileSrc } = await import("@tauri-apps/api/core");
+      const name = filePath.split(/[\\/]/).pop() ?? "file";
+      const ext  = name.split(".").pop()?.toLowerCase() ?? "";
+      const type = MIME[ext] ?? "application/octet-stream";
+      const url  = convertFileSrc(filePath);
+      const res  = await fetch(url);
+      if (!res.ok) return;
+      const blob = await res.blob();
+      insertMedia(new File([blob], name, { type: blob.type || type }));
+    }
+
     import("@tauri-apps/api/event").then(({ listen }) => {
       if (!active) return;
-      listen<string[]>("tauri://file-drop", async (event) => {
+
+      // Visual feedback: show overlay when files are dragged over the window
+      listen("tauri://drag-enter", () => { if (active) setIsDraggingOver(true); })
+        .then(fn => unlisteners.push(fn)).catch(() => {});
+      listen("tauri://drag-leave", () => { if (active) setIsDraggingOver(false); })
+        .then(fn => unlisteners.push(fn)).catch(() => {});
+
+      // Tauri 2: payload = { paths: string[], position: {...} }
+      // Tauri 1 compat: payload = string[]
+      listen("tauri://drag-drop", async (event: { payload: unknown }) => {
         if (!active || !editor) return;
-        const { invoke } = await import("@tauri-apps/api/core");
-        for (const filePath of event.payload ?? []) {
-          try {
-            const name = filePath.split(/[\\/]/).pop() ?? "file";
-            const ext = name.split(".").pop()?.toLowerCase() ?? "";
-            const type = MIME[ext] ?? "application/octet-stream";
-            const base64: string = await invoke("read_file_as_base64", { path: filePath });
-            const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
-            insertMedia(new File([bytes], name, { type }));
-          } catch { /* skip unreadable */ }
+        setIsDraggingOver(false);
+        tauriDropHandledRef.current = true;
+        const payload = event.payload as { paths?: string[] } | string[];
+        const paths = Array.isArray(payload) ? payload : (payload.paths ?? []);
+        for (const p of paths) {
+          try { await insertFromPath(p); } catch { /* skip unreadable */ }
         }
-      }).then(fn => { if (active) unlisten = fn; else fn(); });
+        setTimeout(() => { tauriDropHandledRef.current = false; }, 200);
+      }).then(fn => unlisteners.push(fn)).catch(() => {});
+
+      // Fallback: legacy Tauri 1 event name (only if drag-drop didn't fire)
+      listen("tauri://file-drop", async (event: { payload: unknown }) => {
+        if (!active || !editor || tauriDropHandledRef.current) return;
+        setIsDraggingOver(false);
+        tauriDropHandledRef.current = true;
+        const paths = Array.isArray(event.payload) ? event.payload as string[] : [];
+        for (const p of paths) {
+          try { await insertFromPath(p); } catch { /* skip unreadable */ }
+        }
+        setTimeout(() => { tauriDropHandledRef.current = false; }, 200);
+      }).then(fn => unlisteners.push(fn)).catch(() => {});
+
     }).catch(() => {});
-    return () => { active = false; unlisten?.(); };
+
+    return () => { active = false; unlisteners.forEach(fn => fn()); };
   }, [editor, insertMedia]);
 
   // ── Emoji picker ──────────────────────────────────────────────────────────
@@ -407,35 +461,98 @@ export function PostEditor({ draftId: initialDraftId }: PostEditorProps) {
         onMediaClick={handleMediaClick}
         onHtmlView={() => setShowHtmlView((v) => !v)}
         showHtmlView={showHtmlView}
+        onSplitClick={recalculate}
+        splitActive={splitCount > 0}
       />
+
+      {/* Split banner */}
+      {splitCount > 0 && publishMode !== "rich" && (
+        <div
+          className="split-banner-pulse"
+          style={{
+            display: "flex", alignItems: "center", gap: 10,
+            padding: "9px 14px",
+            backgroundColor: "var(--accent)",
+            borderBottom: "2px solid var(--accent)",
+            fontSize: 13, fontWeight: 600, color: "#ffffff",
+            boxShadow: "0 2px 8px rgba(0,0,0,0.18)",
+            flexShrink: 0,
+          }}
+        >
+          <span
+            style={{
+              display: "flex", alignItems: "center", justifyContent: "center",
+              flexShrink: 0,
+              width: 22, height: 22, borderRadius: "50%",
+              backgroundColor: "rgba(255,255,255,0.22)",
+            }}
+          >
+            <Scissors size={13} color="#ffffff" />
+          </span>
+          <span style={{ flex: 1, lineHeight: 1.35 }}>
+            {ti("split.banner", { n: splitCount + 1 })}
+          </span>
+          <button
+            onClick={recalculate}
+            style={{
+              display: "flex", alignItems: "center", gap: 5,
+              background: "rgba(255,255,255,0.16)",
+              border: "1px solid rgba(255,255,255,0.55)",
+              borderRadius: 6, padding: "4px 10px",
+              color: "#ffffff", fontSize: 12, fontWeight: 600, cursor: "pointer",
+              flexShrink: 0,
+              transition: "background 0.15s ease",
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.3)")}
+            onMouseLeave={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.16)")}
+          >
+            <RefreshCw size={11} />
+            {t("split.recalc")}
+          </button>
+        </div>
+      )}
 
       {/* Main row: editor + optional HTML panel */}
       <div className="flex flex-1 overflow-hidden" style={{ minHeight: 0 }}>
         <div className="flex flex-col flex-1 overflow-hidden" style={{ minWidth: 0 }}>
+          {/*
+           * Wrapper: clips SplitOverlay to the visible editor area.
+           * SplitOverlay is a SIBLING of the scroll container (not inside it)
+           * so it never conflicts with ProseMirror's direct DOM mutations.
+           */}
           <div
-            className="flex-1 overflow-y-auto"
-            style={{ minHeight: 0, backgroundColor: "var(--bg-app)", padding: "16px 20px" }}
+            ref={(el) => setWrapperEl(el)}
+            className="flex-1 overflow-hidden"
+            style={{ minHeight: 0, position: "relative" }}
           >
-            <InlineBubbleMenu editor={editor} onLinkClick={() => setShowLinkDialog(true)} />
-            {contextMenu && (
-              <EditorContextMenu
-                editor={editor}
-                x={contextMenu.x}
-                y={contextMenu.y}
-                onClose={() => setContextMenu(null)}
-              />
-            )}
+            <SplitOverlay editor={editor} scrollEl={scrollEl} wrapperEl={wrapperEl} />
+
             <div
-              style={{
-                minHeight: "100%",
-                backgroundColor: "var(--bg-surface)",
-              }}
-              onContextMenu={(e) => {
-                e.preventDefault();
-                setContextMenu({ x: e.clientX, y: e.clientY });
-              }}
+              ref={(el) => setScrollEl(el)}
+              className="h-full overflow-y-auto"
+              style={{ backgroundColor: "var(--bg-app)", padding: "16px 20px" }}
             >
-              <EditorContent editor={editor} className="tiptap-editor-root" />
+              <InlineBubbleMenu editor={editor} onLinkClick={() => setShowLinkDialog(true)} />
+              {contextMenu && (
+                <EditorContextMenu
+                  editor={editor}
+                  x={contextMenu.x}
+                  y={contextMenu.y}
+                  onClose={() => setContextMenu(null)}
+                />
+              )}
+              <div
+                style={{
+                  minHeight: "100%",
+                  backgroundColor: "var(--bg-surface)",
+                }}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  setContextMenu({ x: e.clientX, y: e.clientY });
+                }}
+              >
+                <EditorContent editor={editor} className="tiptap-editor-root" />
+              </div>
             </div>
           </div>
           <AttachmentZone onAddClick={() => fileInputRef.current?.click()} />

@@ -2,6 +2,7 @@ import { Node, mergeAttributes } from "@tiptap/core";
 import { ReactNodeViewRenderer, NodeViewWrapper } from "@tiptap/react";
 import { useState, useRef } from "react";
 import { ChevronDown, X } from "lucide-react";
+import { t } from "@/lib/i18n";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function FAQView({ node, updateAttributes, deleteNode, selected }: any) {
@@ -43,7 +44,7 @@ function FAQView({ node, updateAttributes, deleteNode, selected }: any) {
           <input
             value={question}
             onChange={(e) => updateAttributes({ question: e.target.value })}
-            placeholder="Заголовок спойлера..."
+            placeholder={t("block.spoilerTitle")}
             onClick={(e) => e.stopPropagation()}
             onKeyDown={(e) => {
               if (e.key === "Enter") {
@@ -79,7 +80,7 @@ function FAQView({ node, updateAttributes, deleteNode, selected }: any) {
               e.stopPropagation();
               deleteNode();
             }}
-            title="Удалить блок"
+            title={t("block.delete")}
             style={{
               flexShrink: 0,
               display: "flex",
@@ -114,7 +115,7 @@ function FAQView({ node, updateAttributes, deleteNode, selected }: any) {
               ref={answerRef}
               value={answer}
               onChange={(e) => updateAttributes({ answer: e.target.value })}
-              placeholder="Содержимое спойлера..."
+              placeholder={t("block.spoilerAnswer")}
               onKeyDown={(e) => e.stopPropagation()}
               rows={3}
               style={{

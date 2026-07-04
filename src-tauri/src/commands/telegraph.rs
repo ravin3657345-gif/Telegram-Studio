@@ -89,7 +89,11 @@ pub async fn upload_via_webview(
             let w = WebviewWindowBuilder::new(
                 app,
                 "telegraph_worker",
-                WebviewUrl::External("https://telegra.ph/".parse::<url::Url>().unwrap()),
+                WebviewUrl::External(
+                    "https://telegra.ph/"
+                        .parse::<url::Url>()
+                        .map_err(|e| format!("invalid telegra.ph URL: {e}"))?,
+                ),
             )
             .title("Telegraph (отладка)")
             .inner_size(700.0, 600.0)
@@ -200,19 +204,23 @@ pub async fn telegraph_publish(
         )
         .ok()
         .filter(|t| !t.is_empty())
+        .and_then(|stored| crate::crypto::decrypt_token(&stored).ok())
+        .filter(|t| !t.is_empty())
     };
 
     let access_token = if let Some(t) = cached_token {
         t
     } else {
         let account = crate::telegraph::create_account("TElega POST").await?;
-        let token = account.access_token.clone();
+        let plaintext_token = account.access_token.clone();
+        let encrypted = crate::crypto::encrypt_token(&plaintext_token)
+            .unwrap_or_else(|_| plaintext_token.clone());
         {
             let db = state.db.lock().map_err(|e| e.to_string())?;
-            settings_q::save_key(&db, "telegraph_access_token", &token)
+            settings_q::save_key(&db, "telegraph_access_token", &encrypted)
                 .map_err(|e| e.to_string())?;
         }
-        token
+        plaintext_token
     };
 
     // ── Parse nodes first ────────────────────────────────────────────────────

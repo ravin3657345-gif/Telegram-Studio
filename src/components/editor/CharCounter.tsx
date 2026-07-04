@@ -7,8 +7,9 @@ import {
   CHAR_COUNTER_DANGER_THRESHOLD,
 } from "@/lib/constants";
 import { useEditorStore } from "@/store/editorStore";
-import { t, pluralWords } from "@/lib/i18n";
+import { t, ti, pluralWords } from "@/lib/i18n";
 import { useSettingsStore } from "@/store/settingsStore";
+import { Scissors } from "lucide-react";
 import clsx from "clsx";
 
 interface CharCounterProps {
@@ -36,18 +37,26 @@ export function CharCounter({ editor }: CharCounterProps) {
   const warningAt = hasMedia ? Math.floor(TELEGRAM_MAX_CAPTION_LENGTH * 0.85) : CHAR_COUNTER_WARNING_THRESHOLD;
   const dangerAt  = hasMedia ? Math.floor(TELEGRAM_MAX_CAPTION_LENGTH * 0.97) : CHAR_COUNTER_DANGER_THRESHOLD;
 
-  const pct        = Math.min(count / limit, 1);
-  const isWarning  = count >= warningAt;
-  const isDanger   = count >= dangerAt;
-  const isOverflow = count > limit;
+  const splitGaps = useEditorStore((s) => s.splitGaps);
+  const msgCount  = splitGaps.length + 1;
+  const isSplit   = splitGaps.length > 0 && !hasMedia && publishMode !== "rich";
 
-  const barColor = isOverflow || isDanger
+  const pct       = isSplit ? 1 : Math.min(count / limit, 1);
+  const isWarning = !isSplit && count >= warningAt;
+  const isDanger  = !isSplit && count >= dangerAt;
+  const isOverflow = !isSplit && count > limit;
+
+  const barColor = isSplit
+    ? "var(--accent)"
+    : isOverflow || isDanger
     ? "var(--danger)"
     : isWarning
     ? "var(--warning)"
     : "var(--success)";
 
-  const textColor = isOverflow
+  const textColor = isSplit
+    ? "var(--accent)"
+    : isOverflow
     ? "var(--danger)"
     : isDanger
     ? "var(--warning)"
@@ -79,17 +88,22 @@ export function CharCounter({ editor }: CharCounterProps) {
         style={{ backgroundColor: "var(--bg-elevated)" }}
       >
         <div
-          className={clsx("h-full rounded-full transition-all duration-300", isOverflow && "animate-pulse")}
+          className="h-full rounded-full transition-all duration-300"
           style={{ width: `${pct * 100}%`, backgroundColor: barColor }}
         />
       </div>
 
       <span
-        className={clsx("text-2xs font-medium tabular-nums flex-shrink-0", isOverflow && "animate-pulse")}
+        className={clsx("text-2xs font-medium tabular-nums flex-shrink-0 flex items-center gap-1")}
         style={{ color: textColor }}
       >
-        {isOverflow ? (
-          <span>+{count - limit} {t("counter.over")}</span>
+        {isSplit ? (
+          <>
+            <Scissors size={10} />
+            {ti("counter.splitHint", { n: msgCount })}
+          </>
+        ) : isOverflow ? (
+          <span className="animate-pulse">+{count - limit} {t("counter.over")}</span>
         ) : (
           <span>{count.toLocaleString("ru")} / {limit.toLocaleString("ru")}</span>
         )}

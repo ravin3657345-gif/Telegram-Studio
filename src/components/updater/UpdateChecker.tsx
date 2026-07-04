@@ -1,14 +1,17 @@
 import { useEffect, useState } from "react";
 import { check, type Update } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
+import { t, ti } from "@/lib/i18n";
+import { useSettingsStore } from "@/store/settingsStore";
 
 export function UpdateChecker() {
+  useSettingsStore((s) => s.language);
   const [update, setUpdate] = useState<Update | null>(null);
   const [installing, setInstalling] = useState(false);
 
   useEffect(() => {
     // Silent check, 3 seconds after start to not slow down launch
-    const t = setTimeout(async () => {
+    const timer = setTimeout(async () => {
       try {
         const result = await check();
         if (result?.available) setUpdate(result);
@@ -16,7 +19,7 @@ export function UpdateChecker() {
         // No internet or endpoint not configured — silently ignore
       }
     }, 3000);
-    return () => clearTimeout(t);
+    return () => clearTimeout(timer);
   }, []);
 
   if (!update) return null;
@@ -48,10 +51,10 @@ export function UpdateChecker() {
       }}
     >
       <div style={{ fontWeight: 600, marginBottom: 4 }}>
-        Доступно обновление {update.version}
+        {ti("update.available", { version: update.version })}
       </div>
       <div style={{ fontSize: 13, color: "#94a3b8", marginBottom: 12 }}>
-        {update.body || "Новая версия готова к установке"}
+        {update.body || t("update.ready")}
       </div>
       <div style={{ display: "flex", gap: 8 }}>
         <button
@@ -68,7 +71,7 @@ export function UpdateChecker() {
             fontWeight: 600,
           }}
         >
-          {installing ? "Установка…" : "Обновить сейчас"}
+          {installing ? t("update.installing") : t("update.install")}
         </button>
         <button
           onClick={() => setUpdate(null)}
@@ -82,7 +85,7 @@ export function UpdateChecker() {
             fontSize: 13,
           }}
         >
-          Позже
+          {t("update.later")}
         </button>
       </div>
     </div>

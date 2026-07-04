@@ -19,7 +19,7 @@ import { MediaPasteHandler } from "@/extensions/MediaPasteHandler";
 import { SlashCommand } from "@/extensions/SlashCommand";
 import { BlockDragHandle } from "@/extensions/BlockDragHandle";
 import { Blockquote } from "@/extensions/Blockquote";
-import { TELEGRAM_MAX_TEXT_LENGTH } from "./constants";
+import { MessageSplit } from "@/extensions/MessageSplit";
 
 export function createTiptapExtensions() {
   return [
@@ -60,7 +60,7 @@ export function createTiptapExtensions() {
       showOnlyCurrent: true,
     }),
 
-    CharacterCount.configure({ limit: TELEGRAM_MAX_TEXT_LENGTH }),
+    CharacterCount.configure(),
 
     TextStyle,
 
@@ -85,5 +85,6 @@ export function createTiptapExtensions() {
     MediaPasteHandler,
     SlashCommand,
     BlockDragHandle,
+    MessageSplit,
   ];
 }

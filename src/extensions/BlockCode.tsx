@@ -1,10 +1,11 @@
 import { CodeBlock } from "@tiptap/extension-code-block";
 import { ReactNodeViewRenderer, NodeViewWrapper, NodeViewContent } from "@tiptap/react";
 import { useState } from "react";
+import { t } from "@/lib/i18n";
 import { ChevronDown } from "lucide-react";
 
 const LANGUAGES = [
-  { value: "",           label: "Текст" },
+  { value: "",           label: "" },
   { value: "javascript", label: "JavaScript" },
   { value: "typescript", label: "TypeScript" },
   { value: "python",     label: "Python" },
@@ -30,7 +31,8 @@ const LANGUAGES = [
 function CodeView({ node, updateAttributes }: any) {
   const language = (node.attrs?.language as string) ?? "";
   const [open, setOpen] = useState(false);
-  const label = LANGUAGES.find((l) => l.value === language)?.label ?? "Текст";
+  const rawLabel = LANGUAGES.find((l) => l.value === language)?.label ?? "";
+  const label = rawLabel || t("code.text");
 
   return (
     <NodeViewWrapper as="div" style={{ margin: "10px 0", position: "relative" }}>
@@ -72,7 +74,7 @@ function CodeView({ node, updateAttributes }: any) {
               onMouseEnter={e => (e.currentTarget.style.backgroundColor = "var(--bg-hover)")}
               onMouseLeave={e => (e.currentTarget.style.backgroundColor = "transparent")}
             >
-              Язык <ChevronDown size={10} />
+              {t("code.language")} <ChevronDown size={10} />
             </button>
 
             {open && (

@@ -103,6 +103,26 @@ pub async fn edit_message_text(
         .await
 }
 
+pub async fn edit_message_caption(
+    client: &TelegramClient,
+    chat_id: &str,
+    message_id: i64,
+    caption: &str,
+    parse_mode: &str,
+) -> Result<TgMessage, TelegramError> {
+    client
+        .call(
+            "editMessageCaption",
+            &serde_json::json!({
+                "chat_id": chat_id,
+                "message_id": message_id,
+                "caption": caption,
+                "parse_mode": parse_mode,
+            }),
+        )
+        .await
+}
+
 /// Re-host a local JPEG on Telegram's own CDN and return a public HTTPS URL
 /// suitable as `<img src=...>` inside a rich message, together with the staging
 /// message id (so the caller can delete it AFTER the rich message is sent — the

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { LayoutTemplate, Trash2, Plus } from "lucide-react";
+import { LayoutTemplate, Trash2, Plus, Megaphone, List, Users, Tag, Layers, type LucideIcon } from "lucide-react";
 import { TopBar } from "@/components/layout/TopBar";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Spinner } from "@/components/ui/Spinner";
@@ -8,56 +8,30 @@ import { Button } from "@/components/ui/Button";
 import { toast } from "@/store/uiStore";
 import { getTemplates, deleteTemplate } from "@/lib/tauriApi";
 import { useEditorStore } from "@/store/editorStore";
-import { t, ti } from "@/lib/i18n";
+import { t, ti, type TranslationKey } from "@/lib/i18n";
 import { useSettingsStore } from "@/store/settingsStore";
-import type { Template } from "@/types/template";
+import type { Template, TemplateCategory } from "@/types/template";
 
-// ── Category chips data ───────────────────────────────────────────────────────
+// ── Category metadata ─────────────────────────────────────────────────────────
 
-type Category = "all" | "announce" | "collection" | "engagement" | "promo";
+const CATEGORY_META: Record<TemplateCategory, { labelKey: TranslationKey; Icon: LucideIcon; gradient: string }> = {
+  announcements: { labelKey: "templates.cat.announce",    Icon: Megaphone, gradient: "linear-gradient(135deg,#3b82f6,#2563eb)" },
+  collections:   { labelKey: "templates.cat.collection",  Icon: List,      gradient: "linear-gradient(135deg,#8b5cf6,#6366f1)" },
+  engagement:    { labelKey: "templates.cat.engagement",  Icon: Users,     gradient: "linear-gradient(135deg,#10b981,#059669)" },
+  promo:         { labelKey: "templates.cat.promo",       Icon: Tag,       gradient: "linear-gradient(135deg,#f59e0b,#ef4444)" },
+  other:         { labelKey: "templates.cat.other",       Icon: Layers,    gradient: "linear-gradient(135deg,#64748b,#475569)" },
+};
 
-const CATEGORIES: Array<{ key: Category; labelKey: string }> = [
-  { key: "all",        labelKey: "templates.cat.all"        },
-  { key: "announce",   labelKey: "templates.cat.announce"   },
-  { key: "collection", labelKey: "templates.cat.collection" },
-  { key: "engagement", labelKey: "templates.cat.engagement" },
-  { key: "promo",      labelKey: "templates.cat.promo"      },
-];
-
-// Assign a category and gradient color to a template deterministically
-const GRADIENT_PALETTE = [
-  "linear-gradient(135deg,#6366f1,#8b5cf6)",
-  "linear-gradient(135deg,#f59e0b,#ef4444)",
-  "linear-gradient(135deg,#10b981,#059669)",
-  "linear-gradient(135deg,#3b82f6,#2563eb)",
-  "linear-gradient(135deg,#ec4899,#db2777)",
-  "linear-gradient(135deg,#f97316,#ea580c)",
-  "linear-gradient(135deg,#06b6d4,#0891b2)",
-  "linear-gradient(135deg,#84cc16,#65a30d)",
-];
-
-const CATEGORY_KEYS: Category[] = ["announce","collection","engagement","promo","all"];
-
-function templateCategory(id: string): Category {
-  let h = 0;
-  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) & 0xff;
-  return CATEGORY_KEYS[h % (CATEGORY_KEYS.length - 1)];
-}
-
-function templateGradient(id: string): string {
-  let h = 0;
-  for (let i = 0; i < id.length; i++) h = (h * 17 + id.charCodeAt(i)) & 0xff;
-  return GRADIENT_PALETTE[h % GRADIENT_PALETTE.length];
-}
+const CATEGORY_ORDER: TemplateCategory[] = ["announcements", "collections", "engagement", "promo", "other"];
 
 // ── Main component ────────────────────────────────────────────────────────────
 
 export function TemplatesPage() {
-  const navigate = useNavigate();
-  const [templates, setTemplates]   = useState<Template[]>([]);
-  const [loading, setLoading]       = useState(true);
-  const [activeCategory, setActiveCategory] = useState<Category>("all");
-  const setContentJson              = useEditorStore((s) => s.setContentJson);
+  const navigate   = useNavigate();
+  const [templates, setTemplates] = useState<Template[]>([]);
+  const [loading, setLoading]     = useState(true);
+  const [activeFilter, setActiveFilter] = useState<TemplateCategory | "all">("all");
+  const setContentJson = useEditorStore((s) => s.setContentJson);
   useSettingsStore((s) => s.language);
 
   useEffect(() => {
@@ -84,62 +58,60 @@ export function TemplatesPage() {
     }
   }
 
-  const filtered = activeCategory === "all"
+  // Categories that actually have templates
+  const usedCategories = CATEGORY_ORDER.filter((cat) =>
+    templates.some((tmpl) => (tmpl.category || "other") === cat)
+  );
+
+  const filtered = activeFilter === "all"
     ? templates
-    : templates.filter((tmpl) => templateCategory(tmpl.id) === activeCategory);
+    : templates.filter((tmpl) => (tmpl.category || "other") === activeFilter);
+
+  // Group filtered templates by category
+  const grouped: { cat: TemplateCategory; items: Template[] }[] = CATEGORY_ORDER
+    .map((cat) => ({ cat, items: filtered.filter((tmpl) => (tmpl.category || "other") === cat) }))
+    .filter(({ items }) => items.length > 0);
 
   return (
     <>
       <TopBar
         actions={
-          <Button
-            variant="primary"
-            size="sm"
-            leftIcon={<Plus size={13} />}
-            onClick={() => navigate("/editor")}
-          >
+          <Button variant="primary" size="sm" leftIcon={<Plus size={13} />} onClick={() => navigate("/editor", { state: { _createTemplate: true } })}>
             {t("templates.createTemplate")}
           </Button>
         }
       />
 
-      <div className="page-content" style={{ padding: "0 0 32px" }}>
+      <div className="page-content" style={{ padding: "0 0 40px" }}>
         {loading ? (
           <div className="flex justify-center py-20">
             <Spinner size={24} color="var(--text-muted)" />
           </div>
         ) : (
           <div>
-            {/* ── Page header ────────────────────────────────────────── */}
+            {/* Page header */}
             <div className="px-6 pt-6 pb-4">
               <h1 className="text-xl font-bold flex items-center gap-2" style={{ color: "var(--text-primary)" }}>
                 🧩 {t("nav.templates")}
               </h1>
             </div>
 
-            {/* ── Category chips ─────────────────────────────────────── */}
-            <div className="flex items-center gap-1.5 px-6 pb-4 flex-wrap">
-              {CATEGORIES.map(({ key, labelKey }) => {
-                const isActive = activeCategory === key;
-                return (
-                  <button
-                    key={key}
-                    onClick={() => setActiveCategory(key)}
-                    className="px-3 h-7 rounded-full text-xs font-medium transition-all"
-                    style={{
-                      backgroundColor: isActive ? "var(--text-primary)" : "var(--bg-hover)",
-                      color: isActive ? "var(--bg-surface)" : "var(--text-secondary)",
-                      border: "1px solid",
-                      borderColor: isActive ? "var(--text-primary)" : "transparent",
-                    }}
-                  >
-                    {t(labelKey as any)}
-                  </button>
-                );
-              })}
-            </div>
+            {/* Filter chips */}
+            {templates.length > 0 && (
+              <div className="flex items-center gap-1.5 px-6 pb-5 flex-wrap">
+                <FilterChip label={t("templates.cat.all")} active={activeFilter === "all"} onClick={() => setActiveFilter("all")} />
+                {usedCategories.map((cat) => (
+                  <FilterChip
+                    key={cat}
+                    label={t(CATEGORY_META[cat].labelKey)}
+                    active={activeFilter === cat}
+                    onClick={() => setActiveFilter(cat)}
+                  />
+                ))}
+              </div>
+            )}
 
-            {/* ── Gallery grid ───────────────────────────────────────── */}
+            {/* Empty state */}
             {templates.length === 0 ? (
               <div className="px-6">
                 <EmptyState
@@ -148,47 +120,83 @@ export function TemplatesPage() {
                   description={t("templates.emptyDesc")}
                 />
               </div>
+            ) : filtered.length === 0 ? (
+              <div className="px-6 py-16 text-center" style={{ color: "var(--text-muted)", fontSize: 13 }}>
+                {t("templates.noResults")}
+              </div>
             ) : (
-              <div
-                className="px-6"
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(3, 1fr)",
-                  gap: 16,
-                }}
-              >
-                {filtered.map((tmpl) => (
-                  <TemplateCard
-                    key={tmpl.id}
-                    template={tmpl}
-                    gradient={templateGradient(tmpl.id)}
-                    onUse={() => handleUse(tmpl)}
-                    onDelete={(e) => handleDelete(e, tmpl.id, tmpl.name)}
-                  />
-                ))}
+              <div className="flex flex-col gap-8">
+                {grouped.map(({ cat, items }) => {
+                  const meta = CATEGORY_META[cat];
+                  const Icon = meta.Icon;
+                  return (
+                    <div key={cat}>
+                      {/* Section header — only show when "all" or multiple groups */}
+                      {(activeFilter === "all" || grouped.length > 1) && (
+                        <div className="flex items-center gap-2 px-6 mb-3">
+                          <div
+                            style={{
+                              width: 26, height: 26, borderRadius: 7,
+                              background: meta.gradient,
+                              display: "flex", alignItems: "center", justifyContent: "center",
+                              flexShrink: 0,
+                            }}
+                          >
+                            <Icon size={13} color="rgba(255,255,255,0.9)" />
+                          </div>
+                          <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)" }}>
+                            {t(meta.labelKey)}
+                          </span>
+                          <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                            {items.length}
+                          </span>
+                        </div>
+                      )}
 
-                {/* ── New template dashed card ─────────────────────── */}
-                <button
-                  onClick={() => navigate("/editor")}
-                  className="rounded-xl border-2 border-dashed flex flex-col items-center justify-center gap-2 transition-all"
-                  style={{
-                    minHeight: 168,
-                    borderColor: "var(--border-default)",
-                    color: "var(--text-muted)",
-                    fontSize: 13,
-                  }}
-                  onMouseEnter={(e) => {
-                    (e.currentTarget as HTMLElement).style.borderColor = "var(--accent)";
-                    (e.currentTarget as HTMLElement).style.color = "var(--accent)";
-                  }}
-                  onMouseLeave={(e) => {
-                    (e.currentTarget as HTMLElement).style.borderColor = "var(--border-default)";
-                    (e.currentTarget as HTMLElement).style.color = "var(--text-muted)";
-                  }}
-                >
-                  <Plus size={20} strokeWidth={1.5} />
-                  <span>{t("templates.newTemplate")}</span>
-                </button>
+                      {/* Cards grid */}
+                      <div
+                        className="px-6"
+                        style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14 }}
+                      >
+                        {items.map((tmpl) => (
+                          <TemplateCard
+                            key={tmpl.id}
+                            template={tmpl}
+                            gradient={meta.gradient}
+                            Icon={meta.Icon}
+                            onUse={() => handleUse(tmpl)}
+                            onDelete={(e) => handleDelete(e, tmpl.id, tmpl.name)}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {/* New template dashed card — always visible */}
+                <div className="px-6">
+                  <button
+                    onClick={() => navigate("/editor", { state: { _createTemplate: true } })}
+                    className="rounded-xl border-2 border-dashed flex flex-col items-center justify-center gap-2 transition-all w-full"
+                    style={{
+                      minHeight: 80,
+                      borderColor: "var(--border-default)",
+                      color: "var(--text-muted)",
+                      fontSize: 13,
+                    }}
+                    onMouseEnter={(e) => {
+                      (e.currentTarget as HTMLElement).style.borderColor = "var(--accent)";
+                      (e.currentTarget as HTMLElement).style.color = "var(--accent)";
+                    }}
+                    onMouseLeave={(e) => {
+                      (e.currentTarget as HTMLElement).style.borderColor = "var(--border-default)";
+                      (e.currentTarget as HTMLElement).style.color = "var(--text-muted)";
+                    }}
+                  >
+                    <Plus size={18} strokeWidth={1.5} />
+                    <span>{t("templates.newTemplate")}</span>
+                  </button>
+                </div>
               </div>
             )}
           </div>
@@ -198,16 +206,33 @@ export function TemplatesPage() {
   );
 }
 
+// ── Filter chip ───────────────────────────────────────────────────────────────
+
+function FilterChip({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className="px-3 h-7 rounded-full text-xs font-medium transition-all"
+      style={{
+        backgroundColor: active ? "var(--text-primary)" : "var(--bg-hover)",
+        color: active ? "var(--bg-surface)" : "var(--text-secondary)",
+        border: "1px solid",
+        borderColor: active ? "var(--text-primary)" : "transparent",
+      }}
+    >
+      {label}
+    </button>
+  );
+}
+
 // ── Template card ─────────────────────────────────────────────────────────────
 
 function TemplateCard({
-  template,
-  gradient,
-  onUse,
-  onDelete,
+  template, gradient, Icon, onUse, onDelete,
 }: {
   template: Template;
   gradient: string;
+  Icon: LucideIcon;
   onUse: () => void;
   onDelete: (e: React.MouseEvent) => void;
 }) {
@@ -215,10 +240,7 @@ function TemplateCard({
   useSettingsStore((s) => s.language);
 
   const date = new Date(template.updatedAt).toLocaleString("ru", {
-    day: "numeric",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
+    day: "numeric", month: "short", hour: "2-digit", minute: "2-digit",
   });
 
   return (
@@ -234,21 +256,13 @@ function TemplateCard({
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
-      {/* Gradient preview "lid" */}
-      <div
-        style={{
-          height: 118,
-          background: gradient,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-        }}
-      >
-        <LayoutTemplate size={32} color="rgba(255,255,255,0.7)" strokeWidth={1.5} />
+      {/* Gradient preview */}
+      <div style={{ height: 100, background: gradient, display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <Icon size={28} color="rgba(255,255,255,0.75)" strokeWidth={1.5} />
       </div>
 
       {/* Card body */}
-      <div className="px-3 py-3">
+      <div className="px-3 py-2.5">
         <p className="text-sm font-semibold truncate" style={{ color: "var(--text-primary)" }}>
           {template.name}
         </p>

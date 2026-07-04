@@ -11,11 +11,16 @@ pub mod telegraph;
 
 use db::AppState;
 use rate_limit::RateLimiter;
-use tauri::Manager;
+use tauri::{
+    menu::{Menu, MenuItem},
+    tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
+    Manager,
+};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_notification::init())
         .setup(|app| {
             let app_dir = app
                 .path()
@@ -46,7 +51,57 @@ pub fn run() {
             // Запускаем планировщик отложенных публикаций
             scheduler::start(app.handle().clone());
 
+            // ── Системный трей ────────────────────────────────────────────────
+            let show_item = MenuItem::with_id(app, "show", "Открыть", true, None::<&str>)?;
+            let quit_item = MenuItem::with_id(app, "quit", "Выйти", true, None::<&str>)?;
+            let menu = Menu::with_items(app, &[&show_item, &quit_item])?;
+
+            let mut tray_builder = TrayIconBuilder::new();
+            // Icon is optional — a missing icon must not crash startup.
+            if let Some(icon) = app.default_window_icon() {
+                tray_builder = tray_builder.icon(icon.clone());
+            }
+            tray_builder
+                .tooltip("Telegram Studio")
+                .menu(&menu)
+                .show_menu_on_left_click(false)
+                .on_menu_event(|app, event| match event.id.as_ref() {
+                    "show" => {
+                        if let Some(win) = app.get_webview_window("main") {
+                            let _ = win.show();
+                            let _ = win.set_focus();
+                        }
+                    }
+                    "quit" => app.exit(0),
+                    _ => {}
+                })
+                .on_tray_icon_event(|tray, event| {
+                    // Левый клик по иконке — показать окно
+                    if let TrayIconEvent::Click {
+                        button: MouseButton::Left,
+                        button_state: MouseButtonState::Up,
+                        ..
+                    } = event
+                    {
+                        let app = tray.app_handle();
+                        if let Some(win) = app.get_webview_window("main") {
+                            let _ = win.show();
+                            let _ = win.set_focus();
+                        }
+                    }
+                })
+                .build(app)?;
+
             Ok(())
+        })
+        // Закрытие окна → скрыть в трей, не завершать процесс
+        .on_window_event(|window, event| {
+            if window.label() == "main" {
+                if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                    let _ = window.hide();
+                    api.prevent_close();
+                }
+            }
         })
         .invoke_handler(tauri::generate_handler![
             commands::bots::validate_bot_token,
@@ -56,6 +111,7 @@ pub fn run() {
             commands::channels::get_channels,
             commands::channels::add_channel,
             commands::channels::delete_channel,
+            commands::channels::update_channel_bot,
             commands::drafts::get_drafts,
             commands::drafts::get_draft,
             commands::drafts::upsert_draft,
@@ -67,6 +123,7 @@ pub fn run() {
             commands::publish::get_scheduled_posts,
             commands::publish::cancel_scheduled_post,
             commands::publish::publish_rich_post,
+            commands::publish::republish_rich_post,
             commands::publish::send_poll,
             commands::telegraph::telegraph_publish,
             commands::telegraph::telegraph_webview_result,
@@ -80,6 +137,8 @@ pub fn run() {
             commands::history::get_history_for_edit,
             commands::dashboard::get_channel_dashboard,
             commands::fs_utils::read_file_as_base64,
+            commands::license::get_license_status,
+            commands::license::activate_license,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -3,6 +3,19 @@ import { persist } from "zustand/middleware";
 import type { Theme, Language, ParseMode } from "@/types/settings";
 import { setI18nLanguage } from "@/lib/i18n";
 
+function darkenHex(hex: string, pct = 0.15): string {
+  const n = parseInt(hex.replace("#", ""), 16);
+  const r = Math.max(0, Math.round(((n >> 16) & 0xff) * (1 - pct)));
+  const g = Math.max(0, Math.round(((n >> 8) & 0xff) * (1 - pct)));
+  const b = Math.max(0, Math.round((n & 0xff) * (1 - pct)));
+  return `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, "0")}`;
+}
+
+function applyEditorFont(large: boolean) {
+  document.documentElement.style.setProperty("--editor-font-size", large ? "19px" : "15px");
+  document.documentElement.style.setProperty("--editor-line-height", large ? "30px" : "26px");
+}
+
 interface SettingsState {
   theme: Theme;
   language: Language;
@@ -13,7 +26,6 @@ interface SettingsState {
   showCharCounter: boolean;
   confirmBeforePublish: boolean;
   accentColor: string;
-  compactMode: boolean;
   largeFontEditor: boolean;
   showTelegramPreview: boolean;
 
@@ -26,7 +38,6 @@ interface SettingsState {
   setShowCharCounter: (v: boolean) => void;
   setConfirmBeforePublish: (v: boolean) => void;
   setAccentColor: (color: string) => void;
-  setCompactMode: (v: boolean) => void;
   setLargeFontEditor: (v: boolean) => void;
   setShowTelegramPreview: (v: boolean) => void;
 }
@@ -43,26 +54,27 @@ export const useSettingsStore = create<SettingsState>()(
       showCharCounter:      true,
       confirmBeforePublish: true,
       accentColor:          "#2c87c9",
-      compactMode:          false,
       largeFontEditor:      false,
       showTelegramPreview:  true,
 
-      setTheme:                (theme)   => set({ theme }),
+      setTheme:                (theme)    => set({ theme }),
       setLanguage:             (language) => { set({ language }); setI18nLanguage(language); },
-      setAutosaveInterval:     (ms)      => set({ autosaveInterval: ms }),
-      setDefaultParseMode:     (mode)    => set({ defaultParseMode: mode }),
-      setDefaultBotId:         (id)      => set({ defaultBotId: id }),
-      setDefaultChannelId:     (id)      => set({ defaultChannelId: id }),
-      setShowCharCounter:      (v)       => set({ showCharCounter: v }),
-      setConfirmBeforePublish: (v)       => set({ confirmBeforePublish: v }),
-      setAccentColor:          (color)   => {
+      setAutosaveInterval:     (ms)       => set({ autosaveInterval: ms }),
+      setDefaultParseMode:     (mode)     => set({ defaultParseMode: mode }),
+      setDefaultBotId:         (id)       => set({ defaultBotId: id }),
+      setDefaultChannelId:     (id)       => set({ defaultChannelId: id }),
+      setShowCharCounter:      (v)        => set({ showCharCounter: v }),
+      setConfirmBeforePublish: (v)        => set({ confirmBeforePublish: v }),
+      setAccentColor: (color) => {
         set({ accentColor: color });
         document.documentElement.style.setProperty("--accent", color);
-        document.documentElement.style.setProperty("--accent-hover", color);
+        document.documentElement.style.setProperty("--accent-hover", darkenHex(color));
       },
-      setCompactMode:          (v)       => set({ compactMode: v }),
-      setLargeFontEditor:      (v)       => set({ largeFontEditor: v }),
-      setShowTelegramPreview:  (v)       => set({ showTelegramPreview: v }),
+      setLargeFontEditor: (v) => {
+        set({ largeFontEditor: v });
+        applyEditorFont(v);
+      },
+      setShowTelegramPreview: (v) => set({ showTelegramPreview: v }),
     }),
     {
       name: "ts-settings",
@@ -70,16 +82,15 @@ export const useSettingsStore = create<SettingsState>()(
         if (state) {
           const resolved =
             state.theme === "system"
-              ? window.matchMedia("(prefers-color-scheme: dark)").matches
-                ? "dark"
-                : "light"
+              ? window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"
               : state.theme;
           document.documentElement.setAttribute("data-theme", resolved);
           setI18nLanguage(state.language ?? "ru");
           if (state.accentColor && state.accentColor !== "#2c87c9") {
             document.documentElement.style.setProperty("--accent", state.accentColor);
-            document.documentElement.style.setProperty("--accent-hover", state.accentColor);
+            document.documentElement.style.setProperty("--accent-hover", darkenHex(state.accentColor));
           }
+          applyEditorFont(state.largeFontEditor ?? false);
         }
       },
     }

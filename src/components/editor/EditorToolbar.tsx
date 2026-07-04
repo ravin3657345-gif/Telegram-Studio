@@ -3,7 +3,7 @@ import {
   Bold, Italic, Underline, Strikethrough, EyeOff,
   Quote, List, ListOrdered, Link, Smile, Image, Film,
   Heading1, Heading2, Heading3, Code2, Minus,
-  Undo2, Redo2, Code, FileUp,
+  Undo2, Redo2, Code, FileUp, Scissors,
   Subscript as SubscriptIcon, Superscript as SuperscriptIcon,
   Highlighter, ChevronsDownUp,
 } from "lucide-react";
@@ -20,6 +20,8 @@ interface EditorToolbarProps {
   onMediaClick: (type: "image" | "video" | "file") => void;
   onHtmlView: () => void;
   showHtmlView: boolean;
+  onSplitClick?: () => void;
+  splitActive?: boolean;
 }
 
 export function EditorToolbar({
@@ -29,20 +31,34 @@ export function EditorToolbar({
   onMediaClick,
   onHtmlView,
   showHtmlView,
+  onSplitClick,
+  splitActive,
 }: EditorToolbarProps) {
   useSettingsStore((s) => s.language);
   const publishMode = useEditorStore((s) => s.publishMode);
   const toast = useUiStore((s) => s.toast);
 
+  // Translate vertical wheel scroll into horizontal so the toolbar can be
+  // scrolled with a normal mouse wheel when its buttons overflow (compact mode).
+  function handleWheel(e: React.WheelEvent<HTMLDivElement>) {
+    const el = e.currentTarget;
+    if (el.scrollWidth <= el.clientWidth) return; // nothing to scroll
+    // Ignore genuine horizontal scrolls (trackpads) — only remap vertical intent.
+    if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
+    el.scrollLeft += e.deltaY;
+  }
+
   return (
     <div
-      className="flex items-center gap-0.5 px-2 flex-shrink-0 border-b overflow-x-auto"
+      onWheel={handleWheel}
+      className="flex items-center gap-0.5 px-2 flex-shrink-0 border-b overflow-x-auto toolbar-scroll"
       style={{
         height: 44,
         minHeight: 44,
         backgroundColor: "var(--bg-surface)",
         borderColor: "var(--border-subtle)",
-        scrollbarWidth: "none",
+        scrollbarWidth: "thin",
+        scrollbarColor: "var(--border-default) transparent",
       }}
     >
       <ToolbarButton
@@ -127,17 +143,17 @@ export function EditorToolbar({
         <ToolbarButton
           title={
             publishMode === "rich"
-              ? "Сворачиваемая цитата недоступна в Rich-режиме"
+              ? t("toolbar.collapsibleUnavail")
               : editor.getAttributes("blockquote").expandable
-                ? "Сделать обычной"
-                : "Сделать сворачиваемой"
+                ? t("toolbar.makeNormal")
+                : t("toolbar.makeCollapsible")
           }
           icon={ChevronsDownUp}
           isActive={!!editor.getAttributes("blockquote").expandable}
           disabled={publishMode === "rich"}
           onClick={() => {
             if (publishMode === "rich") {
-              toast("warning", "Сворачиваемая цитата недоступна в Rich-режиме", "Используйте обычный или Telegraph режим");
+              toast("warning", t("toolbar.collapsibleUnavail"), t("toolbar.collapsibleUnavailHint"));
               return;
             }
             (editor.commands as any).toggleBlockquoteExpandable();
@@ -183,6 +199,18 @@ export function EditorToolbar({
         isActive={showHtmlView}
         onClick={onHtmlView}
       />
+
+      {onSplitClick && (
+        <>
+          <ToolbarSeparator />
+          <ToolbarButton
+            title={t("toolbar.split")}
+            icon={Scissors}
+            isActive={!!splitActive}
+            onClick={onSplitClick}
+          />
+        </>
+      )}
     </div>
   );
 }

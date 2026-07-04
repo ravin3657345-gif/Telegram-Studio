@@ -1,4 +1,26 @@
 import { Node, mergeAttributes } from "@tiptap/core";
+import { NodeSelection, Plugin } from "@tiptap/pm/state";
+import type { Node as PMNode } from "@tiptap/pm/model";
+import { t } from "@/lib/i18n";
+
+const FORBIDDEN_IN_QUOTE = new Set(["blockImage", "blockVideo"]);
+
+/** true, если в документе есть blockquote, содержащий картинку или видео */
+function quoteContainsMedia(doc: PMNode): boolean {
+  let bad = false;
+  doc.descendants((node: PMNode) => {
+    if (bad) return false;
+    if (node.type.name === "blockquote") {
+      node.descendants((child: PMNode) => {
+        if (FORBIDDEN_IN_QUOTE.has(child.type.name)) bad = true;
+        return !bad;
+      });
+      return false; // не углубляемся — уже проверили потомков
+    }
+    return true;
+  });
+  return bad;
+}
 import { ReactNodeViewRenderer, NodeViewWrapper, NodeViewContent } from "@tiptap/react";
 import { ChevronsDownUp } from "lucide-react";
 
@@ -29,7 +51,7 @@ function BlockquoteView({ node, updateAttributes }: any) {
       <button
         contentEditable={false}
         onClick={() => updateAttributes({ expandable: !expandable })}
-        title={expandable ? "Сделать обычной цитатой" : "Сделать сворачиваемой"}
+        title={expandable ? t("quote.makeNormal") : t("quote.makeCollapsible")}
         style={{
           position: "absolute",
           top: 6,
@@ -51,7 +73,7 @@ function BlockquoteView({ node, updateAttributes }: any) {
         }}
       >
         <ChevronsDownUp size={10} />
-        {expandable ? "Своротная" : "Свернуть"}
+        {expandable ? t("quote.collapsed") : t("quote.collapse")}
       </button>
     </NodeViewWrapper>
   );
@@ -90,8 +112,20 @@ export const Blockquote = Node.create({
           commands.wrapIn(this.name),
       toggleBlockquote:
         () =>
-        ({ commands }: any) =>
-          commands.toggleWrap(this.name),
+        ({ commands, state }: any) => {
+          const { selection } = state;
+          // NodeSelection — клик по atom-ноде (картинка, видео)
+          if (selection instanceof NodeSelection) {
+            const name = selection.node.type.name;
+            if (name === "blockImage" || name === "blockVideo") return false;
+          }
+          // TextSelection — проверяем предка верхнего уровня
+          const topNode = selection.$from.depth >= 1 ? selection.$from.node(1) : null;
+          if (topNode && (topNode.type.name === "blockImage" || topNode.type.name === "blockVideo")) {
+            return false;
+          }
+          return commands.toggleWrap(this.name);
+        },
       unsetBlockquote:
         () =>
         ({ commands }: any) =>
@@ -113,5 +147,19 @@ export const Blockquote = Node.create({
 
   addNodeView() {
     return ReactNodeViewRenderer(BlockquoteView);
+  },
+
+  addProseMirrorPlugins() {
+    return [
+      new Plugin({
+        // Отклоняем любую транзакцию, после которой картинка/видео
+        // оказались бы внутри цитаты — перекрывает тулбар, bubble,
+        // горячие клавиши, вставку и drag&drop разом.
+        filterTransaction: (tr) => {
+          if (!tr.docChanged) return true;
+          return !quoteContainsMedia(tr.doc);
+        },
+      }),
+    ];
   },
 });

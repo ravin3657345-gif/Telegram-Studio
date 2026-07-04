@@ -1,39 +1,25 @@
-import { useParams, useNavigate } from "react-router-dom";
+import { useState } from "react";
+import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { CheckCircle2, AlertCircle, Loader2, LayoutTemplate, ChevronRight } from "lucide-react";
 import { TopBar } from "@/components/layout/TopBar";
 import { PostEditor } from "@/components/editor/PostEditor";
 import { PublishPanel } from "@/components/editor/PublishPanel";
 import { TelegramPreview } from "@/components/preview/TelegramPreview";
+import { SaveTemplateDialog } from "@/components/editor/SaveTemplateDialog";
 import { useEditorStore } from "@/store/editorStore";
 import { saveTemplate } from "@/lib/tauriApi";
 import { toast } from "@/store/uiStore";
 import { t, ti } from "@/lib/i18n";
 import { useSettingsStore } from "@/store/settingsStore";
-
-// ── Word count helper ─────────────────────────────────────────────────────────
-
-function countWordsFromJson(json: string): { words: number; chars: number } {
-  try {
-    const doc = JSON.parse(json) as { content?: unknown[] };
-    let text = "";
-    function walk(node: { type?: string; text?: string; content?: unknown[] }) {
-      if (node.text) text += node.text + " ";
-      for (const child of node.content ?? []) walk(child as typeof node);
-    }
-    walk(doc as { type?: string; text?: string; content?: unknown[] });
-    const words = text.trim() ? text.trim().split(/\s+/).length : 0;
-    const chars = text.replace(/\s/g, "").length;
-    return { words, chars };
-  } catch {
-    return { words: 0, chars: 0 };
-  }
-}
+import type { TemplateCategory } from "@/types/template";
 
 // ── EditorPage ────────────────────────────────────────────────────────────────
 
 export function EditorPage() {
   const { draftId } = useParams<{ draftId?: string }>();
   const navigate    = useNavigate();
+  const location    = useLocation();
+  const isCreateTemplate = !!(location.state as { _createTemplate?: boolean } | null)?._createTemplate;
   useSettingsStore((s) => s.language);
   const showPreview = useSettingsStore((s) => s.showTelegramPreview);
 
@@ -42,14 +28,16 @@ export function EditorPage() {
 
   const effectiveDraftId = draftId ?? storeDraftId ?? undefined;
   const displayTitle     = postTitle || draftTitle || t("editor.untitled");
-  const { words, chars } = countWordsFromJson(contentJson || "{}");
-  const MAX_CHARS        = 30000;
 
-  async function handleSaveAsTemplate() {
+  const [showTemplateDialog, setShowTemplateDialog] = useState(false);
+
+  async function handleSaveAsTemplate(category: TemplateCategory) {
+    setShowTemplateDialog(false);
     const name = draftTitle.trim() || t("editor.untitled");
     try {
-      await saveTemplate({ name, contentJson });
+      await saveTemplate({ name, contentJson, category });
       toast.success(ti("editor.templateSaved", { name }));
+      if (isCreateTemplate) navigate("/templates");
     } catch {
       toast.error(t("editor.templateError"));
     }
@@ -62,31 +50,41 @@ export function EditorPage() {
         title={
           <div className="flex items-center gap-1.5" style={{ color: "var(--text-secondary)", fontSize: 13 }}>
             <button
-              onClick={() => navigate("/drafts")}
+              onClick={() => navigate(isCreateTemplate ? "/templates" : "/drafts")}
               className="transition-colors hover:text-[var(--text-primary)]"
               style={{ color: "var(--text-secondary)" }}
             >
-              {t("nav.drafts")}
+              {isCreateTemplate ? t("nav.templates") : t("nav.drafts")}
             </button>
             <ChevronRight size={13} style={{ color: "var(--text-muted)" }} />
             <span style={{ color: "var(--text-primary)", fontWeight: 500 }}>
-              {displayTitle}
+              {isCreateTemplate ? t("templates.createTemplate") : displayTitle}
             </span>
           </div>
         }
         actions={
           <div className="flex items-center gap-2">
-            <button
-              onClick={handleSaveAsTemplate}
-              className="flex items-center gap-1.5 px-2 h-7 rounded text-xs transition-colors"
-              style={{ color: "var(--text-muted)", backgroundColor: "var(--bg-elevated)" }}
-              onMouseEnter={(e) => (e.currentTarget.style.color = "var(--text-primary)")}
-              onMouseLeave={(e) => (e.currentTarget.style.color = "var(--text-muted)")}
-              title={t("editor.saveAsTemplate")}
-            >
-              <LayoutTemplate size={12} />
-              {t("editor.template")}
-            </button>
+            {isCreateTemplate ? (
+              <button
+                onClick={() => setShowTemplateDialog(true)}
+                className="flex items-center gap-1.5 px-3 h-7 rounded text-xs font-medium transition-colors"
+                style={{ color: "#fff", backgroundColor: "var(--accent)" }}
+              >
+                <LayoutTemplate size={12} />
+                {t("editor.saveAsTemplate")}
+              </button>
+            ) : (
+              <button
+                onClick={() => setShowTemplateDialog(true)}
+                className="flex items-center gap-1.5 px-2 h-7 rounded text-xs transition-colors"
+                style={{ color: "var(--text-muted)", backgroundColor: "var(--bg-elevated)" }}
+                onMouseEnter={(e) => (e.currentTarget.style.color = "var(--text-primary)")}
+                onMouseLeave={(e) => (e.currentTarget.style.color = "var(--text-muted)")}
+              >
+                <LayoutTemplate size={12} />
+                {t("editor.saveAsTemplate")}
+              </button>
+            )}
             <SaveStatus status={saveStatus} lastSavedAt={lastSavedAt} />
           </div>
         }
@@ -99,27 +97,6 @@ export function EditorPage() {
         <div className="flex flex-col flex-1 overflow-hidden">
           <PostEditor draftId={draftId} />
 
-          {/* ── Word count footer bar ────────────────────────────────── */}
-          <div
-            className="flex items-center justify-end px-6 border-t flex-shrink-0"
-            style={{
-              height: 30,
-              borderColor: "var(--border-subtle)",
-              gap: 16,
-            }}
-          >
-            <span style={{ color: "var(--text-muted)", fontSize: 11 }}>
-              {words} {words === 1 ? "слово" : words < 5 ? "слова" : "слов"}
-            </span>
-            <span
-              style={{
-                color: chars > MAX_CHARS ? "var(--danger)" : "var(--text-muted)",
-                fontSize: 11,
-              }}
-            >
-              {chars.toLocaleString("ru")} / {MAX_CHARS.toLocaleString("ru")}
-            </span>
-          </div>
         </div>
 
         {/* ── Right panel ─────────────────────────────────────────────── */}
@@ -161,6 +138,13 @@ export function EditorPage() {
           </div>
         )}
       </div>
+
+      {showTemplateDialog && (
+        <SaveTemplateDialog
+          onConfirm={handleSaveAsTemplate}
+          onClose={() => setShowTemplateDialog(false)}
+        />
+      )}
     </>
   );
 }

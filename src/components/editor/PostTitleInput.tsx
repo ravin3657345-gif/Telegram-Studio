@@ -1,11 +1,14 @@
 import { useRef, useEffect } from "react";
 import { Eye, EyeOff } from "lucide-react";
 import { useEditorStore } from "@/store/editorStore";
+import { t } from "@/lib/i18n";
+import { useSettingsStore } from "@/store/settingsStore";
 
 const MAX_CHARS = 100;
 
 export function PostTitleInput() {
   const { postTitle, setPostTitle, includeTitle, setIncludeTitle } = useEditorStore();
+  useSettingsStore((s) => s.language);
   const ref = useRef<HTMLTextAreaElement>(null);
   const remaining = MAX_CHARS - postTitle.length;
 
@@ -36,7 +39,7 @@ export function PostTitleInput() {
       className="relative border-b flex-shrink-0"
       style={{
         borderColor: "var(--border-subtle)",
-        padding: "18px 40px 14px",
+        padding: "18px 145px 14px 40px",
       }}
     >
       <textarea
@@ -46,7 +49,7 @@ export function PostTitleInput() {
         onChange={handleChange}
         onKeyDown={handleKeyDown}
         onInput={autoResize}
-        placeholder="Заголовок поста…"
+        placeholder={t("editor.titlePlaceholder")}
         className="w-full resize-none overflow-hidden bg-transparent text-2xl font-bold leading-tight outline-none"
         style={{
           color: includeTitle ? "var(--text-primary)" : "var(--text-muted)",
@@ -58,10 +61,9 @@ export function PostTitleInput() {
         }}
       />
 
-      {/* Toggle — включить/исключить заголовок из публикации */}
       <button
         onClick={() => setIncludeTitle(!includeTitle)}
-        title={includeTitle ? "Не включать заголовок в публикацию" : "Включить заголовок в публикацию"}
+        title={includeTitle ? t("editor.includeTitleOn") : t("editor.includeTitleOff")}
         style={{
           position: "absolute",
           top: 16,
@@ -82,7 +84,7 @@ export function PostTitleInput() {
         }}
       >
         {includeTitle ? <Eye size={13} /> : <EyeOff size={13} />}
-        <span>{includeTitle ? "Заголовок" : "Без заголовка"}</span>
+        <span>{includeTitle ? t("editor.withTitle") : t("editor.noTitle")}</span>
       </button>
 
       {remaining <= 20 && (

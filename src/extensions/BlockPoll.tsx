@@ -1,6 +1,7 @@
 import { Node, mergeAttributes } from "@tiptap/core";
 import { ReactNodeViewRenderer, NodeViewWrapper } from "@tiptap/react";
 import { Plus, X, BarChart2 } from "lucide-react";
+import { t, ti } from "@/lib/i18n";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function PollView({ node, updateAttributes, deleteNode, selected }: any) {
@@ -56,11 +57,11 @@ function PollView({ node, updateAttributes, deleteNode, selected }: any) {
         >
           <BarChart2 size={14} style={{ color: "var(--accent)", flexShrink: 0 }} />
           <span style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", flex: 1, letterSpacing: "0.05em" }}>
-            ОПРОС
+            {t("poll.label")}
           </span>
           <button
             onClick={deleteNode}
-            title="Удалить блок"
+            title={t("poll.delete")}
             style={{
               background: "none", border: "none", cursor: "pointer",
               color: "var(--text-muted)", display: "flex", padding: 2,
@@ -77,7 +78,7 @@ function PollView({ node, updateAttributes, deleteNode, selected }: any) {
           <input
             value={question}
             onChange={e => updateAttributes({ question: e.target.value })}
-            placeholder="Введите вопрос..."
+            placeholder={t("poll.question")}
             onKeyDown={e => e.stopPropagation()}
             style={{
               width: "100%", border: "none", background: "transparent",
@@ -100,7 +101,7 @@ function PollView({ node, updateAttributes, deleteNode, selected }: any) {
               <input
                 value={opt}
                 onChange={e => setOption(i, e.target.value)}
-                placeholder={`Вариант ${i + 1}`}
+                placeholder={ti("poll.option", { n: i + 1 })}
                 onKeyDown={e => {
                   if (e.key === "Enter") { e.preventDefault(); addOption(); }
                   e.stopPropagation();
@@ -131,7 +132,7 @@ function PollView({ node, updateAttributes, deleteNode, selected }: any) {
                 color: "var(--accent)", fontSize: 12, padding: "2px 0", marginTop: 2,
               }}
             >
-              <Plus size={12} /> Добавить вариант
+              <Plus size={12} /> {t("poll.addOption")}
             </button>
           )}
         </div>
@@ -151,7 +152,7 @@ function PollView({ node, updateAttributes, deleteNode, selected }: any) {
               onChange={e => updateAttributes({ isAnonymous: e.target.checked })}
               style={{ accentColor: "var(--accent)", width: 12, height: 12 }}
             />
-            Анонимный
+            {t("poll.anonymous")}
           </label>
           <label style={{ display: "flex", alignItems: "center", gap: 5, cursor: "pointer", fontSize: 11, color: "var(--text-muted)", userSelect: "none" }}>
             <input
@@ -160,7 +161,7 @@ function PollView({ node, updateAttributes, deleteNode, selected }: any) {
               onChange={e => updateAttributes({ allowsMultipleAnswers: e.target.checked })}
               style={{ accentColor: "var(--accent)", width: 12, height: 12 }}
             />
-            Несколько вариантов
+            {t("poll.multiple")}
           </label>
         </div>
       </div>

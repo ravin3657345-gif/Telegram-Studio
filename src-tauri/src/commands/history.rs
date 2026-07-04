@@ -110,6 +110,7 @@ pub async fn schedule_post_delete(
 pub async fn edit_published_post(
     history_id: String,
     new_text: String,
+    content_json: Option<String>,
     state: tauri::State<'_, AppState>,
 ) -> Result<(), String> {
     let (token, chat_id, msg_id) = {
@@ -136,9 +137,32 @@ pub async fn edit_published_post(
     };
 
     let client = TelegramClient::new(&token);
-    methods::edit_message_text(&client, &chat_id, msg_id, &new_text, "HTML")
-        .await
-        .map_err(|e| e.to_string())?;
+    let edit_result = methods::edit_message_text(&client, &chat_id, msg_id, &new_text, "HTML").await;
+    match edit_result {
+        Ok(_) => {}
+        Err(e) => {
+            let msg = e.to_string().to_lowercase();
+            if msg.contains("message is not modified") {
+                // Content unchanged — treat as success
+            } else if msg.contains("there is no text in the message to edit") {
+                // Media message — update caption instead
+                let cap_result = methods::edit_message_caption(&client, &chat_id, msg_id, &new_text, "HTML").await;
+                match cap_result {
+                    Ok(_) => {}
+                    Err(e2) => {
+                        let msg2 = e2.to_string().to_lowercase();
+                        if msg2.contains("message is not modified") {
+                            // Caption unchanged — treat as success
+                        } else {
+                            return Err(e2.to_string());
+                        }
+                    }
+                }
+            } else {
+                return Err(e.to_string());
+            }
+        }
+    }
 
     // Update stored content
     {
@@ -147,6 +171,16 @@ pub async fn edit_published_post(
             "UPDATE publication_history SET content_json = ?1 WHERE id = ?2",
             rusqlite::params![new_text, history_id],
         );
+        // Also update the linked draft with the full TipTap JSON (preserves image nodes)
+        if let Some(ref json) = content_json {
+            if !json.is_empty() {
+                let _ = db.execute(
+                    "UPDATE drafts SET content_json = ?1 \
+                     WHERE id = (SELECT draft_id FROM publication_history WHERE id = ?2)",
+                    rusqlite::params![json, history_id],
+                );
+            }
+        }
     }
 
     Ok(())
@@ -163,6 +197,7 @@ pub struct HistoryForEdit {
     pub telegram_chat_id: Option<String>,
     pub bot_id:           String,
     pub attachments:      Vec<DraftAttachment>,
+    pub publish_mode:     String,
 }
 
 #[tauri::command]
@@ -173,22 +208,24 @@ pub async fn get_history_for_edit(
     // Step 1: query history row
     // NOTE: publication_history.content_json actually stores HTML (not TipTap JSON).
     // The real TipTap JSON lives in the linked draft (draft_id → drafts.content_json).
-    let (draft_id, bot_id, telegram_msg_id, telegram_chat_id, content_json, post_title) = {
+    let (draft_id, bot_id, telegram_msg_id, telegram_chat_id, content_json, post_title, publish_mode) = {
         let db = state.db.lock().map_err(|e| e.to_string())?;
 
-        let (draft_id, bot_id, telegram_msg_id, telegram_chat_id):
-            (Option<String>, String, Option<i64>, Option<String>) = db
+        let (draft_id, bot_id, telegram_msg_id, telegram_chat_id, publish_mode):
+            (Option<String>, String, Option<i64>, Option<String>, String) = db
             .query_row(
-                "SELECT h.draft_id, h.bot_id, h.telegram_msg_id, c.telegram_id
+                "SELECT h.draft_id, h.bot_id, h.telegram_msg_id, c.telegram_id,
+                        COALESCE(h.publish_mode, 'normal')
                  FROM publication_history h
                  LEFT JOIN channels c ON c.id = h.channel_id
                  WHERE h.id = ?1",
                 [&history_id],
-                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)),
             )
             .map_err(|_| "Запись истории не найдена".to_string())?;
 
-        // Try to get real TipTap JSON from the linked draft
+        // Prefer the draft's TipTap JSON (has image nodes). Fall back to
+        // publication_history.content_json if the draft is absent or empty.
         let (mut content_json, post_title) = if let Some(ref did) = draft_id {
             let row = db.query_row(
                 "SELECT COALESCE(content_json,''), COALESCE(post_title,'') FROM drafts WHERE id = ?1",
@@ -209,7 +246,7 @@ pub async fn get_history_for_edit(
             ).unwrap_or_default();
         }
 
-        (draft_id, bot_id, telegram_msg_id, telegram_chat_id, content_json, post_title)
+        (draft_id, bot_id, telegram_msg_id, telegram_chat_id, content_json, post_title, publish_mode)
     };
 
     // Step 2: load media attachments from disk (via draft_media)
@@ -261,6 +298,7 @@ pub async fn get_history_for_edit(
         telegram_chat_id,
         bot_id,
         attachments,
+        publish_mode,
     })
 }
 

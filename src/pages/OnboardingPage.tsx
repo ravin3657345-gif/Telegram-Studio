@@ -5,11 +5,14 @@ import { Button } from "@/components/ui/Button";
 import { addBot, addChannel } from "@/lib/tauriApi";
 import { useChannelsStore } from "@/store/channelsStore";
 import { toast } from "@/store/uiStore";
+import { t } from "@/lib/i18n";
+import { useSettingsStore } from "@/store/settingsStore";
 import clsx from "clsx";
 
 type Step = "bot" | "channel" | "done";
 
 export function OnboardingPage() {
+  useSettingsStore((s) => s.language);
   const navigate = useNavigate();
   const [step, setStep] = useState<Step>("bot");
   const [token, setToken] = useState("");
@@ -32,7 +35,7 @@ export function OnboardingPage() {
       setActiveBot(bot.id);
       setStep("channel");
     } catch (err) {
-      toast.error("Ошибка подключения бота", String(err));
+      toast.error(t("onboarding.error.bot"), String(err));
     } finally {
       setLoading(false);
     }
@@ -47,7 +50,7 @@ export function OnboardingPage() {
       setActiveChannel(ch.id);
       setStep("done");
     } catch (err) {
-      toast.error("Ошибка подключения канала", String(err));
+      toast.error(t("onboarding.error.channel"), String(err));
     } finally {
       setLoading(false);
     }
@@ -73,11 +76,11 @@ export function OnboardingPage() {
 
       {/* Step indicator */}
       <div className="flex items-center gap-3 mb-8">
-        <StepDot active={step === "bot"} done={step !== "bot"} label="Бот" />
+        <StepDot active={step === "bot"} done={step !== "bot"} label={t("onboarding.step.bot")} />
         <div className="w-8 h-px" style={{ backgroundColor: "var(--border-default)" }} />
-        <StepDot active={step === "channel"} done={step === "done"} label="Канал" />
+        <StepDot active={step === "channel"} done={step === "done"} label={t("onboarding.step.channel")} />
         <div className="w-8 h-px" style={{ backgroundColor: "var(--border-default)" }} />
-        <StepDot active={step === "done"} done={false} label="Готово" />
+        <StepDot active={step === "done"} done={false} label={t("onboarding.step.done")} />
       </div>
 
       {/* Card */}
@@ -178,7 +181,7 @@ function BotStep({
     <>
       <div className="flex items-center gap-2 mb-6">
         <Bot size={20} style={{ color: "var(--accent)" }} />
-        <h1 className="text-lg font-semibold">Подключите бота</h1>
+        <h1 className="text-lg font-semibold">{t("onboarding.bot.title")}</h1>
       </div>
 
       <div
@@ -190,18 +193,18 @@ function BotStep({
         }}
       >
         <p className="font-medium mb-2" style={{ color: "var(--text-primary)" }}>
-          Как получить токен:
+          {t("onboarding.bot.tokenHint")}
         </p>
         <ol className="space-y-1 list-decimal list-inside">
-          <li>Откройте @BotFather в Telegram</li>
-          <li>Отправьте команду /newbot</li>
-          <li>Следуйте инструкциям</li>
-          <li>Скопируйте полученный токен</li>
+          <li>{t("onboarding.bot.step1")}</li>
+          <li>{t("onboarding.bot.step2")}</li>
+          <li>{t("onboarding.bot.step3")}</li>
+          <li>{t("onboarding.bot.step4")}</li>
         </ol>
       </div>
 
       <label className="block mb-1 text-sm font-medium" style={{ color: "var(--text-secondary)" }}>
-        Токен бота
+        {t("onboarding.bot.tokenLabel")}
       </label>
       <div className="relative mb-5">
         <input
@@ -238,7 +241,7 @@ function BotStep({
         onClick={onSubmit}
         leftIcon={loading ? undefined : <ArrowRight size={15} />}
       >
-        {loading ? "Проверяем..." : "Подключить бота"}
+        {loading ? t("onboarding.bot.checking") : t("onboarding.bot.connect")}
       </Button>
     </>
   );
@@ -261,16 +264,15 @@ function ChannelStep({
     <>
       <div className="flex items-center gap-2 mb-6">
         <Radio size={20} style={{ color: "var(--accent)" }} />
-        <h1 className="text-lg font-semibold">Добавьте канал</h1>
+        <h1 className="text-lg font-semibold">{t("onboarding.channel.title")}</h1>
       </div>
 
       <p className="text-sm mb-5" style={{ color: "var(--text-secondary)" }}>
-        Убедитесь, что бот добавлен в канал как администратор с правом публикации
-        сообщений.
+        {t("onboarding.channel.hint")}
       </p>
 
       <label className="block mb-1 text-sm font-medium" style={{ color: "var(--text-secondary)" }}>
-        Username или ID канала
+        {t("onboarding.channel.label")}
       </label>
       <input
         type="text"
@@ -290,7 +292,7 @@ function ChannelStep({
 
       <div className="flex gap-3">
         <Button variant="ghost" size="md" onClick={onSkip} className="flex-1">
-          Пропустить
+          {t("onboarding.channel.skip")}
         </Button>
         <Button
           variant="primary"
@@ -300,7 +302,7 @@ function ChannelStep({
           onClick={onSubmit}
           className="flex-1"
         >
-          Добавить канал
+          {t("onboarding.channel.add")}
         </Button>
       </div>
     </>
@@ -318,15 +320,14 @@ function DoneStep({ onStart }: { onStart: () => void }) {
       </div>
 
       <div>
-        <h1 className="text-lg font-semibold mb-2">Всё готово!</h1>
+        <h1 className="text-lg font-semibold mb-2">{t("onboarding.done.title")}</h1>
         <p className="text-sm" style={{ color: "var(--text-secondary)" }}>
-          Telegram Studio настроен и готов к работе.
-          Начните создавать посты прямо сейчас.
+          {t("onboarding.done.desc")}
         </p>
       </div>
 
       <Button variant="primary" size="lg" onClick={onStart} fullWidth>
-        Начать работу
+        {t("onboarding.done.start")}
       </Button>
     </div>
   );

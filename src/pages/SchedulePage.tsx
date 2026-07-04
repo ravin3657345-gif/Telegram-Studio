@@ -4,7 +4,7 @@ import { ChevronLeft, ChevronRight, Trash2, RefreshCw } from "lucide-react";
 import { TopBar } from "@/components/layout/TopBar";
 import { Spinner } from "@/components/ui/Spinner";
 import { toast } from "@/store/uiStore";
-import { getScheduledPosts, cancelScheduledPost } from "@/lib/tauriApi";
+import { getScheduledPosts, cancelScheduledPost, getDrafts } from "@/lib/tauriApi";
 import { t } from "@/lib/i18n";
 import { useSettingsStore } from "@/store/settingsStore";
 import { useDraftsStore } from "@/store/draftsStore";
@@ -12,12 +12,8 @@ import type { ScheduledPostInfo } from "@/types/publish";
 
 // ── Calendar helpers ──────────────────────────────────────────────────────────
 
-const RU_MONTHS = [
-  "Январь","Февраль","Март","Апрель","Май","Июнь",
-  "Июль","Август","Сентябрь","Октябрь","Ноябрь","Декабрь",
-];
-
-const RU_DAYS_SHORT = ["Пн","Вт","Ср","Чт","Пт","Сб","Вс"];
+// Jan 1–7 2024 = Mon–Sun — used to derive locale weekday names
+const WEEKDAY_BASE_DATES = Array.from({ length: 7 }, (_, i) => new Date(2024, 0, i + 1));
 
 function startOfMonth(year: number, month: number): Date {
   return new Date(year, month, 1);
@@ -65,12 +61,20 @@ export function SchedulePage() {
   const [posts, setPosts]         = useState<ScheduledPostInfo[]>([]);
   const [loading, setLoading]     = useState(true);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
-  useSettingsStore((s) => s.language);
-  const drafts = useDraftsStore((s) => s.drafts);
+  const language = useSettingsStore((s) => s.language) ?? "ru";
+  const drafts    = useDraftsStore((s) => s.drafts);
+  const setDrafts = useDraftsStore((s) => s.setDrafts);
 
   const today      = new Date();
   const [viewYear, setViewYear]   = useState(today.getFullYear());
   const [viewMonth, setViewMonth] = useState(today.getMonth());
+
+  // Load drafts if not yet populated (e.g. direct navigation to /schedule)
+  useEffect(() => {
+    if (drafts.length === 0) {
+      getDrafts().then(setDrafts).catch(() => {});
+    }
+  }, []);
 
   const load = () => {
     setLoading(true);
@@ -140,7 +144,7 @@ export function SchedulePage() {
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-3">
                 <h1 className="text-xl font-bold" style={{ color: "var(--text-primary)" }}>
-                  {RU_MONTHS[viewMonth]} {viewYear}
+                  {new Date(viewYear, viewMonth, 1).toLocaleDateString(language, { month: "long", year: "numeric" }).replace(/^./, c => c.toUpperCase())}
                 </h1>
                 <div className="flex items-center gap-1">
                   <button
@@ -199,9 +203,11 @@ export function SchedulePage() {
                   backgroundColor: "var(--bg-elevated)",
                 }}
               >
-                {RU_DAYS_SHORT.map((day, i) => (
+                {WEEKDAY_BASE_DATES.map((d, i) => {
+                  const day = d.toLocaleDateString(language, { weekday: "short" }).replace(/\.$/, "");
+                  return (
                   <div
-                    key={day}
+                    key={i}
                     className="text-center py-2"
                     style={{
                       fontSize: 11,
@@ -212,7 +218,8 @@ export function SchedulePage() {
                   >
                     {day}
                   </div>
-                ))}
+                  );
+                })}
               </div>
 
               {/* Day cells */}

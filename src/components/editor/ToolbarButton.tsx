@@ -52,7 +52,7 @@ export function ToolbarButton({
       onMouseDown={(e) => e.preventDefault()}
       onClick={onClick}
       className={clsx(
-        "toolbar-btn relative flex items-center justify-center w-8 h-8 rounded-md select-none",
+        "toolbar-btn relative flex items-center justify-center w-8 h-8 rounded-md select-none flex-shrink-0",
         "disabled:opacity-40 disabled:cursor-not-allowed",
         isActive
           ? "bg-[var(--accent-subtle)] text-[var(--accent)]"

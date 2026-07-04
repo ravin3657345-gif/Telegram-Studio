@@ -4,7 +4,8 @@ use uuid::Uuid;
 
 use crate::{
     db::{
-        queries::{bots as bots_q, channels as channels_q},
+        models::Bot,
+        queries::{bots as bots_q, channels as channels_q, settings as settings_q},
         AppState,
     },
     telegram::{
@@ -16,7 +17,7 @@ use crate::{
 
 // ─── Input types (from frontend) ─────────────────────────────────────────────
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct ButtonPayload {
     pub label: String,
@@ -24,10 +25,10 @@ pub struct ButtonPayload {
     pub callback_data: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct PublishPayload {
-    pub bot_id: String,
+    pub bot_id: Option<String>,
     pub channel_ids: Vec<String>,
     pub content_html: String,
     pub media: Vec<MediaItem>,
@@ -46,6 +47,7 @@ pub struct PublishResult {
     pub success: bool,
     pub telegram_msg_id: Option<i64>,
     pub error_message: Option<String>,
+    pub bot_username: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -61,7 +63,23 @@ pub struct ScheduledPostInfo {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
+/// Permanent Telegram errors that should not be retried (token invalid, no access, etc.)
+fn is_permanent_error(msg: &str) -> bool {
+    let m = msg.to_lowercase();
+    m.contains("unauthorized")
+        || m.contains("forbidden")
+        || m.contains("chat not found")
+        || m.contains("bot was kicked")
+        || m.contains("bot is not a member")
+        || m.contains("have no rights")
+        || m.contains("not enough rights")
+        || m.contains("peer_id_invalid")
+        || m.contains("bad request: chat_id")
+        || m.contains("invalid token")
+}
+
 /// Retry `f` up to 2 times with 2s + 5s delays. Returns last error if all fail.
+/// Permanent errors (auth, access denied) are returned immediately without retry.
 async fn with_retry<F, Fut, T>(f: F) -> Result<T, String>
 where
     F: Fn() -> Fut,
@@ -76,7 +94,11 @@ where
         match f().await {
             Ok(v) => return Ok(v),
             Err(e) => {
+                #[cfg(debug_assertions)]
                 eprintln!("[publish] attempt {} failed: {}", attempt + 1, e);
+                if is_permanent_error(&e) {
+                    return Err(e);
+                }
                 last_err = e;
             }
         }
@@ -148,11 +170,13 @@ async fn publish_to_channel(
     }
 
     // Documents always go as individual sendDocument calls.
-    // Caption only on first item if no photo/video was sent yet.
+    // Caption and keyboard only on first doc when no photo/video group was sent.
     for (i, doc) in docs.iter().enumerate() {
-        let caption = if i == 0 && photo_video.is_empty() { &payload.content_html } else { "" };
+        let is_first_no_photos = i == 0 && photo_video.is_empty();
+        let caption = if is_first_no_photos { &payload.content_html } else { "" };
+        let kb_for_doc = if is_first_no_photos { kb_ref } else { None };
         let msg = methods::send_document(
-            client, telegram_chat_id, doc, caption, "HTML", kb_ref,
+            client, telegram_chat_id, doc, caption, "HTML", kb_for_doc,
         ).await.map_err(|e| e.to_string())?;
         last_msg_id = msg.message_id;
     }
@@ -171,13 +195,14 @@ fn save_history(
     telegram_msg_id: Option<i64>,
     success: bool,
     error_message: Option<&str>,
+    publish_mode: &str,
 ) {
     let now = Utc::now().to_rfc3339();
     let status = if success { "published" } else { "failed" };
     let _ = db.execute(
         "INSERT INTO publication_history
-         (id, draft_id, channel_id, bot_id, telegram_msg_id, content_json, status, error_message, published_at)
-         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9)",
+         (id, draft_id, channel_id, bot_id, telegram_msg_id, content_json, status, error_message, published_at, publish_mode)
+         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)",
         rusqlite::params![
             Uuid::new_v4().to_string(),
             draft_id,
@@ -188,8 +213,58 @@ fn save_history(
             status,
             error_message,
             now,
+            publish_mode,
         ],
     );
+}
+
+// ─── Bot ordering helper ──────────────────────────────────────────────────────
+
+/// Load all bots ordered: preferred bot (or settings.default_bot_id) first.
+fn ordered_bots_from_db(
+    db: &rusqlite::Connection,
+    preferred_bot_id: Option<&str>,
+) -> Result<Vec<Bot>, String> {
+    let mut bots = bots_q::find_all(db).map_err(|e| e.to_string())?;
+    if bots.is_empty() {
+        return Err("Нет доступных ботов".to_string());
+    }
+
+    let pref_id = preferred_bot_id
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
+        .or_else(|| {
+            settings_q::load(db)
+                .ok()
+                .map(|s| s.default_bot_id)
+                .filter(|s| !s.is_empty())
+        });
+
+    if let Some(ref pid) = pref_id {
+        if let Some(pos) = bots.iter().position(|b| &b.id == pid) {
+            let bot = bots.remove(pos);
+            bots.insert(0, bot);
+        }
+    }
+
+    Ok(bots)
+}
+
+/// Inline bot-iteration result for a channel.
+struct BotTryResult {
+    bot_id:       Option<String>,
+    bot_username: Option<String>,
+    msg_id:       Option<i64>,
+    err_msg:      Option<String>,
+}
+
+fn bot_try_error(last_errs: Vec<String>) -> BotTryResult {
+    let err_msg = if last_errs.len() > 1 {
+        format!("Ни один из {} ботов не смог отправить в канал", last_errs.len())
+    } else {
+        last_errs.into_iter().next().unwrap_or_else(|| "Нет доступных ботов".to_string())
+    };
+    BotTryResult { bot_id: None, bot_username: None, msg_id: None, err_msg: Some(err_msg) }
 }
 
 // ─── Tauri commands ───────────────────────────────────────────────────────────
@@ -200,13 +275,9 @@ pub async fn publish_post(
     payload: PublishPayload,
     state: tauri::State<'_, AppState>,
 ) -> Result<Vec<PublishResult>, String> {
-    // Читаем токен бота и telegram_id всех каналов — вне async блока
-    let (token, channels) = {
+    let (ordered_bots, channels) = {
         let db = state.db.lock().map_err(|e| e.to_string())?;
-        let token = bots_q::get_token(&db, &payload.bot_id)
-            .map_err(|e| e.to_string())?
-            .ok_or_else(|| "Бот не найден".to_string())?;
-
+        let bots = ordered_bots_from_db(&db, payload.bot_id.as_deref())?;
         let mut channels = Vec::new();
         for ch_id in &payload.channel_ids {
             let ch = channels_q::find_by_id(&db, ch_id)
@@ -214,40 +285,54 @@ pub async fn publish_post(
                 .ok_or_else(|| format!("Канал {} не найден", ch_id))?;
             channels.push(ch);
         }
-        (token, channels)
+        (bots, channels)
     };
 
-    let client = TelegramClient::new(&token);
     let mut results = Vec::new();
 
     for channel in &channels {
-        let result = with_retry(|| publish_to_channel(&client, &channel.telegram_id, &payload)).await;
+        let mut last_errs: Vec<String> = Vec::new();
+        let mut r = BotTryResult { bot_id: None, bot_username: None, msg_id: None, err_msg: None };
 
-        let (success, msg_id, err_msg) = match &result {
-            Ok(id) => (true, Some(*id), None),
-            Err(e) => (false, None, Some(e.clone())),
-        };
+        'bots: for bot in &ordered_bots {
+            let client = TelegramClient::new(&bot.token);
+            match with_retry(|| publish_to_channel(&client, &channel.telegram_id, &payload)).await {
+                Ok(msg_id) => {
+                    r = BotTryResult {
+                        bot_id:       Some(bot.id.clone()),
+                        bot_username: Some(bot.username.clone()),
+                        msg_id:       Some(msg_id),
+                        err_msg:      None,
+                    };
+                    break 'bots;
+                }
+                Err(e) => {
+                    let perm = is_permanent_error(&e);
+                    last_errs.push(format!("@{}: {}", bot.username, e));
+                    if !perm { break 'bots; }
+                }
+            }
+        }
+        if r.bot_id.is_none() { r = bot_try_error(last_errs); }
 
-        {
-            let db = state.db.lock().map_err(|e| e.to_string())?;
+        let success = r.bot_id.is_some();
+        if let Ok(db) = state.db.lock() {
             save_history(
-                &db,
-                &channel.id,
-                &payload.bot_id,
+                &db, &channel.id,
+                r.bot_id.as_deref().unwrap_or(""),
                 payload.draft_id.as_deref(),
                 &payload.content_html,
-                msg_id,
-                success,
-                err_msg.as_deref(),
+                r.msg_id, success, r.err_msg.as_deref(),
+                "normal",
             );
         }
-
         results.push(PublishResult {
-            channel_id: channel.id.clone(),
-            channel_title: channel.title.clone(),
+            channel_id:      channel.id.clone(),
+            channel_title:   channel.title.clone(),
             success,
-            telegram_msg_id: msg_id,
-            error_message: err_msg,
+            telegram_msg_id: r.msg_id,
+            error_message:   r.err_msg,
+            bot_username:    r.bot_username,
         });
     }
 
@@ -268,12 +353,19 @@ pub async fn schedule_post(
 
     let db = state.db.lock().map_err(|e| e.to_string())?;
     let now = Utc::now().to_rfc3339();
-    let mut infos = Vec::new();
 
-    // Проверяем, что бот существует
-    let _ = bots_q::get_token(&db, &payload.bot_id)
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| "Бот не найден".to_string())?;
+    // Resolve bot_id: use provided, else default from settings, else first available
+    let bot_id = match &payload.bot_id {
+        Some(id) if !id.is_empty() => id.clone(),
+        _ => {
+            let bots = ordered_bots_from_db(&db, None)?;
+            bots.into_iter().next()
+                .map(|b| b.id)
+                .ok_or_else(|| "Нет доступных ботов".to_string())?
+        }
+    };
+
+    let mut infos = Vec::new();
 
     for ch_id in &payload.channel_ids {
         let _ = channels_q::find_by_id(&db, ch_id)
@@ -289,7 +381,7 @@ pub async fn schedule_post(
                 id,
                 payload.draft_id,
                 ch_id,
-                payload.bot_id,
+                bot_id,
                 payload.content_html,
                 schedule_at,
                 now,
@@ -302,7 +394,7 @@ pub async fn schedule_post(
             id,
             draft_id: payload.draft_id.clone(),
             channel_id: ch_id.clone(),
-            bot_id: payload.bot_id.clone(),
+            bot_id: bot_id.clone(),
             scheduled_at: schedule_at.clone(),
             status: "pending".to_string(),
         });
@@ -342,7 +434,7 @@ pub struct RichPhotoPayload {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PublishRichPayload {
-    pub bot_id: String,
+    pub bot_id: Option<String>,
     pub channel_ids: Vec<String>,
     /// JSON array of rich blocks
     pub blocks_json: String,
@@ -356,11 +448,9 @@ pub async fn publish_rich_post(
     payload: PublishRichPayload,
     state: tauri::State<'_, AppState>,
 ) -> Result<Vec<PublishResult>, String> {
-    let (token, channels) = {
+    let (ordered_bots, channels) = {
         let db = state.db.lock().map_err(|e| e.to_string())?;
-        let token = bots_q::get_token(&db, &payload.bot_id)
-            .map_err(|e| e.to_string())?
-            .ok_or_else(|| "Бот не найден".to_string())?;
+        let bots = ordered_bots_from_db(&db, payload.bot_id.as_deref())?;
         let mut channels = Vec::new();
         for ch_id in &payload.channel_ids {
             let ch = channels_q::find_by_id(&db, ch_id)
@@ -368,19 +458,12 @@ pub async fn publish_rich_post(
                 .ok_or_else(|| format!("Канал {} не найден", ch_id))?;
             channels.push(ch);
         }
-        (token, channels)
+        (bots, channels)
     };
 
-    let client = TelegramClient::new(&token);
-
-    // Telegram media in rich messages accepts only public HTTP/HTTPS URLs (no
-    // file_id / attach://), and refuses to fetch from api.telegram.org itself.
-    // So each photo is uploaded to an external host (catbox.moe) to get a public
-    // URL; Telegram then re-hosts the image on its own CDN when the message is
-    // sent (the host URL is not retained in the published post).
+    // Photos are uploaded to an external host (catbox.moe) — no Telegram token needed.
     use base64::Engine;
     let mut html = payload.blocks_json.clone();
-
     for p in &payload.photos {
         let placeholder = format!("attach://{}", p.attach_name);
 
@@ -429,40 +512,61 @@ pub async fn publish_rich_post(
     let mut results = Vec::new();
 
     for channel in &channels {
-        let chat_id = channel.telegram_id.clone();
-        let html_clone = html.clone();
-        let result: Result<_, String> = with_retry(|| {
-            let c = &client;
-            let id = chat_id.clone();
-            let h  = html_clone.clone();
-            async move { methods::send_rich_message(c, &id, &h).await.map_err(|e| e.to_string()) }
-        }).await;
+        let mut last_errs: Vec<String> = Vec::new();
+        let mut r = BotTryResult { bot_id: None, bot_username: None, msg_id: None, err_msg: None };
 
-        let (success, msg_id, err_msg) = match &result {
-            Ok(msg) => (true, Some(msg.message_id), None),
-            Err(e) => (false, None, Some(e.clone())),
-        };
+        'bots: for bot in &ordered_bots {
+            let client = TelegramClient::new(&bot.token);
+            let cid   = channel.telegram_id.clone();
+            let h     = html.clone();
+            let result = with_retry(|| {
+                let c  = &client;
+                let id = cid.clone();
+                let h2 = h.clone();
+                async move {
+                    methods::send_rich_message(c, &id, &h2)
+                        .await
+                        .map(|m| m.message_id)
+                        .map_err(|e| e.to_string())
+                }
+            }).await;
+            match result {
+                Ok(msg_id) => {
+                    r = BotTryResult {
+                        bot_id:       Some(bot.id.clone()),
+                        bot_username: Some(bot.username.clone()),
+                        msg_id:       Some(msg_id),
+                        err_msg:      None,
+                    };
+                    break 'bots;
+                }
+                Err(e) => {
+                    let perm = is_permanent_error(&e);
+                    last_errs.push(format!("@{}: {}", bot.username, e));
+                    if !perm { break 'bots; }
+                }
+            }
+        }
+        if r.bot_id.is_none() { r = bot_try_error(last_errs); }
 
-        {
-            let db = state.db.lock().map_err(|e| e.to_string())?;
+        let success = r.bot_id.is_some();
+        if let Ok(db) = state.db.lock() {
             save_history(
-                &db,
-                &channel.id,
-                &payload.bot_id,
+                &db, &channel.id,
+                r.bot_id.as_deref().unwrap_or(""),
                 payload.draft_id.as_deref(),
                 &payload.blocks_json,
-                msg_id,
-                success,
-                err_msg.as_deref(),
+                r.msg_id, success, r.err_msg.as_deref(),
+                "rich",
             );
         }
-
         results.push(PublishResult {
-            channel_id: channel.id.clone(),
-            channel_title: channel.title.clone(),
+            channel_id:      channel.id.clone(),
+            channel_title:   channel.title.clone(),
             success,
-            telegram_msg_id: msg_id,
-            error_message: err_msg,
+            telegram_msg_id: r.msg_id,
+            error_message:   r.err_msg,
+            bot_username:    r.bot_username,
         });
     }
 
@@ -474,7 +578,7 @@ pub async fn publish_rich_post(
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PollPayload {
-    pub bot_id: String,
+    pub bot_id: Option<String>,
     pub channel_ids: Vec<String>,
     pub question: String,
     pub options: Vec<String>,
@@ -488,11 +592,9 @@ pub async fn send_poll(
     payload: PollPayload,
     state: tauri::State<'_, AppState>,
 ) -> Result<Vec<PublishResult>, String> {
-    let (token, channels) = {
+    let (ordered_bots, channels) = {
         let db = state.db.lock().map_err(|e| e.to_string())?;
-        let token = bots_q::get_token(&db, &payload.bot_id)
-            .map_err(|e| e.to_string())?
-            .ok_or_else(|| "Бот не найден".to_string())?;
+        let bots = ordered_bots_from_db(&db, payload.bot_id.as_deref())?;
         let mut channels = Vec::new();
         for ch_id in &payload.channel_ids {
             let ch = channels_q::find_by_id(&db, ch_id)
@@ -500,56 +602,72 @@ pub async fn send_poll(
                 .ok_or_else(|| format!("Канал {} не найден", ch_id))?;
             channels.push(ch);
         }
-        (token, channels)
+        (bots, channels)
     };
 
-    let client = TelegramClient::new(&token);
+    let is_anon = payload.is_anonymous;
+    let multi   = payload.allows_multiple_answers;
+    let poll_label = format!("[POLL] {}", payload.question);
     let mut results = Vec::new();
 
     for channel in &channels {
-        let chat_id = channel.telegram_id.clone();
-        let q = payload.question.clone();
-        let opts = payload.options.clone();
-        let is_anon = payload.is_anonymous;
-        let multi = payload.allows_multiple_answers;
+        let mut last_errs: Vec<String> = Vec::new();
+        let mut r = BotTryResult { bot_id: None, bot_username: None, msg_id: None, err_msg: None };
 
-        let result: Result<_, String> = with_retry(|| {
-            let c = &client;
-            let id = chat_id.clone();
-            let q2 = q.clone();
-            let opts2 = opts.clone();
-            async move {
-                methods::send_poll(c, &id, &q2, &opts2, is_anon, multi)
-                    .await
-                    .map_err(|e| e.to_string())
+        'bots: for bot in &ordered_bots {
+            let client = TelegramClient::new(&bot.token);
+            let cid   = channel.telegram_id.clone();
+            let q     = payload.question.clone();
+            let opts  = payload.options.clone();
+            let result = with_retry(|| {
+                let c    = &client;
+                let id   = cid.clone();
+                let q2   = q.clone();
+                let opts2 = opts.clone();
+                async move {
+                    methods::send_poll(c, &id, &q2, &opts2, is_anon, multi)
+                        .await
+                        .map(|m| m.message_id)
+                        .map_err(|e| e.to_string())
+                }
+            }).await;
+            match result {
+                Ok(msg_id) => {
+                    r = BotTryResult {
+                        bot_id:       Some(bot.id.clone()),
+                        bot_username: Some(bot.username.clone()),
+                        msg_id:       Some(msg_id),
+                        err_msg:      None,
+                    };
+                    break 'bots;
+                }
+                Err(e) => {
+                    let perm = is_permanent_error(&e);
+                    last_errs.push(format!("@{}: {}", bot.username, e));
+                    if !perm { break 'bots; }
+                }
             }
-        }).await;
+        }
+        if r.bot_id.is_none() { r = bot_try_error(last_errs); }
 
-        let (success, msg_id, err_msg) = match &result {
-            Ok(msg) => (true, Some(msg.message_id), None),
-            Err(e) => (false, None, Some(e.clone())),
-        };
-
-        {
-            let db = state.db.lock().map_err(|e| e.to_string())?;
+        let success = r.bot_id.is_some();
+        if let Ok(db) = state.db.lock() {
             save_history(
-                &db,
-                &channel.id,
-                &payload.bot_id,
+                &db, &channel.id,
+                r.bot_id.as_deref().unwrap_or(""),
                 None,
-                &format!("[POLL] {}", payload.question),
-                msg_id,
-                success,
-                err_msg.as_deref(),
+                &poll_label,
+                r.msg_id, success, r.err_msg.as_deref(),
+                "normal",
             );
         }
-
         results.push(PublishResult {
-            channel_id: channel.id.clone(),
-            channel_title: channel.title.clone(),
+            channel_id:      channel.id.clone(),
+            channel_title:   channel.title.clone(),
             success,
-            telegram_msg_id: msg_id,
-            error_message: err_msg,
+            telegram_msg_id: r.msg_id,
+            error_message:   r.err_msg,
+            bot_username:    r.bot_username,
         });
     }
 
@@ -600,5 +718,124 @@ pub async fn cancel_scheduled_post(
         rusqlite::params![now, post_id],
     )
     .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// Republish a rich post: upload new photos, send a new sendRichMessage, delete old one.
+/// Used when editing a published rich post (Telegram doesn't support editRichMessage).
+#[tauri::command]
+pub async fn republish_rich_post(
+    history_id: String,
+    blocks_json: String,
+    photos: Vec<RichPhotoPayload>,
+    content_json: Option<String>,
+    state: tauri::State<'_, AppState>,
+) -> Result<(), String> {
+    use base64::Engine;
+
+    // Look up bot, channel, and old message id from history
+    let (bot_id, channel_telegram_id, old_msg_id) = {
+        let db = state.db.lock().map_err(|e| e.to_string())?;
+        db.query_row(
+            "SELECT h.bot_id, c.telegram_id, h.telegram_msg_id
+             FROM publication_history h
+             LEFT JOIN channels c ON c.id = h.channel_id
+             WHERE h.id = ?1",
+            [&history_id],
+            |r| Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, Option<String>>(1)?,
+                r.get::<_, Option<i64>>(2)?,
+            )),
+        ).map_err(|_| "Запись истории не найдена".to_string())?
+    };
+
+    let chat_id = channel_telegram_id
+        .ok_or_else(|| "Канал не найден в истории".to_string())?;
+
+    let token = {
+        let db = state.db.lock().map_err(|e| e.to_string())?;
+        bots_q::get_token(&db, &bot_id)
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| "Бот не найден".to_string())?
+    };
+
+    // Upload photos and replace placeholders
+    let mut html = blocks_json.clone();
+    for p in &photos {
+        let placeholder = format!("attach://{}", p.attach_name);
+
+        if p.data_base64.len() > 67_000_000 {
+            return Err(format!("Файл {} слишком большой (лимит 50 МБ)", p.file_name));
+        }
+        let raw = base64::engine::general_purpose::STANDARD
+            .decode(&p.data_base64)
+            .map_err(|e| format!("base64 decode: {}", e))?;
+
+        let is_video = p.mime_type.starts_with("video/");
+        let (upload_bytes, upload_mime, upload_name) = if is_video {
+            (raw, p.mime_type.clone(), p.file_name.clone())
+        } else {
+            let (jpeg, _, _) = crate::image_utils::normalize_to_jpeg(raw, &p.file_name)
+                .map_err(|e| format!("normalize: {}", e))?;
+            let jpeg = crate::image_utils::compress_to_limit(jpeg, 5 * 1024 * 1024);
+            (jpeg, "image/jpeg".to_string(),
+             p.file_name.replace(|c: char| !c.is_ascii_alphanumeric() && c != '.', "_") + ".jpg")
+        };
+
+        match with_retry(|| {
+            let bytes = upload_bytes.clone();
+            let mime  = upload_mime.clone();
+            let name  = upload_name.clone();
+            async move { crate::hosting::upload_file(bytes, &mime, &name).await }
+        }).await {
+            Ok(url) => {
+                eprintln!("[republish_rich] {} → {}", p.attach_name, &url[..url.len().min(60)]);
+                html = html.replace(&placeholder, &url);
+            }
+            Err(e) => {
+                eprintln!("[republish_rich] photo host failed for {}: {}", p.attach_name, e);
+                if html.trim_start().starts_with('[') {
+                    html = remove_unresolved_media_block(&html, &placeholder);
+                } else {
+                    html = methods::remove_img_placeholder(&html, &placeholder);
+                }
+            }
+        }
+    }
+
+    let html = html.trim().to_string();
+    let client = TelegramClient::new(&token);
+
+    // Send new rich message
+    let new_msg = methods::send_rich_message(&client, &chat_id, &html)
+        .await
+        .map_err(|e| e.to_string())?;
+    let new_msg_id = new_msg.message_id;
+
+    // Try to delete old message — ignore error (bot may not have delete permission)
+    if let Some(old_id) = old_msg_id {
+        let _ = methods::delete_message(&client, &chat_id, old_id).await;
+    }
+
+    // Update history record with new msg_id and content
+    {
+        let db = state.db.lock().map_err(|e| e.to_string())?;
+        let _ = db.execute(
+            "UPDATE publication_history SET telegram_msg_id = ?1, content_json = ?2 WHERE id = ?3",
+            rusqlite::params![new_msg_id, html, history_id],
+        );
+        // Also update the linked draft TipTap JSON
+        if let Some(ref json) = content_json {
+            if !json.is_empty() {
+                let _ = db.execute(
+                    "UPDATE drafts SET content_json = ?1 \
+                     WHERE id = (SELECT draft_id FROM publication_history WHERE id = ?2)",
+                    rusqlite::params![json, history_id],
+                );
+            }
+        }
+    }
+
     Ok(())
 }

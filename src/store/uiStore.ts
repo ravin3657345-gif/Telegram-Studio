@@ -11,15 +11,18 @@ export interface ToastItem {
 
 interface UiState {
   toasts: ToastItem[];
+  historyVersion: number;
 
   toast: (type: ToastType, title: string, description?: string) => void;
   dismissToast: (id: string) => void;
+  bumpHistory: () => void;
 }
 
 let toastCounter = 0;
 
 export const useUiStore = create<UiState>((set) => ({
   toasts: [],
+  historyVersion: 0,
 
   toast: (type, title, description) => {
     const id = String(++toastCounter);
@@ -28,6 +31,9 @@ export const useUiStore = create<UiState>((set) => ({
 
   dismissToast: (id) =>
     set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
+
+  bumpHistory: () =>
+    set((s) => ({ historyVersion: s.historyVersion + 1 })),
 }));
 
 export const toast = {

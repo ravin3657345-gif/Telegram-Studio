@@ -1,101 +1,48 @@
 import { useState } from "react";
-import { Send, Clock, CheckCircle2, AlertCircle, Loader2, ChevronDown, ExternalLink, FileText, Layers, Pencil } from "lucide-react";
+import { Send, Clock, CheckCircle2, AlertCircle, Loader2, ExternalLink, FileText, Layers, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { ScheduleDialog } from "@/components/editor/ScheduleDialog";
 import { useChannelsStore } from "@/store/channelsStore";
 import { usePublishStore } from "@/store/publishStore";
 import { useEditorStore } from "@/store/editorStore";
-import { publishPost, schedulePost, telegraphPublish, publishRichPost, sendPoll, editPublishedPost } from "@/lib/tauriApi";
-import { segmentDocument } from "@/lib/htmlConverter";
-import type { TextSegment, ImageSegment, VideoSegment, FileSegment, PollSegment } from "@/lib/htmlConverter";
+import { publishPost, schedulePost, telegraphPublish, publishRichPost, republishRichPost, sendPoll, editPublishedPost } from "@/lib/tauriApi";
+import { segmentDocument, splitIntoMessagesAtGaps, splitJsonAtGaps } from "@/lib/htmlConverter";
+import type { TextSegment, PollSegment } from "@/lib/htmlConverter";
 import { tiptapToTelegraphNodes } from "@/lib/telegraphConverter";
 import { tiptapToRichHtml } from "@/lib/richMessageConverter";
 import { fileRegistry } from "@/lib/fileRegistry";
 import { useAttachmentStore } from "@/store/attachmentStore";
 import { t, ti } from "@/lib/i18n";
 import { useSettingsStore } from "@/store/settingsStore";
-import { toast } from "@/store/uiStore";
+import { toast, useUiStore } from "@/store/uiStore";
+import { fileToBase64, normalizeImageToJpeg } from "@/lib/imageProcessing";
 import type { PublishResult } from "@/types/publish";
-
-// ─── Helpers ───────────────────────────────────────────────────────────────────
-
-async function fileToBase64(file: File | Blob): Promise<string> {
-  const buf = await file.arrayBuffer();
-  const bytes = new Uint8Array(buf);
-  let binary = "";
-  const CHUNK = 0x8000;
-  for (let i = 0; i < bytes.length; i += CHUNK) {
-    binary += String.fromCharCode(...Array.from(bytes.subarray(i, i + CHUNK)));
-  }
-  return btoa(binary);
-}
-
-/** Convert any image to JPEG via Canvas. Handles WebP, BMP, HEIC, etc. */
-async function normalizeImageToJpeg(file: File): Promise<{ base64: string; mimeType: string; fileName: string }> {
-  const SUPPORTED = ["image/jpeg", "image/png", "image/gif"];
-
-  if (file.type === "image/gif") {
-    return { base64: await fileToBase64(file), mimeType: "image/gif", fileName: file.name };
-  }
-
-  if (SUPPORTED.includes(file.type)) {
-    const slice = await file.slice(0, 4).arrayBuffer();
-    const b = new Uint8Array(slice);
-    const isJpeg = b[0] === 0xFF && b[1] === 0xD8;
-    const isPng  = b[0] === 0x89 && b[1] === 0x50;
-    if (isJpeg || isPng) {
-      return { base64: await fileToBase64(file), mimeType: file.type, fileName: file.name };
-    }
-  }
-
-  const blobUrl = URL.createObjectURL(file);
-  try {
-    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
-      const el = new Image();
-      el.onload = () => resolve(el);
-      el.onerror = reject;
-      el.src = blobUrl;
-    });
-
-    const canvas = document.createElement("canvas");
-    canvas.width  = img.naturalWidth;
-    canvas.height = img.naturalHeight;
-    canvas.getContext("2d")!.drawImage(img, 0, 0);
-
-    const base64 = await new Promise<string>((resolve, reject) => {
-      canvas.toBlob(async (blob) => {
-        if (!blob) { reject(new Error("Canvas toBlob failed")); return; }
-        try { resolve(await fileToBase64(blob)); } catch (e) { reject(e); }
-      }, "image/jpeg", 0.92);
-    });
-
-    const stem = file.name.replace(/\.[^.]+$/, "");
-    return { base64, mimeType: "image/jpeg", fileName: `${stem}.jpg` };
-  } finally {
-    URL.revokeObjectURL(blobUrl);
-  }
-}
 
 // ─── Component ─────────────────────────────────────────────────────────────────
 
 interface PublishPanelProps { draftId?: string }
 
 export function PublishPanel({ draftId }: PublishPanelProps) {
-  const { bots, channels, activeBot, setActiveBot } = useChannelsStore();
+  const { bots, channels } = useChannelsStore();
   const { selectedChannelIds, status, results, lastError,
-          toggleChannel, setChannels, setStatus, setResults, setError, reset } = usePublishStore();
+          toggleChannel, setStatus, setResults, setError, reset } = usePublishStore();
   const { contentJson, postTitle, includeTitle, publishMode, setPublishMode, editingHistoryId, setEditingHistoryId } = useEditorStore();
   useSettingsStore((s) => s.language);
+  const bumpHistory      = useUiStore((s) => s.bumpHistory);
   const attachedFiles    = useAttachmentStore((s) => s.files);
   const clearAttachments = useAttachmentStore((s) => s.clearAll);
 
   const [showSchedule, setShowSchedule] = useState(false);
   const [telegraphUrl, setTelegraphUrl] = useState<string | null>(null);
 
-  const botChannels = activeBot ? channels.filter((c) => c.botId === activeBot) : channels;
-
+  const splitGaps      = useEditorStore((s) => s.splitGaps);
   const effectiveTitle = includeTitle ? postTitle : "";
-  const segments = segmentDocument(contentJson || '{"type":"doc","content":[]}', effectiveTitle);
+  const messages = splitIntoMessagesAtGaps(
+    contentJson || '{"type":"doc","content":[]}',
+    splitGaps,
+    effectiveTitle,
+  );
+  const segments = messages.flat();
   const hasAttachments = attachedFiles.length > 0;
   const hasContent = hasAttachments || segments.some(
     (s) =>
@@ -107,29 +54,41 @@ export function PublishPanel({ draftId }: PublishPanelProps) {
   );
   const hasFiles = hasAttachments || segments.some((s) => s.type === "file");
   const fileBlockedInRich = publishMode === "rich" && hasFiles;
+  const hasBots = bots.length > 0;
+
   const canPublish =
-    !!activeBot && selectedChannelIds.length > 0 && hasContent &&
+    hasBots && selectedChannelIds.length > 0 && hasContent &&
     !fileBlockedInRich &&
     status !== "publishing" && status !== "scheduling";
 
-  // ── Normal publish ───────────────────────────────────────────────────────────
+  // ── Normal / Caption publish ─────────────────────────────────────────────────
 
   async function publishAllSegments(): Promise<PublishResult[]> {
     const allResults: PublishResult[] = [];
+    const polls = segments.filter((s): s is PollSegment => s.type === "poll");
 
-    const polls   = segments.filter((s): s is PollSegment  => s.type === "poll");
-    const nonPoll = segments.filter((s) => s.type !== "poll");
+    // Pre-encode ALL media blocks once (keyed by fileId) — avoids re-encoding per channel
+    type Encoded = { fileName: string; mimeType: string; mediaType: string; dataBase64: string };
+    const encodedByFileId = new Map<string, Encoded>();
+    for (const seg of segments) {
+      if (seg.type !== "image" && seg.type !== "video" && seg.type !== "file") continue;
+      if (encodedByFileId.has(seg.fileId)) continue;
+      const file = fileRegistry.getFile(seg.fileId);
+      if (!file) continue;
+      const { base64: dataBase64, mimeType, fileName } = seg.type === "image"
+        ? await normalizeImageToJpeg(file)
+        : { base64: await fileToBase64(file), mimeType: seg.mimeType, fileName: seg.fileName };
+      encodedByFileId.set(seg.fileId, { fileName, mimeType, mediaType: seg.type, dataBase64 });
+    }
 
-    const captionHtml = nonPoll
-      .filter((s): s is TextSegment => s.type === "text")
-      .map((s) => s.html.trim())
-      .filter(Boolean)
-      .join("\n\n");
-
-    const mediaSegs = nonPoll.filter(
-      (s): s is ImageSegment | VideoSegment | FileSegment =>
-        s.type === "image" || s.type === "video" || s.type === "file"
-    );
+    // Fresh attachments always go with the FIRST message (not in the TipTap doc)
+    const freshAttachments = useAttachmentStore.getState().files;
+    const freshEncoded: Encoded[] = [];
+    for (const att of freshAttachments) {
+      const file = fileRegistry.getFile(att.id);
+      if (!file) throw new Error(ti("attach.fileGone", { name: att.name }));
+      freshEncoded.push({ fileName: att.name, mimeType: att.mimeType, mediaType: "file", dataBase64: await fileToBase64(file) });
+    }
 
     for (const channelId of selectedChannelIds) {
       const channel = channels.find((c) => c.id === channelId);
@@ -138,40 +97,39 @@ export function PublishPanel({ draftId }: PublishPanelProps) {
       let errorMsg: string | null = null;
 
       try {
-        // Read fresh Zustand state to avoid stale closure when async runs after re-render
-        const freshAttachments = useAttachmentStore.getState().files;
-        if (captionHtml || mediaSegs.length > 0 || freshAttachments.length > 0) {
-          const mediaItems: { fileName: string; mimeType: string; mediaType: string; dataBase64: string }[] = [];
+        // Send each message group separately (1 group = 1 Telegram message)
+        for (let mi = 0; mi < messages.length; mi++) {
+          const msgSegs = messages[mi];
 
-          // Images / videos from editor blocks
-          for (const seg of mediaSegs) {
-            const file = fileRegistry.getFile(seg.fileId);
-            if (!file) continue;
-            const { base64: dataBase64, mimeType, fileName } = seg.type === "image"
-              ? await normalizeImageToJpeg(file)
-              : { base64: await fileToBase64(file), mimeType: seg.mimeType, fileName: seg.fileName };
-            mediaItems.push({ fileName, mimeType, mediaType: seg.type, dataBase64 });
+          const msgHtml = msgSegs
+            .filter((s): s is TextSegment => s.type === "text")
+            .map((s) => s.html.trim())
+            .filter(Boolean)
+            .join("\n\n");
+
+          // Collect media for this message: fresh attachments (first msg only) + inline blocks
+          const msgMedia: Encoded[] = [];
+          if (mi === 0) msgMedia.push(...freshEncoded);
+          for (const seg of msgSegs) {
+            if (seg.type === "image" || seg.type === "video" || seg.type === "file") {
+              const enc = encodedByFileId.get(seg.fileId);
+              if (enc) msgMedia.push(enc);
+            }
           }
 
-          // Files from the attachment panel
-          for (const att of freshAttachments) {
-            const file = fileRegistry.getFile(att.id);
-            if (!file) throw new Error(ti("attach.fileGone", { name: att.name }));
-            const dataBase64 = await fileToBase64(file);
-            mediaItems.push({ fileName: att.name, mimeType: att.mimeType, mediaType: "file", dataBase64 });
-          }
+          if (!msgHtml && msgMedia.length === 0) continue;
 
           const res = await publishPost({
-            botId: activeBot!,
+            botId: null,
             channelIds: [channelId],
-            contentHtml: captionHtml,
-            media: mediaItems,
+            contentHtml: msgHtml,
+            media: msgMedia,
             buttons: [],
-            draftId: draftId ?? null,
+            draftId: mi === 0 ? (draftId ?? null) : null,
             scheduleAt: null,
           });
           if (res[0]?.success) lastMsgId = res[0].telegramMsgId ?? null;
-          else { success = false; errorMsg = res[0]?.errorMessage ?? t("common.error"); }
+          else { success = false; errorMsg = res[0]?.errorMessage ?? t("common.error"); break; }
         }
 
         if (success) {
@@ -179,7 +137,7 @@ export function PublishPanel({ draftId }: PublishPanelProps) {
             const validOpts = seg.options.filter((o) => o.trim().length > 0);
             if (!seg.question.trim() || validOpts.length < 2) continue;
             const res = await sendPoll({
-              botId: activeBot!,
+              botId: null,
               channelIds: [channelId],
               question: seg.question,
               options: validOpts,
@@ -210,30 +168,51 @@ export function PublishPanel({ draftId }: PublishPanelProps) {
   // ── Rich message publish ─────────────────────────────────────────────────────
 
   async function publishViaRichMessage(): Promise<PublishResult[]> {
-    const { html, photos } = tiptapToRichHtml(
-      contentJson || '{"type":"doc","content":[]}',
-      effectiveTitle
-    );
+    const jsonChunks = splitJsonAtGaps(contentJson || '{"type":"doc","content":[]}', splitGaps);
 
-    const filledPhotos = await Promise.all(
-      photos.map(async (p) => {
-        const file = fileRegistry.getFile(p.fileId);
-        if (!file) return null;
-        const isVideo = file.type.startsWith("video/");
-        const { base64: dataBase64, mimeType, fileName } = isVideo
-          ? { base64: await fileToBase64(file), mimeType: file.type, fileName: file.name }
-          : await normalizeImageToJpeg(file);
-        return { attachName: p.attachName, dataBase64, mimeType, fileName };
-      })
-    );
+    const allResults: PublishResult[] = [];
 
-    return publishRichPost({
-      botId: activeBot!,
-      channelIds: selectedChannelIds,
-      blocksJson: html,
-      photos: filledPhotos.filter((p): p is NonNullable<typeof p> => p !== null),
-      draftId: draftId ?? null,
-    });
+    for (let ci = 0; ci < jsonChunks.length; ci++) {
+      // First chunk gets the title, subsequent chunks don't
+      const chunkTitle = ci === 0 ? effectiveTitle : "";
+      const { html, photos } = tiptapToRichHtml(jsonChunks[ci], chunkTitle);
+
+      const filledPhotos = await Promise.all(
+        photos.map(async (p) => {
+          const file = fileRegistry.getFile(p.fileId);
+          if (!file) return null;
+          const isVideo = file.type.startsWith("video/");
+          const { base64: dataBase64, mimeType, fileName } = isVideo
+            ? { base64: await fileToBase64(file), mimeType: file.type, fileName: file.name }
+            : await normalizeImageToJpeg(file);
+          return { attachName: p.attachName, dataBase64, mimeType, fileName };
+        })
+      );
+
+      const res = await publishRichPost({
+        botId: null,
+        channelIds: selectedChannelIds,
+        blocksJson: html,
+        photos: filledPhotos.filter((p): p is NonNullable<typeof p> => p !== null),
+        draftId: ci === 0 ? (draftId ?? null) : null,
+      });
+
+      // Merge results (same channels, may be called multiple times)
+      for (const r of res) {
+        const existing = allResults.find((x) => x.channelId === r.channelId);
+        if (!existing) {
+          allResults.push(r);
+        } else if (!r.success) {
+          // First failure wins
+          existing.success = false;
+          existing.errorMessage = r.errorMessage;
+        } else {
+          existing.telegramMsgId = r.telegramMsgId;
+        }
+      }
+    }
+
+    return allResults;
   }
 
   // ── Telegraph publish ───────────────────────────────────────────────────────
@@ -266,7 +245,7 @@ export function PublishPanel({ draftId }: PublishPanelProps) {
       const channel = channels.find((c) => c.id === channelId);
       try {
         const res = await publishPost({
-          botId: activeBot!,
+          botId: null,
           channelIds: [channelId],
           contentHtml: tgResult.url,
           media: [],
@@ -303,18 +282,42 @@ export function PublishPanel({ draftId }: PublishPanelProps) {
     if (!editingHistoryId || !contentJson) return;
     setUpdating(true);
     try {
-      // Build the same HTML that would be published in "normal" mode
-      const segs = segmentDocument(contentJson, effectiveTitle);
-      const textHtml = segs
-        .filter((s) => s.type === "text")
-        .map((s) => (s as { type: "text"; html: string }).html)
-        .join("\n\n");
-
-      await editPublishedPost(editingHistoryId, textHtml);
-      toast.success("Публикация обновлена в Telegram");
+      if (publishMode === "rich") {
+        // Rich messages can't be edited in Telegram — delete old, send new
+        const { html, photos } = tiptapToRichHtml(
+          contentJson,
+          effectiveTitle
+        );
+        const filledPhotos = await Promise.all(
+          photos.map(async (p) => {
+            const file = fileRegistry.getFile(p.fileId);
+            if (!file) return null;
+            const isVideo = file.type.startsWith("video/");
+            const { base64: dataBase64, mimeType, fileName } = isVideo
+              ? { base64: await fileToBase64(file), mimeType: file.type, fileName: file.name }
+              : await normalizeImageToJpeg(file);
+            return { attachName: p.attachName, dataBase64, mimeType, fileName };
+          })
+        );
+        await republishRichPost(
+          editingHistoryId,
+          html,
+          filledPhotos.filter((p): p is NonNullable<typeof p> => p !== null),
+          contentJson ?? undefined,
+        );
+      } else {
+        const segs = segmentDocument(contentJson, effectiveTitle);
+        const textHtml = segs
+          .filter((s) => s.type === "text")
+          .map((s) => (s as { type: "text"; html: string }).html)
+          .join("\n\n");
+        await editPublishedPost(editingHistoryId, textHtml, contentJson ?? undefined);
+      }
+      bumpHistory();
+      toast.success(t("publish.updated"));
       setEditingHistoryId(null);
     } catch (e) {
-      toast.error("Ошибка обновления: " + String(e));
+      toast.error(t("publish.updateError") + ": " + String(e));
     } finally {
       setUpdating(false);
     }
@@ -334,7 +337,11 @@ export function PublishPanel({ draftId }: PublishPanelProps) {
       else res = await publishAllSegments();
       setResults(res);
       setStatus("done");
-      if (res.some((r) => r.success)) clearAttachments();
+      if (res.some((r) => r.success)) {
+        clearAttachments();
+        const successChannels = res.filter((r) => r.success).map((r) => r.channelTitle).join(", ");
+        toast.success(t("publish.published"), successChannels);
+      }
     } catch (e) {
       const msg = String(e);
       setError(msg);
@@ -355,7 +362,7 @@ export function PublishPanel({ draftId }: PublishPanelProps) {
       .trim();
     try {
       await schedulePost({
-        botId: activeBot!,
+        botId: bots[0]?.id ?? null,
         channelIds: selectedChannelIds,
         contentHtml: textHtml || "—",
         media: [],
@@ -381,33 +388,23 @@ export function PublishPanel({ draftId }: PublishPanelProps) {
           {t("publish.section")}
         </p>
 
-        {/* Bot selector */}
-        <div>
-          <p className="text-2xs mb-1" style={{ color: "var(--text-muted)" }}>{t("publish.bot")}</p>
-          <div className="relative">
-            <select
-              className="appearance-none w-full h-7 rounded-md border pl-3 pr-7 text-xs focus:outline-none cursor-pointer"
-              style={{ backgroundColor: "var(--bg-input)", borderColor: "var(--border-default)", color: activeBot ? "var(--text-primary)" : "var(--text-muted)" }}
-              value={activeBot ?? ""}
-              onChange={(e) => { setActiveBot(e.target.value || null); setChannels([]); }}
-            >
-              <option value="">{t("publish.selectBot")}</option>
-              {bots.map((b) => <option key={b.id} value={b.id}>@{b.username}</option>)}
-            </select>
-            <ChevronDown size={12} className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: "var(--text-muted)" }} />
-          </div>
-        </div>
+        {/* No bots warning */}
+        {!hasBots && (
+          <p className="text-2xs italic px-1" style={{ color: "var(--text-muted)" }}>
+            {t("publish.addBotHint")}
+          </p>
+        )}
 
         {/* Channel list */}
         <div>
           <p className="text-2xs mb-1.5" style={{ color: "var(--text-muted)" }}>{t("publish.channels")}</p>
-          {botChannels.length === 0 ? (
+          {channels.length === 0 ? (
             <p className="text-2xs italic" style={{ color: "var(--text-muted)" }}>
-              {activeBot ? t("publish.noChannels") : t("publish.selectBotFirst")}
+              {t("publish.noChannels")}
             </p>
           ) : (
             <div className="flex flex-col gap-1.5">
-              {botChannels.map((ch) => {
+              {channels.map((ch) => {
                 const checked = selectedChannelIds.includes(ch.id);
                 return (
                   <label
@@ -445,41 +442,51 @@ export function PublishPanel({ draftId }: PublishPanelProps) {
           )}
         </div>
 
-        {/* Publish mode selector */}
-        <div>
-          <p className="text-2xs mb-1.5" style={{ color: "var(--text-muted)" }}>{t("publish.format")}</p>
-          <div className="flex flex-col gap-1">
-            {([
-              { id: "normal",    icon: <Send size={11}/>,     label: t("publish.normal"),     hint: normalHint },
-              { id: "rich",      icon: <Layers size={11}/>,   label: t("publish.rich"),        hint: t("publish.rich.hint") },
-              { id: "telegraph", icon: <FileText size={11}/>, label: t("publish.telegraph"),   hint: t("publish.telegraph.hint") },
-            ] as const).map(({ id, icon, label, hint }) => (
-              <label
-                key={id}
-                className="flex items-center gap-2 cursor-pointer rounded-md px-2 py-1.5 transition-colors"
-                style={{
-                  backgroundColor: publishMode === id ? "rgba(42,171,238,0.08)" : "transparent",
-                  border: `1px solid ${publishMode === id ? "rgba(42,171,238,0.3)" : "var(--border-default)"}`,
-                  borderRadius: 6,
-                }}
-              >
-                <input
-                  type="radio"
-                  name="publishMode"
-                  value={id}
-                  checked={publishMode === id}
-                  onChange={() => setPublishMode(id)}
-                  className="accent-blue-500 w-3 h-3 flex-shrink-0"
-                />
-                <span style={{ color: publishMode === id ? "var(--accent)" : "var(--text-muted)", flexShrink: 0 }}>{icon}</span>
-                <div className="flex flex-col min-w-0">
-                  <span className="text-xs font-medium leading-tight" style={{ color: publishMode === id ? "var(--accent)" : "var(--text-primary)" }}>{label}</span>
-                  <span className="text-2xs leading-tight" style={{ color: "var(--text-muted)" }}>{hint}</span>
-                </div>
-              </label>
-            ))}
+        {/* Publish mode selector — hidden when editing a published post (mode is locked) */}
+        {!editingHistoryId ? (
+          <div>
+            <p className="text-2xs mb-1.5" style={{ color: "var(--text-muted)" }}>{t("publish.format")}</p>
+            <div className="flex flex-col gap-1">
+              {([
+                { id: "normal",    icon: <Send size={11}/>,     label: t("publish.normal"),     hint: normalHint },
+                { id: "rich",      icon: <Layers size={11}/>,   label: t("publish.rich"),        hint: t("publish.rich.hint") },
+                { id: "telegraph", icon: <FileText size={11}/>, label: t("publish.telegraph"),   hint: t("publish.telegraph.hint") },
+              ] as const).map(({ id, icon, label, hint }) => (
+                <label
+                  key={id}
+                  className="flex items-center gap-2 cursor-pointer rounded-md px-2 py-1.5 transition-colors"
+                  style={{
+                    backgroundColor: publishMode === id ? "rgba(42,171,238,0.08)" : "transparent",
+                    border: `1px solid ${publishMode === id ? "rgba(42,171,238,0.3)" : "var(--border-default)"}`,
+                    borderRadius: 6,
+                  }}
+                >
+                  <input
+                    type="radio"
+                    name="publishMode"
+                    value={id}
+                    checked={publishMode === id}
+                    onChange={() => setPublishMode(id)}
+                    className="accent-blue-500 w-3 h-3 flex-shrink-0"
+                  />
+                  <span style={{ color: publishMode === id ? "var(--accent)" : "var(--text-muted)", flexShrink: 0 }}>{icon}</span>
+                  <div className="flex flex-col min-w-0">
+                    <span className="text-xs font-medium leading-tight" style={{ color: publishMode === id ? "var(--accent)" : "var(--text-primary)" }}>{label}</span>
+                    <span className="text-2xs leading-tight" style={{ color: "var(--text-muted)" }}>{hint}</span>
+                  </div>
+                </label>
+              ))}
+            </div>
           </div>
-        </div>
+        ) : (
+          <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-md" style={{ background: "rgba(42,171,238,0.06)", border: "1px solid rgba(42,171,238,0.2)" }}>
+            {publishMode === "rich" ? <Layers size={11} style={{ color: "var(--accent)" }}/> : <Send size={11} style={{ color: "var(--accent)" }}/>}
+            <span className="text-xs" style={{ color: "var(--accent)" }}>
+              {publishMode === "rich" ? t("publish.rich") : publishMode === "telegraph" ? t("publish.telegraph") : t("publish.normal")}
+            </span>
+            <span className="text-2xs" style={{ color: "var(--text-muted)" }}>— {t("publish.modeLocked")}</span>
+          </div>
+        )}
 
         {/* Telegraph URL after publish */}
         {telegraphUrl && (
@@ -504,12 +511,17 @@ export function PublishPanel({ draftId }: PublishPanelProps) {
               </div>
             )}
             {results.map((r, i) => (
-              <div key={i} className="flex items-center gap-1.5 text-2xs px-2 py-0.5" style={{ color: r.success ? "var(--success)" : "var(--danger)" }}>
-                {r.success ? <CheckCircle2 size={11} /> : <AlertCircle size={11} />}
-                <span className="truncate">{r.channelTitle}</span>
+              <div key={i} className="flex flex-col gap-0.5 px-2 py-0.5">
+                <div className="flex items-center gap-1.5 text-2xs" style={{ color: r.success ? "var(--success)" : "var(--danger)" }}>
+                  {r.success ? <CheckCircle2 size={11} /> : <AlertCircle size={11} />}
+                  <span className="truncate">{r.channelTitle}</span>
+                  {r.success && r.botUsername && (
+                    <span className="ml-auto flex-shrink-0 text-2xs" style={{ color: "var(--text-muted)" }}>@{r.botUsername}</span>
+                  )}
+                </div>
                 {!r.success && r.errorMessage && (
-                  <span className="truncate ml-auto" style={{ color: "var(--text-muted)" }} title={r.errorMessage ?? ""}>
-                    {(r.errorMessage ?? "").slice(0, 30)}
+                  <span className="text-2xs pl-4 truncate" style={{ color: "var(--text-muted)" }} title={r.errorMessage ?? ""}>
+                    {(r.errorMessage ?? "").slice(0, 60)}
                   </span>
                 )}
               </div>
@@ -551,13 +563,13 @@ export function PublishPanel({ draftId }: PublishPanelProps) {
           }}>
             <Pencil size={12} style={{ color: "var(--accent)", flexShrink: 0 }} />
             <div style={{ flex: 1, minWidth: 0 }}>
-              <p style={{ fontSize: 11, fontWeight: 600, color: "var(--accent)" }}>Режим редактирования</p>
-              <p style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 1 }}>Изменения отправятся в Telegram</p>
+              <p style={{ fontSize: 11, fontWeight: 600, color: "var(--accent)" }}>{t("publish.editMode")}</p>
+              <p style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 1 }}>{t("publish.editModeHint")}</p>
             </div>
             <button
               onClick={() => setEditingHistoryId(null)}
               style={{ background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer", padding: 2 }}
-              title="Выйти из режима редактирования"
+              title={t("publish.exitEditMode")}
             >
               ✕
             </button>
@@ -573,7 +585,7 @@ export function PublishPanel({ draftId }: PublishPanelProps) {
               leftIcon={updating ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
               onClick={handleUpdate}
             >
-              {updating ? "Обновляется…" : "Обновить в Telegram"}
+              {updating ? t("publish.updating") : t("publish.updateTelegram")}
             </Button>
           ) : (
             <>

@@ -36,6 +36,9 @@ impl TelegramClient {
         // Never log the token or full base_url.
         let base_url = format!("https://api.telegram.org/bot{}", token);
         let http = Client::builder()
+            // Если до Telegram не достучаться (блокировка/нет прокси) — падаем
+            // за 15с с понятной ошибкой, а не висим весь request-таймаут.
+            .connect_timeout(std::time::Duration::from_secs(15))
             .timeout(std::time::Duration::from_secs(90))
             .build()
             .unwrap_or_else(|_| Client::new());

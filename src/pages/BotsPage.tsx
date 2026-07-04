@@ -5,11 +5,10 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { useChannelsStore } from "@/store/channelsStore";
 import { validateBotToken, addBot, deleteBot, getBots } from "@/lib/tauriApi";
 import { toast } from "@/store/uiStore";
-import { t } from "@/lib/i18n";
+import { t, ti } from "@/lib/i18n";
 import { useSettingsStore } from "@/store/settingsStore";
 import type { Bot as BotType } from "@/types/bot";
 
-const MAX_BOTS = 10;
 
 // ─── Add-bot modal ────────────────────────────────────────────────────────────
 
@@ -52,7 +51,7 @@ function AddBotModal({ onClose, onAdded }: AddBotModalProps) {
     try {
       const bot = await addBot(token.trim());
       onAdded(bot);
-      toast.success(`Бот @${bot.username} добавлен`);
+      toast.success(ti("bots.added", { username: bot.username }));
       onClose();
     } catch (e) {
       setError(String(e));
@@ -79,16 +78,16 @@ function AddBotModal({ onClose, onAdded }: AddBotModalProps) {
         }}
       >
         <h2 style={{ fontSize: 16, fontWeight: 700, color: "var(--text-primary)", marginBottom: 6 }}>
-          Добавить бота
+          {t("bots.addTitle")}
         </h2>
         <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 18, lineHeight: 1.5 }}>
-          Создайте бота через <span style={{ color: "var(--accent)" }}>@BotFather</span> и вставьте токен.
+          {t("bots.createHintPre")} <span style={{ color: "var(--accent)" }}>@BotFather</span> {t("bots.createHintPost")}
         </p>
 
         {/* Token input */}
         <div style={{ marginBottom: 12 }}>
           <label style={{ fontSize: 12, color: "var(--text-secondary)", display: "block", marginBottom: 6 }}>
-            Токен бота
+            {t("bots.tokenLabel")}
           </label>
           <input
             ref={inputRef}
@@ -146,7 +145,7 @@ function AddBotModal({ onClose, onAdded }: AddBotModalProps) {
               color: "var(--text-secondary)", cursor: "pointer",
             }}
           >
-            Отмена
+            {t("common.cancel")}
           </button>
 
           {stage !== "preview" ? (
@@ -163,7 +162,7 @@ function AddBotModal({ onClose, onAdded }: AddBotModalProps) {
               }}
             >
               {stage === "validating" && <Loader size={13} style={{ animation: "spin 1s linear infinite" }} />}
-              Проверить
+              {t("bots.verify")}
             </button>
           ) : (
             <button
@@ -176,7 +175,7 @@ function AddBotModal({ onClose, onAdded }: AddBotModalProps) {
               }}
             >
               {adding && <Loader size={13} style={{ animation: "spin 1s linear infinite" }} />}
-              Добавить
+              {t("common.add")}
             </button>
           )}
         </div>
@@ -195,12 +194,12 @@ function BotCard({ bot, onDelete }: { bot: BotType; onDelete: () => void }) {
   useSettingsStore((s) => s.language);
 
   async function handleDelete() {
-    if (!confirm(`Удалить бота @${bot.username}? Все связанные каналы тоже будут удалены.`)) return;
+    if (!confirm(ti("bots.confirmDelete", { username: bot.username }))) return;
     setDeleting(true);
     try {
       await deleteBot(bot.id);
       onDelete();
-      toast.success(`Бот @${bot.username} удалён`);
+      toast.success(ti("bots.deletedMsg", { username: bot.username }));
     } catch (e) {
       toast.error(String(e));
       setDeleting(false);
@@ -289,7 +288,6 @@ function BotCard({ bot, onDelete }: { bot: BotType; onDelete: () => void }) {
 export function BotsPage() {
   const { bots, setBots, addBot: storeAddBot, removeBot } = useChannelsStore();
   const [showAdd, setShowAdd] = useState(false);
-  const atLimit = bots.length >= MAX_BOTS;
   useSettingsStore((s) => s.language);
 
   // Sync from DB on mount
@@ -301,44 +299,21 @@ export function BotsPage() {
     <>
       <TopBar
         actions={
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
-              {bots.length}/{MAX_BOTS}
-            </span>
-            <button
-              onClick={() => !atLimit && setShowAdd(true)}
-              disabled={atLimit}
-              style={{
-                display: "flex", alignItems: "center", gap: 6,
-                padding: "7px 14px", borderRadius: 8, fontSize: 13, fontWeight: 600,
-                backgroundColor: atLimit ? "var(--bg-elevated)" : "var(--accent)",
-                border: atLimit ? "1px solid var(--border-default)" : "none",
-                color: atLimit ? "var(--text-muted)" : "#fff",
-                cursor: atLimit ? "default" : "pointer",
-              }}
-              title={atLimit ? `Достигнут лимит ${MAX_BOTS} ботов` : "Добавить бота"}
-            >
-              <Plus size={14} />
-              {t("bots.add")}
-            </button>
-          </div>
+          <button
+            onClick={() => setShowAdd(true)}
+            style={{
+              display: "flex", alignItems: "center", gap: 6,
+              padding: "7px 14px", borderRadius: 8, fontSize: 13, fontWeight: 600,
+              backgroundColor: "var(--accent)", border: "none", color: "#fff", cursor: "pointer",
+            }}
+          >
+            <Plus size={14} />
+            {t("bots.add")}
+          </button>
         }
       />
 
       <div className="page-content max-w-3xl">
-        {atLimit && (
-          <div style={{
-            display: "flex", alignItems: "center", gap: 8, marginBottom: 16,
-            padding: "10px 14px", borderRadius: 10,
-            backgroundColor: "rgba(243,156,18,0.10)", border: "1px solid rgba(243,156,18,0.25)",
-          }}>
-            <AlertCircle size={15} style={{ color: "var(--warning)", flexShrink: 0 }} />
-            <span style={{ fontSize: 13, color: "var(--warning)" }}>
-              Достигнут лимит: максимум {MAX_BOTS} ботов
-            </span>
-          </div>
-        )}
-
         {bots.length === 0 ? (
           <EmptyState icon={Bot} title={t("bots.empty")} description={t("bots.emptyDesc")} />
         ) : (

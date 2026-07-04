@@ -4,7 +4,7 @@ import { History, Clock, Trash2, CheckCircle2, XCircle, RefreshCw, Pencil, Loade
 import { TopBar } from "@/components/layout/TopBar";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Spinner } from "@/components/ui/Spinner";
-import { toast } from "@/store/uiStore";
+import { toast, useUiStore } from "@/store/uiStore";
 import { invoke } from "@tauri-apps/api/core";
 import { t, ti } from "@/lib/i18n";
 import { useSettingsStore } from "@/store/settingsStore";
@@ -37,6 +37,7 @@ export function HistoryPage() {
   const [items, setItems]   = useState<HistoryItem[]>([]);
   const [loading, setLoading] = useState(true);
   useSettingsStore((s) => s.language);
+  const historyVersion = useUiStore((s) => s.historyVersion);
 
   const load = () => {
     setLoading(true);
@@ -46,7 +47,7 @@ export function HistoryPage() {
       .finally(() => setLoading(false));
   };
 
-  useEffect(load, []);
+  useEffect(load, [historyVersion]);
 
   async function handleScheduleDelete(item: HistoryItem, hours: number | null) {
     const deleteAt = hours
@@ -137,7 +138,7 @@ function HistoryCard({
         state: { _histId: item.id },
       });
     } catch (e) {
-      toast.error("Не удалось загрузить пост: " + String(e));
+      toast.error(t("editor.postLoadError"), String(e));
     } finally {
       setLoadingEdit(false);
     }

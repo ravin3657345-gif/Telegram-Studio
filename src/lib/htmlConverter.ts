@@ -87,6 +87,7 @@ function renderNode(node: TiptapNode): string {
     case "blockImage":
     case "blockVideo":
     case "blockPoll":
+    case "messageSplit":
       return "";
 
     default:
@@ -255,6 +256,196 @@ export function segmentDocument(json: string, postTitle = ""): ContentSegment[] 
   }
 
   return segments;
+}
+
+// ─── Split TipTap JSON at messageSplit nodes ─────────────────────────────────
+
+/** Returns one JSON string per message (split at messageSplit nodes). */
+export function splitJsonByMessageSplits(json: string): string[] {
+  let doc: TiptapNode;
+  try { doc = JSON.parse(json) as TiptapNode; }
+  catch { return [json]; }
+
+  const groups: TiptapNode[][] = [[]];
+  for (const node of doc.content ?? []) {
+    if (node.type === "messageSplit") {
+      groups.push([]);
+    } else {
+      groups[groups.length - 1].push(node);
+    }
+  }
+
+  return groups
+    .filter((g) => g.length > 0)
+    .map((nodes) => JSON.stringify({ type: "doc", content: nodes }));
+}
+
+// ─── Split into messages at messageSplit nodes ───────────────────────────────
+
+/**
+ * Splits the document at messageSplit nodes and returns an array of segment
+ * groups — one group per Telegram message. Each group is the same
+ * ContentSegment[] you would get from segmentDocument for that chunk of content.
+ */
+export function splitIntoMessages(json: string, postTitle = ""): ContentSegment[][] {
+  let doc: TiptapNode;
+  try { doc = JSON.parse(json) as TiptapNode; }
+  catch { return [[]]; }
+
+  // Partition top-level nodes into groups separated by messageSplit nodes
+  const groups: TiptapNode[][] = [[]];
+  for (const node of doc.content ?? []) {
+    if (node.type === "messageSplit") {
+      groups.push([]);
+    } else {
+      groups[groups.length - 1].push(node);
+    }
+  }
+
+  // Convert each group into segments using the same logic as segmentDocument
+  const messages: ContentSegment[][] = groups
+    .filter((g) => g.length > 0)
+    .map((nodes) => buildSegments(nodes));
+
+  if (messages.length === 0) return [[]];
+
+  // Prepend title to the first message (same logic as segmentDocument)
+  if (postTitle.trim()) {
+    const esc = postTitle.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const titleHtml = `<b data-post-title="1">${esc}</b>`;
+    const firstText = messages[0].find((s): s is TextSegment => s.type === "text");
+    if (firstText) {
+      firstText.html = titleHtml + "\n\n" + firstText.html;
+    } else {
+      messages[0].unshift({ type: "text", html: titleHtml });
+    }
+  }
+
+  return messages;
+}
+
+function buildSegments(nodes: TiptapNode[]): ContentSegment[] {
+  const segments: ContentSegment[] = [];
+  let textNodes: TiptapNode[] = [];
+
+  function flushText() {
+    if (textNodes.length === 0) return;
+    const partial = { type: "doc" as const, content: textNodes };
+    const html = tiptapToTelegramHtml(JSON.stringify(partial));
+    if (html.trim()) segments.push({ type: "text", html });
+    textNodes = [];
+  }
+
+  for (const node of nodes) {
+    if (node.type === "blockImage") {
+      flushText();
+      segments.push({
+        type: "image",
+        fileId:   (node.attrs?.fileId   as string) ?? "",
+        fileName: (node.attrs?.fileName as string) ?? "image.jpg",
+        mimeType: (node.attrs?.mimeType as string) ?? "image/jpeg",
+        src:      (node.attrs?.src      as string) ?? "",
+      });
+    } else if (node.type === "blockVideo") {
+      flushText();
+      segments.push({
+        type: "video",
+        fileId:   (node.attrs?.fileId   as string) ?? "",
+        fileName: (node.attrs?.fileName as string) ?? "video.mp4",
+        mimeType: (node.attrs?.mimeType as string) ?? "video/mp4",
+        src:      (node.attrs?.src      as string) ?? "",
+      });
+    } else if (node.type === "blockDocument") {
+      flushText();
+      segments.push({
+        type:     "file",
+        fileId:   (node.attrs?.fileId   as string) ?? "",
+        fileName: (node.attrs?.fileName as string) ?? "document",
+        mimeType: (node.attrs?.mimeType as string) ?? "application/octet-stream",
+        fileSize: (node.attrs?.fileSize as number) ?? 0,
+      });
+    } else if (node.type === "blockPoll") {
+      flushText();
+      const opts = node.attrs?.options;
+      segments.push({
+        type:                  "poll",
+        question:              (node.attrs?.question              as string)  ?? "",
+        options:               (Array.isArray(opts) ? opts : []) as string[],
+        isAnonymous:           (node.attrs?.isAnonymous           as boolean) ?? true,
+        allowsMultipleAnswers: (node.attrs?.allowsMultipleAnswers as boolean) ?? false,
+      });
+    } else if (node.type !== "messageSplit") {
+      textNodes.push(node);
+    }
+  }
+  flushText();
+  return segments;
+}
+
+// ─── Gap-based split (new overlay architecture) ──────────────────────────────
+
+/**
+ * Splits a TipTap doc JSON at gap indices and returns one JSON string per message.
+ * gap N = divider before top-level block N (0-indexed).
+ */
+export function splitJsonAtGaps(json: string, gaps: number[]): string[] {
+  let doc: TiptapNode;
+  try { doc = JSON.parse(json) as TiptapNode; }
+  catch { return [json]; }
+
+  const nodes = doc.content ?? [];
+  const sorted = [...new Set(gaps)].sort((a, b) => a - b).filter((g) => g > 0 && g < nodes.length);
+  if (sorted.length === 0) return [json];
+
+  const chunks: string[] = [];
+  let start = 0;
+  for (const g of sorted) {
+    chunks.push(JSON.stringify({ type: "doc", content: nodes.slice(start, g) }));
+    start = g;
+  }
+  chunks.push(JSON.stringify({ type: "doc", content: nodes.slice(start) }));
+
+  return chunks.filter((c) => {
+    try { return ((JSON.parse(c) as TiptapNode).content?.length ?? 0) > 0; }
+    catch { return false; }
+  });
+}
+
+/**
+ * Splits the document at gap indices and returns one ContentSegment[] per message.
+ * Replaces splitIntoMessages for the new overlay architecture.
+ */
+export function splitIntoMessagesAtGaps(
+  json: string,
+  gaps: number[],
+  postTitle = "",
+): ContentSegment[][] {
+  const chunks = splitJsonAtGaps(json, gaps);
+
+  const messages: ContentSegment[][] =
+    chunks.length > 0
+      ? chunks.map((c) => {
+          let inner: TiptapNode;
+          try { inner = JSON.parse(c) as TiptapNode; }
+          catch { return []; }
+          return buildSegments(inner.content ?? []);
+        })
+      : [[]];
+
+  if (messages.length === 0) return [[]];
+
+  if (postTitle.trim()) {
+    const esc      = postTitle.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const titleHtml = `<b data-post-title="1">${esc}</b>`;
+    const firstText = messages[0].find((s): s is TextSegment => s.type === "text");
+    if (firstText) {
+      firstText.html = titleHtml + "\n\n" + firstText.html;
+    } else {
+      messages[0].unshift({ type: "text", html: titleHtml });
+    }
+  }
+
+  return messages;
 }
 
 // ─── Plain text ───────────────────────────────────────────────────────────────

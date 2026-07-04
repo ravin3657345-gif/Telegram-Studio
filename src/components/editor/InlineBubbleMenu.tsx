@@ -30,7 +30,15 @@ export function InlineBubbleMenu({ editor, onLinkClick }: InlineBubbleMenuProps)
           if (content) content.style.cssText = "padding:0;";
         },
       }}
-      shouldShow={({ from, to }) => from !== to}
+      shouldShow={({ from, to, editor: ed }) => {
+        if (from === to) return false;
+        // Не показывать меню если выделен блок изображения или видео
+        let hasMedia = false;
+        ed.state.doc.nodesBetween(from, to, (node) => {
+          if (node.type.name === "blockImage" || node.type.name === "blockVideo") hasMedia = true;
+        });
+        return !hasMedia;
+      }}
     >
       <div
         className="flex items-center gap-0.5 rounded-lg px-1 py-0.5"

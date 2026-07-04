@@ -1,7 +1,11 @@
 import { Node, mergeAttributes } from "@tiptap/core";
 import { ReactNodeViewRenderer, NodeViewWrapper } from "@tiptap/react";
 import { useState, useRef } from "react";
+import { t } from "@/lib/i18n";
 import { ChevronDown, X } from "lucide-react";
+import DOMPurify from "dompurify";
+
+const PURIFY_CONFIG = { ALLOWED_TAGS: ["b", "i", "u", "s", "br", "p", "span", "strong", "em"] };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function DetailsView({ node, updateAttributes, deleteNode, selected }: any) {
@@ -52,7 +56,7 @@ function DetailsView({ node, updateAttributes, deleteNode, selected }: any) {
           <input
             value={summary}
             onChange={(e) => updateAttributes({ summary: e.target.value })}
-            placeholder="Заголовок спойлера..."
+            placeholder={t("block.spoilerTitle")}
             onClick={(e) => e.stopPropagation()}
             onKeyDown={(e) => {
               if (e.key === "Enter") { e.preventDefault(); if (!open) setOpen(true); setTimeout(() => contentRef.current?.focus(), 50); }
@@ -63,7 +67,7 @@ function DetailsView({ node, updateAttributes, deleteNode, selected }: any) {
           <ChevronDown size={15} style={{ color: "var(--text-muted)", transform: open ? "rotate(180deg)" : "none", transition: "transform 0.2s", flexShrink: 0, pointerEvents: "none" }} />
           <button
             onClick={(e) => { e.stopPropagation(); deleteNode(); }}
-            title="Удалить блок"
+            title={t("block.delete")}
             style={{ flexShrink: 0, display: "flex", alignItems: "center", background: "none", border: "none", cursor: "pointer", padding: 2, borderRadius: 4, color: "var(--text-muted)", transition: "color 0.15s" }}
             onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.color = "#e05252")}
             onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.color = "var(--text-muted)")}
@@ -80,13 +84,13 @@ function DetailsView({ node, updateAttributes, deleteNode, selected }: any) {
               contentEditable
               suppressContentEditableWarning
               // eslint-disable-next-line react/no-danger
-              dangerouslySetInnerHTML={{ __html: content }}
+              dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(content, PURIFY_CONFIG) }}
               onInput={() => { if (contentRef.current) updateAttributes({ content: contentRef.current.innerHTML }); }}
               onKeyDown={handleKeyDown}
               style={{ outline: "none", color: "var(--text-secondary)", fontSize: 13, lineHeight: "1.6", minHeight: "2em", fontFamily: "inherit" }}
             />
             <div style={{ marginTop: 4, fontSize: 10, color: "var(--text-muted)", opacity: 0.6 }}>
-              Ctrl+B жирный · Ctrl+I курсив · Ctrl+U подчёркивание
+              {t("block.editingHint")}
             </div>
           </div>
         )}

@@ -284,22 +284,16 @@ export function tiptapToRichHtml(json: string, postTitle = ""): { html: string; 
       });
       parts.push(`<video src="attach://${attachName}"/>`);
     } else if (node.type === "bulletList") {
-      const items = (node.content ?? []).map((li) => {
-        const text = extractRichText(li);
-        return `• ${text}`;
-      }).join("\n");
-      if (items.trim()) parts.push(items);
+      const lis = (node.content ?? []).map((li) => `<li>${extractRichText(li)}</li>`).join("");
+      if (lis) parts.push(`<ul>${lis}</ul>`);
     } else if (node.type === "orderedList") {
-      const items = (node.content ?? []).map((li, i) => {
-        const text = extractRichText(li);
-        return `${i + 1}. ${text}`;
-      }).join("\n");
-      if (items.trim()) parts.push(items);
+      const lis = (node.content ?? []).map((li) => `<li>${extractRichText(li)}</li>`).join("");
+      if (lis) parts.push(`<ol>${lis}</ol>`);
     } else {
       switch (node.type) {
         case "paragraph": {
           const text = extractRichText(node);
-          if (text.trim()) parts.push(text);
+          if (text.trim()) parts.push(`<p>${text}</p>`);
           break;
         }
         case "heading": {
@@ -309,7 +303,7 @@ export function tiptapToRichHtml(json: string, postTitle = ""): { html: string; 
           break;
         }
         case "blockquote": {
-          const inner = (node.content ?? []).map(extractRichText).join("\n");
+          const inner = (node.content ?? []).map(extractRichText).join("<br>");
           if (inner.trim()) {
             const tag = node.attrs?.expandable ? "blockquote expandable" : "blockquote";
             parts.push(`<${tag}>${inner}</${tag.split(" ")[0]}>`);
@@ -324,14 +318,13 @@ export function tiptapToRichHtml(json: string, postTitle = ""): { html: string; 
         }
         default: {
           const text = extractRichText(node);
-          if (text.trim()) parts.push(text);
+          if (text.trim()) parts.push(`<p>${text}</p>`);
         }
       }
     }
   }
 
-  // Blocks separated by double newline (paragraph break); nlToBr in preview converts \n → <br>
-  return { html: parts.join("\n\n"), photos };
+  return { html: parts.join(""), photos };
 }
 
 // Helper: extract text from a list/table cell with inline marks as HTML
@@ -366,7 +359,7 @@ function extractRichText(node: TiptapNode): string {
 
 function escapeHtml(str: string): string {
   return str
-    .replace(/&/g, "&")
-    .replace(/</g, "<")
-    .replace(/>/g, ">");
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
 }

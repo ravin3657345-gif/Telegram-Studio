@@ -1,5 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { Editor } from "@tiptap/react";
+import Picker from "@emoji-mart/react";
+import data from "@emoji-mart/data";
+import { GripHorizontal, X } from "lucide-react";
 
 interface EmojiPickerProps {
   editor: Editor;
@@ -8,215 +11,149 @@ interface EmojiPickerProps {
   savedPos?: { from: number; to: number } | null;
 }
 
-const EMOJI_CATEGORIES = [
-  {
-    name: "Смайлы",
-    emojis: ["😀","😃","😄","😁","😅","😂","🤣","😊","😇","🙂","😉","😌","😍","🥰","😘","😗","😙","😚","😋","😛","😜","🤪","😝","🤑","🤗","🤭","🤫","🤔","🤐","🤨","😐","😑","😶","😏","😒","🙄","😬","🤥","😌","😔","😪","🤤","😴","😷","🤒","🤕","🤢","🤮","🥴","😵","🤯","🥳","🥺","😢","😭","😤","😠","😡","🤬","😈","👿","💀","☠️","💩","🤡","👹","👺","👻","👽","👾","🤖","😺","😸","😹","😻","😼","😽","🙀","😿","😾"],
-  },
-  {
-    name: "Жесты",
-    emojis: ["👋","🤚","🖐️","✋","🖖","👌","🤌","🤏","✌️","🤞","🫰","🤟","🤘","🤙","👈","👉","👆","🖕","👇","☝️","👍","👎","✊","👊","🤛","🤜","👏","🙌","👐","🤲","🤝","🙏","✍️","💅","🤳","💪","🦵","🦶","👂","🦻","👃","🧠","🫀","🫁","🦷","🦴","👀","👁️","👅","👄"],
-  },
-  {
-    name: "Сердца",
-    emojis: ["❤️","🧡","💛","💚","💙","💜","🖤","🤍","🤎","💕","💞","💓","💗","💖","💘","💝","💟","❣️","💔","❤️‍🔥","❤️‍🩹","♥️","💌"],
-  },
-  {
-    name: "Природа",
-    emojis: ["🐶","🐱","🐭","🐹","🐰","🦊","🐻","🐼","🐨","🐯","🦁","🐮","🐷","🐸","🐵","🙈","🙉","🙊","🐒","🐔","🐧","🐦","🐤","🐣","🐥","🦆","🦅","🦉","🦇","🐺","🐗","🐴","🦄","🐝","🐛","🦋","🐌","🐞","🐜","🦟","🦗","🕷️","🦂","🐢","🐍","🦎","🦖","🦕","🐙","🦑","🦐","🦞","🦀","🐡","🐠","🐟","🐬","🐳","🐋","🦈","🐊","🐅","🐆","🦓","🦍","🦧","🐘","🦛","🦏","🐪","🐫","🦒","🦘","🦬","🐃","🐂","🐄","🐎","🐖","🐏","🐑","🦙","🐐","🦌","🐕","🐩","🦮","🐕‍🦺","🐈","🐈‍⬛","🪶","🐓","🦃","🦤","🦚","🦜","🦢","🦩","🕊️","🐇","🦝","🦨","🦡","🦫","🦦","🦥","🐁","🐀","🐿️","🦔","🐾","🐉","🐲","🌵","🎄","🌲","🌳","🌴","🌱","🌿","☘️","🍀","🎍","🪴","🎋","🍃","🍂","🍁","🪺","🪹","🍄","🐚","💐","🌸","💮","🪷","🌹","🥀","🌺","🌻","🌼","🌷","🌾","🌻"],
-  },
-  {
-    name: "Еда",
-    emojis: ["🍇","🍈","🍉","🍊","🍋","🍌","🍍","🥭","🍎","🍏","🍐","🍑","🍒","🍓","🫐","🥝","🍅","🫒","🥥","🥑","🍆","🥔","🥕","🌽","🌶️","🫑","🥒","🥬","🥦","🧄","🧅","🍄","🥜","🫘","🌰","🍞","🥐","🥖","🫓","🥨","🧀","🥚","🍳","🧈","🥞","🧇","🥓","🥩","🍗","🍖","🦴","🌭","🍔","🍟","🍕","🫓","🥪","🥙","🧆","🌮","🌯","🫔","🥗","🥘","🫕","🥫","🍝","🍜","🍲","🍛","🍣","🍱","🥟","🦪","🍤","🍙","🍚","🍘","🍥","🥠","🥮","🍢","🍡","🍧","🍨","🍩","🍪","🎂","🍰","🧁","🥧","🍫","🍬","🍭","🍮","🍯","🍼","🥛","☕","🫖","🍵","🍶","🍾","🍷","🍸","🍹","🍺","🍻","🥂","🥃","🫗","🧊"],
-  },
-  {
-    name: "Предметы",
-    emojis: ["⌚️","📱","💻","⌨️","🖥️","🖨️","🖱️","🖲️","🕹️","🗜️","💽","💾","💿","📀","📼","📷","📸","📹","🎥","📽️","🎞️","📞","☎️","📟","📠","📺","📻","🎙️","🎚️","🎛️","🧭","⏱️","⏲️","⏰","🕰️","⌛️","📡","🔋","🪫","🔌","💡","🔦","🕯️","🪔","🧯","🗑️","🛢️","💸","💵","💴","💶","💷","🪙","💰","💳","💎","⚖️","🧰","🪛","🔧","🔨","⚒️","🛠️","⛏️","🪚","🔩","⚙️","🪤","🧱","⛓️","🧲","🔫","💣","🧨","🪓","🔪","🗡️","⚔️","🛡️","🚬","⚰️","🪦","⚱️","🏺","🔮","📿","🧿","🪬","💈","⚗️","🔭","🔬","🕳️","💊","💉","🩸","🩹","🩺","🚽","🪠","🧹","🪣","🧴","🪥","🪒","🧽","🪣","🧼","🫧","🪞","🪟","🗝️","🔑","🔐","🔒","🔓"],
-  },
-];
+const PICKER_W = 352;
+const PICKER_H = 400;
 
 export function EmojiPicker({ editor, onClose, anchorRect, savedPos }: EmojiPickerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const posRef = useRef(savedPos ?? null);
-  const [activeCategory, setActiveCategory] = useState(0);
-  const [search, setSearch] = useState("");
 
-  // Позиционирование пикера
-  const style: React.CSSProperties = { position: "fixed", zIndex: 60 };
-  if (anchorRect) {
-    const pickerHeight = 420;
-    const pickerWidth = 320;
-    style.top = Math.min(anchorRect.bottom + 8, window.innerHeight - pickerHeight - 8);
-    style.left = Math.min(anchorRect.left, window.innerWidth - pickerWidth - 8);
-    if (style.top < 0) style.top = 8;
-    if (style.left < 0) style.left = 8;
-  } else {
-    style.top = "50%";
-    style.left = "50%";
-    style.transform = "translate(-50%, -50%)";
+  function calcInitial() {
+    if (!anchorRect) {
+      return {
+        x: Math.max(8, (window.innerWidth  - PICKER_W) / 2),
+        y: Math.max(8, (window.innerHeight - PICKER_H) / 2),
+      };
+    }
+    let x = anchorRect.left;
+    let y = anchorRect.bottom + 8;
+    x = Math.min(x, window.innerWidth  - PICKER_W - 8);
+    y = Math.min(y, window.innerHeight - PICKER_H - 8);
+    x = Math.max(8, x);
+    y = Math.max(8, y);
+    return { x, y };
   }
 
-  // Закрытие по клику вне пикера
+  const [pos, setPos] = useState(calcInitial);
+  const dragRef = useRef<{ startX: number; startY: number; origX: number; origY: number } | null>(null);
+
+  // After first render, check actual rendered size and clamp to viewport
+  useLayoutEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    let { x, y } = pos;
+    if (rect.right  > window.innerWidth  - 8) x = window.innerWidth  - rect.width  - 8;
+    if (rect.bottom > window.innerHeight - 8) y = window.innerHeight - rect.height - 8;
+    x = Math.max(8, x);
+    y = Math.max(8, y);
+    if (x !== pos.x || y !== pos.y) setPos({ x, y });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function onHandleMouseDown(e: React.MouseEvent) {
+    e.preventDefault();
+    dragRef.current = { startX: e.clientX, startY: e.clientY, origX: pos.x, origY: pos.y };
+
+    function onMove(ev: MouseEvent) {
+      if (!dragRef.current) return;
+      const dx = ev.clientX - dragRef.current.startX;
+      const dy = ev.clientY - dragRef.current.startY;
+      const nx = Math.max(0, Math.min(window.innerWidth  - PICKER_W, dragRef.current.origX + dx));
+      const ny = Math.max(0, Math.min(window.innerHeight - PICKER_H - 40, dragRef.current.origY + dy));
+      setPos({ x: nx, y: ny });
+    }
+    function onUp() {
+      dragRef.current = null;
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    }
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  }
+
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       const path = e.composedPath();
-      if (!path.includes(containerRef.current!)) {
-        onClose();
-      }
+      if (containerRef.current && !path.includes(containerRef.current)) onClose();
     };
     const id = setTimeout(() => document.addEventListener("mousedown", handler), 0);
-    return () => {
-      clearTimeout(id);
-      document.removeEventListener("mousedown", handler);
-    };
+    return () => { clearTimeout(id); document.removeEventListener("mousedown", handler); };
   }, [onClose]);
 
-  // Закрытие по Escape
   useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
+    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [onClose]);
 
-  function insertEmoji(emoji: string) {
+  function handleEmojiSelect(emoji: { native: string }) {
     let chain = editor.chain().focus();
-    if (posRef.current) {
-      chain = chain.setTextSelection(posRef.current);
-    }
-    chain.insertContent(emoji).run();
+    if (posRef.current) chain = chain.setTextSelection(posRef.current);
+    chain.insertContent(emoji.native).run();
     const nextFrom = editor.state.selection.from;
     posRef.current = { from: nextFrom, to: nextFrom };
   }
 
-  // Фильтрация эмодзи по поиску
-  const allEmojis = EMOJI_CATEGORIES.flatMap((c) => c.emojis);
-  const filteredEmojis = search
-    ? allEmojis.filter((e) => e.includes(search))
-    : EMOJI_CATEGORIES[activeCategory]?.emojis ?? [];
-
-  const displayEmojis = search ? filteredEmojis : EMOJI_CATEGORIES[activeCategory]?.emojis ?? [];
+  const resolvedTheme = document.documentElement.getAttribute("data-theme") === "light" ? "light" : "dark";
 
   return (
     <div
       ref={containerRef}
       style={{
-        ...style,
-        width: 320,
-        background: "var(--bg-elevated, #1f1f23)",
-        border: "1px solid var(--border-default, #2f2f35)",
+        position: "fixed",
+        left: pos.x,
+        top: pos.y,
+        zIndex: 60,
+        // Explicit width — without it the flex column shrinks to the header and
+        // the emoji-mart web component (width:100%) collapses to a narrow strip.
+        width: PICKER_W,
         borderRadius: 12,
-        boxShadow: "0 8px 32px rgba(0,0,0,0.4)",
         overflow: "hidden",
-        fontSize: 13,
+        boxShadow: "0 8px 32px rgba(0,0,0,0.3)",
+        display: "flex",
+        flexDirection: "column",
       }}
     >
-      {/* Поиск */}
-      <div style={{ padding: "8px 8px 0" }}>
-        <input
-          type="text"
-          placeholder="Поиск эмодзи..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          autoFocus
-          style={{
-            width: "100%",
-            height: 32,
-            padding: "0 10px",
-            borderRadius: 8,
-            border: "1px solid var(--border-subtle, #3f3f45)",
-            background: "var(--bg-input, #2a2a30)",
-            color: "var(--text-primary, #e0e0e0)",
-            outline: "none",
-            fontSize: 13,
-            boxSizing: "border-box",
-          }}
-        />
-      </div>
-
-      {/* Категории (только если нет поиска) */}
-      {!search && (
-        <div
-          style={{
-            display: "flex",
-            gap: 2,
-            padding: "6px 8px",
-            overflowX: "auto",
-            scrollbarWidth: "none",
-            borderBottom: "1px solid var(--border-subtle, #2f2f35)",
-          }}
-        >
-          {EMOJI_CATEGORIES.map((cat, i) => (
-            <button
-              key={cat.name}
-              onClick={() => setActiveCategory(i)}
-              title={cat.name}
-              style={{
-                flexShrink: 0,
-                width: 36,
-                height: 36,
-                border: "none",
-                borderRadius: 8,
-                background: i === activeCategory ? "var(--bg-active, rgba(255,255,255,0.08))" : "transparent",
-                cursor: "pointer",
-                fontSize: 18,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                transition: "background 0.15s",
-              }}
-            >
-              {cat.emojis[0]}
-            </button>
-          ))}
-        </div>
-      )}
-
-      {/* Сетка эмодзи */}
+      {/* Drag handle */}
       <div
+        onMouseDown={onHandleMouseDown}
         style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(8, 1fr)",
-          gap: 1,
-          padding: 6,
-          maxHeight: 280,
-          overflowY: "auto",
-          overflowX: "hidden",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          padding: "4px 8px 4px 10px",
+          background: resolvedTheme === "light" ? "#f0f0f0" : "#2a2a2a",
+          cursor: "grab",
+          userSelect: "none",
+          flexShrink: 0,
         }}
       >
-        {displayEmojis.map((emoji, i) => (
-          <button
-            key={`${emoji}-${i}`}
-            onClick={() => insertEmoji(emoji)}
-            title={emoji}
-            style={{
-              width: "100%",
-              aspectRatio: "1",
-              border: "none",
-              borderRadius: 6,
-              background: "transparent",
-              cursor: "pointer",
-              fontSize: 22,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              transition: "background 0.1s",
-            }}
-            onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg-hover, rgba(255,255,255,0.06))")}
-            onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
-          >
-            {emoji}
-          </button>
-        ))}
+        <GripHorizontal size={14} style={{ color: resolvedTheme === "light" ? "#888" : "#666" }} />
+        <button
+          onMouseDown={e => e.stopPropagation()}
+          onClick={onClose}
+          style={{
+            background: "none",
+            border: "none",
+            cursor: "pointer",
+            padding: "2px 4px",
+            lineHeight: 0,
+            color: resolvedTheme === "light" ? "#888" : "#666",
+          }}
+        >
+          <X size={13} />
+        </button>
       </div>
 
-      {/* Инфо */}
-      {displayEmojis.length === 0 && (
-        <div style={{ padding: 20, textAlign: "center", color: "var(--text-muted, #888)" }}>
-          Эмодзи не найдены
-        </div>
-      )}
+      <Picker
+        data={data}
+        onEmojiSelect={handleEmojiSelect}
+        theme={resolvedTheme}
+        locale="ru"
+        previewPosition="none"
+        skinTonePosition="none"
+      />
     </div>
   );
 }

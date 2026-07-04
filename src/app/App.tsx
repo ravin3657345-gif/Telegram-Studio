@@ -6,6 +6,7 @@ import { Providers } from "./Providers";
 import { AppRouter } from "./Router";
 import { WindowControls } from "@/components/layout/WindowControls";
 import { ToastContainer } from "@/components/ui/ToastContainer";
+import { LicenseGate } from "@/components/LicenseGate";
 
 export default function App() {
   // Global handler: Rust asks us to upload a JPEG to Telegraph.
@@ -49,11 +50,13 @@ export default function App() {
   return (
     <HashRouter>
       <Providers>
-        <div className="app-root">
-          <WindowControls />
-          <AppRouter />
-          <ToastContainer />
-        </div>
+        <LicenseGate>
+          <div className="app-root">
+            <WindowControls />
+            <AppRouter />
+            <ToastContainer />
+          </div>
+        </LicenseGate>
       </Providers>
     </HashRouter>
   );

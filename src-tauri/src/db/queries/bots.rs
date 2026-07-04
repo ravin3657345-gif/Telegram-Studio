@@ -1,13 +1,19 @@
 use crate::{crypto, db::models::Bot};
 use rusqlite::{params, Connection, Result};
 
-// ── Internal helpers ───────────────────────────────────────────────────────────
+// ── Helpers ────────────────────────────────────────────────────────────────────
 
-/// Map a DB row to Bot, decrypting the token on the fly.
+fn to_rusqlite_err(msg: String) -> rusqlite::Error {
+    rusqlite::Error::ToSqlConversionFailure(Box::new(std::io::Error::new(
+        std::io::ErrorKind::Other,
+        msg,
+    )))
+}
+
+/// Map a DB row to Bot, decrypting the token.
 fn row_to_bot(row: &rusqlite::Row<'_>) -> rusqlite::Result<Bot> {
     let stored_token: String = row.get(1)?;
-    let token = crypto::decrypt_token(&stored_token)
-        .unwrap_or(stored_token); // Fallback: return as-is if decryption fails
+    let token = crypto::decrypt_token(&stored_token).map_err(to_rusqlite_err)?;
     Ok(Bot {
         id:         row.get(0)?,
         token,
@@ -26,21 +32,34 @@ const SELECT_COLS: &str =
 // ── Public API ─────────────────────────────────────────────────────────────────
 
 pub fn find_all(conn: &Connection) -> Result<Vec<Bot>> {
+    // Migrate tokens that are in an old format to the current preferred format.
+    migrate_tokens(conn);
+
     let mut stmt = conn.prepare(&format!("{} ORDER BY created_at ASC", SELECT_COLS))?;
     let rows = stmt.query_map([], row_to_bot)?;
-    // Lazy migration: encrypt any plaintext tokens found
-    let mut bots: Vec<Bot> = rows.collect::<Result<_>>()?;
-    for bot in &mut bots {
-        if !bot.token.starts_with("ENC:") {
-            if let Ok(enc) = crypto::encrypt_token(&bot.token) {
-                let _ = conn.execute(
-                    "UPDATE bots SET token = ?1 WHERE id = ?2",
-                    params![enc, bot.id],
-                );
+    rows.collect::<Result<_>>()
+}
+
+/// Re-encrypt any tokens not yet in the current preferred format (e.g. ENC: → DPAPI:).
+fn migrate_tokens(conn: &Connection) {
+    let Ok(mut stmt) = conn.prepare("SELECT id, token FROM bots") else { return; };
+    let Ok(rows) = stmt.query_map([], |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+    }) else { return; };
+
+    for row in rows.flatten() {
+        let (id, stored) = row;
+        if crypto::needs_migration(&stored) {
+            if let Ok(plain) = crypto::decrypt_token(&stored) {
+                if let Ok(new_enc) = crypto::encrypt_token(&plain) {
+                    let _ = conn.execute(
+                        "UPDATE bots SET token = ?1 WHERE id = ?2",
+                        params![new_enc, id],
+                    );
+                }
             }
         }
     }
-    Ok(bots)
 }
 
 pub fn find_by_id(conn: &Connection, id: &str) -> Result<Option<Bot>> {
@@ -55,18 +74,21 @@ pub fn get_token(conn: &Connection, id: &str) -> Result<Option<String>> {
         .query_map(params![id], |row| row.get::<_, String>(0))?
         .next()
         .transpose()?;
-    Ok(stored.map(|t| crypto::decrypt_token(&t).unwrap_or(t)))
+    match stored {
+        None => Ok(None),
+        Some(t) => crypto::decrypt_token(&t)
+            .map(Some)
+            .map_err(to_rusqlite_err),
+    }
 }
 
 /// Find a bot by its plain-text token (searches all bots after decryption).
 pub fn find_by_token(conn: &Connection, plain_token: &str) -> Result<Option<Bot>> {
-    let all = find_all(conn)?;
-    Ok(all.into_iter().find(|b| b.token == plain_token))
+    Ok(find_all(conn)?.into_iter().find(|b| b.token == plain_token))
 }
 
 pub fn insert(conn: &Connection, bot: &Bot) -> Result<()> {
-    let encrypted = crypto::encrypt_token(&bot.token)
-        .unwrap_or_else(|_| bot.token.clone());
+    let encrypted = crypto::encrypt_token(&bot.token).map_err(to_rusqlite_err)?;
     conn.execute(
         "INSERT INTO bots (id, token, name, username, avatar_url, is_active, created_at, updated_at)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
@@ -85,6 +107,11 @@ pub fn insert(conn: &Connection, bot: &Bot) -> Result<()> {
 }
 
 pub fn delete(conn: &Connection, id: &str) -> Result<()> {
+    // Remove all data referencing this bot before deleting to satisfy FK constraints
+    conn.execute("DELETE FROM scheduled_posts WHERE bot_id = ?1", params![id])?;
+    conn.execute("DELETE FROM publication_history WHERE bot_id = ?1", params![id])?;
+    // Channels cascade-delete their own FK children via ON DELETE CASCADE
+    conn.execute("DELETE FROM channels WHERE bot_id = ?1", params![id])?;
     conn.execute("DELETE FROM bots WHERE id = ?1", params![id])?;
     Ok(())
 }

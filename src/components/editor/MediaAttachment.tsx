@@ -1,5 +1,6 @@
 import { X, FileText, Film, Image } from "lucide-react";
 import type { MediaItem } from "@/store/editorStore";
+import { t } from "@/lib/i18n";
 
 interface MediaAttachmentProps {
   item: MediaItem;
@@ -86,7 +87,7 @@ export function MediaAttachment({ item, onRemove }: MediaAttachmentProps) {
         onClick={() => onRemove(item.id)}
         className="absolute top-0.5 right-0.5 rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
         style={{ backgroundColor: "rgba(0,0,0,0.65)" }}
-        title="Удалить"
+        title={t("media.delete")}
       >
         <X size={12} color="#fff" />
       </button>

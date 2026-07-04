@@ -1,128 +1,12 @@
 import { useMemo, useState, useRef, useEffect, createContext, useContext } from "react";
-import { Play, FileText, Search, MoreVertical, ArrowLeft, Eye } from "lucide-react";
-import DOMPurify from "dompurify";
+import { Play, FileText, Eye } from "lucide-react";
 import { useEditorStore } from "@/store/editorStore";
-import { useChannelsStore } from "@/store/channelsStore";
-import { usePublishStore } from "@/store/publishStore";
 import { useSettingsStore } from "@/store/settingsStore";
-import { segmentDocument, type ContentSegment } from "@/lib/htmlConverter";
+import { splitIntoMessagesAtGaps, type ContentSegment } from "@/lib/htmlConverter";
 import { tiptapToRichHtml } from "@/lib/richMessageConverter";
-
-// ─── DOMPurify config ────────────────────────────────────────────────────────
-
-const TELEGRAM_TAGS = [
-  "b", "strong", "i", "em", "u", "s", "strike", "del",
-  "code", "pre", "a", "br", "blockquote",
-  "h1", "h2", "h3", "ul", "ol", "li",
-  "tg-spoiler", "mark", "sub", "sup",
-  "img", "video", "span", "details", "summary",
-];
-const TELEGRAM_ATTRS = ["href", "src", "alt", "data-post-title", "class", "style", "loop", "preload", "playsInline", "expandable"];
-
-function sanitize(html: string): string {
-  return DOMPurify.sanitize(html, {
-    ALLOWED_TAGS: TELEGRAM_TAGS,
-    ALLOWED_ATTR: TELEGRAM_ATTRS,
-    ALLOW_DATA_ATTR: false,
-  });
-}
-
-// ─── Theme palettes ───────────────────────────────────────────────────────────
-
-interface TGPalette {
-  chatBg: string;
-  chatGradient: string;
-  chatDotPattern: string;
-  headerBg: string;
-  headerBorder: string;
-  headerText: string;
-  headerTextMuted: string;
-  headerIcon: string;
-  bubbleBg: string;
-  bubbleText: string;
-  timeFg: string;
-  checkFg: string;
-  linkFg: string;
-  codeBg: string;
-  quoteBorder: string;
-  quoteBg: string;
-  quoteFade: string;
-  mediaBg: string;
-  videoOverlay: string;
-  spoilerBg: string;
-  datePillBg: string;
-  datePillText: string;
-  inputBg: string;
-  inputBorder: string;
-  inputPlaceholder: string;
-  emptyText: string;
-  titleColor: string;
-  headingColor: string;
-}
-
-const DARK: TGPalette = {
-  chatBg:           "#17212b",
-  chatGradient:     `radial-gradient(ellipse at 15% 85%, rgba(28,55,80,0.6) 0%, transparent 55%),
-                     radial-gradient(ellipse at 85% 15%, rgba(20,45,70,0.5) 0%, transparent 55%)`,
-  chatDotPattern:   `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='60' height='60'%3E%3Ccircle cx='30' cy='30' r='1.5' fill='rgba(255,255,255,0.025)'/%3E%3Ccircle cx='0' cy='0' r='1.5' fill='rgba(255,255,255,0.025)'/%3E%3Ccircle cx='60' cy='0' r='1.5' fill='rgba(255,255,255,0.025)'/%3E%3Ccircle cx='0' cy='60' r='1.5' fill='rgba(255,255,255,0.025)'/%3E%3Ccircle cx='60' cy='60' r='1.5' fill='rgba(255,255,255,0.025)'/%3E%3C/svg%3E")`,
-  headerBg:         "#1f2b38",
-  headerBorder:     "rgba(255,255,255,0.06)",
-  headerText:       "#ffffff",
-  headerTextMuted:  "rgba(255,255,255,0.45)",
-  headerIcon:       "rgba(255,255,255,0.5)",
-  bubbleBg:         "#2b5278",
-  bubbleText:       "rgba(255,255,255,0.92)",
-  timeFg:           "rgba(255,255,255,0.45)",
-  checkFg:          "#5ac8fa",
-  linkFg:           "#6ab7f5",
-  codeBg:           "rgba(0,0,0,0.28)",
-  quoteBorder:      "#5b9bd5",
-  quoteBg:          "rgba(91,155,213,0.10)",
-  quoteFade:        "rgba(43,82,120,0.95)",
-  mediaBg:          "#162330",
-  videoOverlay:     "rgba(0,0,0,0.38)",
-  spoilerBg:        "rgba(255,255,255,0.14)",
-  datePillBg:       "rgba(0,0,0,0.35)",
-  datePillText:     "rgba(255,255,255,0.7)",
-  inputBg:          "rgba(255,255,255,0.06)",
-  inputBorder:      "rgba(255,255,255,0.07)",
-  inputPlaceholder: "rgba(255,255,255,0.25)",
-  emptyText:        "rgba(255,255,255,0.22)",
-  titleColor:       "#ffffff",
-  headingColor:     "#ffffff",
-};
-
-const LIGHT: TGPalette = {
-  chatBg:           "#dfe4ea",
-  chatGradient:     `radial-gradient(ellipse at 20% 80%, rgba(180,200,220,0.5) 0%, transparent 55%),
-                     radial-gradient(ellipse at 80% 20%, rgba(160,185,210,0.4) 0%, transparent 55%)`,
-  chatDotPattern:   `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='60' height='60'%3E%3Ccircle cx='30' cy='30' r='1.5' fill='rgba(0,0,0,0.04)'/%3E%3Ccircle cx='0' cy='0' r='1.5' fill='rgba(0,0,0,0.04)'/%3E%3Ccircle cx='60' cy='0' r='1.5' fill='rgba(0,0,0,0.04)'/%3E%3Ccircle cx='0' cy='60' r='1.5' fill='rgba(0,0,0,0.04)'/%3E%3Ccircle cx='60' cy='60' r='1.5' fill='rgba(0,0,0,0.04)'/%3E%3C/svg%3E")`,
-  headerBg:         "#ffffff",
-  headerBorder:     "rgba(0,0,0,0.08)",
-  headerText:       "#111111",
-  headerTextMuted:  "rgba(0,0,0,0.45)",
-  headerIcon:       "rgba(0,0,0,0.4)",
-  bubbleBg:         "#effdde",
-  bubbleText:       "rgba(0,0,0,0.87)",
-  timeFg:           "rgba(0,0,0,0.4)",
-  checkFg:          "#4fab3e",
-  linkFg:           "#1a73e8",
-  codeBg:           "rgba(0,0,0,0.06)",
-  quoteBorder:      "#6c9bc3",
-  quoteBg:          "rgba(108,155,195,0.12)",
-  quoteFade:        "rgba(239,253,222,0.95)",
-  mediaBg:          "#c8d3de",
-  videoOverlay:     "rgba(0,0,0,0.22)",
-  spoilerBg:        "rgba(0,0,0,0.12)",
-  datePillBg:       "rgba(0,0,0,0.22)",
-  datePillText:     "rgba(255,255,255,0.9)",
-  inputBg:          "rgba(0,0,0,0.05)",
-  inputBorder:      "rgba(0,0,0,0.07)",
-  inputPlaceholder: "rgba(0,0,0,0.3)",
-  emptyText:        "rgba(0,0,0,0.3)",
-  titleColor:       "#111111",
-  headingColor:     "#111111",
-};
+import { t, ti } from "@/lib/i18n";
+import { sanitizeTelegramHtml as sanitize } from "@/lib/telegramSanitize";
+import { type TGPalette, DARK, LIGHT } from "@/lib/telegramTheme";
 
 // ─── Theme context ────────────────────────────────────────────────────────────
 
@@ -130,20 +14,6 @@ const TGCtx = createContext<TGPalette>(DARK);
 function useTG() { return useContext(TGCtx); }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
-
-function initials(name: string): string {
-  return name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join("");
-}
-
-function avatarColor(name: string): string {
-  const palette = [
-    "#FF6B6B","#FF8E53","#FFC542","#2ECC71","#1ABC9C",
-    "#3498DB","#9B59B6","#E91E63","#00BCD4","#4CAF50",
-  ];
-  let h = 0;
-  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) & 0xffffff;
-  return palette[Math.abs(h) % palette.length];
-}
 
 function nlToBr(html: string): string { return html.replace(/\n/g, "<br/>"); }
 
@@ -190,6 +60,8 @@ function previewStyles(tg: TGPalette): string { return `
     border-left: 3px solid ${tg.quoteBorder}; background: ${tg.quoteBg};
     margin: 4px 0; padding: 5px 10px; border-radius: 0 6px 6px 0;
   }
+  .tg-preview-text p { margin: 0 0 4px 0; }
+  .tg-preview-text p:last-child { margin-bottom: 0; }
   .tg-preview-text br { display: block; content: ""; margin: 2px 0 }
   .tg-preview-text mark {
     background: rgba(255,220,0,0.25); color: inherit; border-radius: 2px; padding: 0 2px;
@@ -258,7 +130,7 @@ function ExpandableBlockquote({ html }: { html: string }) {
           cursor: "pointer", fontSize: 12, padding: 0, lineHeight: 1.4,
         }}
       >
-        {expanded ? "▲ Свернуть" : "▼ Читать далее"}
+        {expanded ? t("preview.collapse") : t("preview.readMore")}
       </button>
     </div>
   );
@@ -282,7 +154,13 @@ function splitSpoilers(segment: string): TextPart[] {
 }
 
 function TelegramText({ html }: { html: string }) {
-  const withBreaks = useMemo(() => nlToBr(html), [html]);
+  const withBreaks = useMemo(() => {
+    // <p> tags → inline: strip opening tag, closing tag becomes line break
+    const inlined = html
+      .replace(/<p>/gi, "")
+      .replace(/<\/p>/gi, "<br/>");
+    return nlToBr(inlined);
+  }, [html]);
   const parts = useMemo((): TextPart[] => {
     const result: TextPart[] = [];
     const bqRe = /<blockquote expandable>([\s\S]*?)<\/blockquote>/gi;
@@ -428,9 +306,9 @@ function VideoBubble({ src }: { src: string }) {
 // ─── File bubble ─────────────────────────────────────────────────────────────
 
 function formatFileSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} Б`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} КБ`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} МБ`;
+  if (bytes < 1024) return `${bytes} ${t("unit.b")}`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} ${t("unit.kb")}`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} ${t("unit.mb")}`;
 }
 
 function FileBubble({ fileName, fileSize }: { fileName: string; fileSize: number }) {
@@ -517,99 +395,31 @@ function RichBubble({ html, segments }: { html: string; segments: ContentSegment
   );
 }
 
-// ─── Chat header ─────────────────────────────────────────────────────────────
-
-function ChatHeader({ channelName }: { channelName: string }) {
-  const tg = useTG();
-  const bg      = avatarColor(channelName || "C");
-  const letters = initials(channelName || "Канал");
-  return (
-    <div style={{
-      display: "flex", alignItems: "center", gap: 10,
-      padding: "10px 12px 10px 8px",
-      backgroundColor: tg.headerBg,
-      borderBottom: `1px solid ${tg.headerBorder}`,
-      flexShrink: 0,
-    }}>
-      <button style={{ background: "none", border: "none", color: tg.linkFg, padding: "2px 4px", cursor: "default" }}>
-        <ArrowLeft size={20} />
-      </button>
-      <div style={{
-        width: 38, height: 38, borderRadius: "50%", flexShrink: 0,
-        backgroundColor: bg,
-        display: "flex", alignItems: "center", justifyContent: "center",
-        fontSize: 14, fontWeight: 700, color: "#fff", letterSpacing: "0.5px",
-      }}>
-        {letters}
-      </div>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{
-          fontSize: 15, fontWeight: 600, color: tg.headerText,
-          whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
-        }}>
-          {channelName || "Ваш канал"}
-        </div>
-        <div style={{ fontSize: 12, color: tg.headerTextMuted, marginTop: 1 }}>
-          канал
-        </div>
-      </div>
-      <div style={{ display: "flex", gap: 6, color: tg.headerIcon }}>
-        <Search size={18} />
-        <MoreVertical size={18} />
-      </div>
-    </div>
-  );
-}
-
-// ─── Date separator ───────────────────────────────────────────────────────────
-
-function DateSeparator() {
-  const tg = useTG();
-  const label = useMemo(() => {
-    const d = new Date();
-    return d.toLocaleDateString("ru-RU", { day: "numeric", month: "long" });
-  }, []);
-  return (
-    <div style={{ display: "flex", justifyContent: "center", margin: "6px 0 2px" }}>
-      <div style={{
-        backgroundColor: tg.datePillBg,
-        color: tg.datePillText,
-        fontSize: 12, fontWeight: 500,
-        padding: "4px 12px", borderRadius: 12,
-        backdropFilter: "blur(4px)",
-      }}>
-        {label}
-      </div>
-    </div>
-  );
-}
-
 // ─── Main component ────────────────────────────────────────────────────────────
 
 export function TelegramPreview() {
   const { contentJson, postTitle, includeTitle, publishMode } = useEditorStore();
-  const channels           = useChannelsStore((s) => s.channels);
-  const selectedChannelIds = usePublishStore((s) => s.selectedChannelIds);
-  const appTheme           = useSettingsStore((s) => s.theme);
+  const splitGaps = useEditorStore((s) => s.splitGaps);
+  const appTheme = useSettingsStore((s) => s.theme);
 
-  // Resolve "system" to actual dark/light
   const isDark = appTheme === "dark" || (
     appTheme === "system" &&
     window.matchMedia("(prefers-color-scheme: dark)").matches
   );
   const tg = isDark ? DARK : LIGHT;
 
-  const activeChannel =
-    channels.find((c) => selectedChannelIds[0] && c.id === selectedChannelIds[0]) ??
-    channels[0];
-  const channelName = activeChannel?.title ?? "Предпросмотр";
-
   const effectiveTitle = includeTitle ? postTitle : "";
 
-  const segments = useMemo<ContentSegment[]>(() => {
-    if (!contentJson && !effectiveTitle) return [];
-    return segmentDocument(contentJson || '{"type":"doc","content":[]}', effectiveTitle);
-  }, [contentJson, effectiveTitle]);
+  const messages = useMemo<ContentSegment[][]>(() => {
+    if (!contentJson && !effectiveTitle) return [[]];
+    return splitIntoMessagesAtGaps(
+      contentJson || '{"type":"doc","content":[]}',
+      splitGaps,
+      effectiveTitle,
+    );
+  }, [contentJson, effectiveTitle, splitGaps]);
+
+  const segments = messages.flat();
 
   const richHtml = useMemo(() => {
     if (publishMode !== "rich") return "";
@@ -619,79 +429,73 @@ export function TelegramPreview() {
   const isEmpty = segments.length === 0 ||
     segments.every((s) => s.type === "text" && !s.html.trim());
 
-  const chatAreaRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
-  // Smooth scroll to bottom when content or mode changes
   useEffect(() => {
-    const el = chatAreaRef.current;
+    const el = scrollRef.current;
     if (!el) return;
-    requestAnimationFrame(() => {
-      el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
-    });
+    requestAnimationFrame(() => { el.scrollTo({ top: el.scrollHeight, behavior: "smooth" }); });
   }, [segments.length, publishMode]);
 
   return (
     <TGCtx.Provider value={tg}>
       <style>{previewStyles(tg)}</style>
 
-      <div style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0, overflow: "hidden" }}>
-        {/* Header */}
-        <ChatHeader channelName={channelName} />
-
-        {/* Chat area */}
-        <div
-          ref={chatAreaRef}
-          style={{
-            flex: 1, overflowY: "auto", overflowX: "hidden",
-            backgroundColor: tg.chatBg,
-            backgroundImage: `${tg.chatDotPattern}, ${tg.chatGradient}`,
-            padding: "8px 12px 12px",
-            display: "flex", flexDirection: "column", justifyContent: "flex-end",
-          }}
-        >
-          {isEmpty ? (
-            <div style={{ textAlign: "center", color: tg.emptyText, fontSize: 13, padding: "32px 0" }}>
-              Начните писать или прикрепите медиа
-            </div>
-          ) : (
-            <div
-              key={publishMode}
-              className="tg-mode-content"
-              style={{ display: "flex", flexDirection: "column", gap: 6 }}
-            >
-              <DateSeparator />
-              {publishMode === "rich" ? (
-                <RichBubble html={richHtml} segments={segments} />
-              ) : (
-                segments.map((seg, i) => {
-                  if (seg.type === "text")  return <TextBubble  key={i} html={seg.html} />;
-                  if (seg.type === "image") return <ImageBubble key={i} src={seg.src} />;
-                  if (seg.type === "video") return <VideoBubble key={i} src={seg.src} />;
-                  if (seg.type === "file")  return <FileBubble  key={i} fileName={seg.fileName} fileSize={seg.fileSize} />;
-                  return null;
-                })
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* Fake input bar */}
-        <div style={{
-          display: "flex", alignItems: "center", gap: 10,
-          padding: "8px 12px",
-          backgroundColor: tg.headerBg,
-          borderTop: `1px solid ${tg.headerBorder}`,
-          flexShrink: 0,
-        }}>
+      <div
+        ref={scrollRef}
+        style={{
+          flex: 1, overflowY: "auto", overflowX: "hidden",
+          backgroundColor: tg.chatBg,
+          backgroundImage: tg.chatGradient,
+          padding: "16px 12px",
+          display: "flex", flexDirection: "column", gap: 6,
+        }}
+      >
+        {isEmpty ? (
           <div style={{
-            flex: 1, height: 36, borderRadius: 18,
-            backgroundColor: tg.inputBg,
-            border: `1px solid ${tg.inputBorder}`,
-            display: "flex", alignItems: "center", paddingLeft: 14,
+            flex: 1, display: "flex", alignItems: "center", justifyContent: "center",
+            color: tg.emptyText, fontSize: 13, textAlign: "center", padding: "32px 16px",
           }}>
-            <span style={{ fontSize: 13, color: tg.inputPlaceholder }}>Сообщение…</span>
+            {t("preview.placeholder")}
           </div>
-        </div>
+        ) : (
+          <div key={publishMode} className="tg-mode-content" style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {publishMode === "rich" ? (
+              <RichBubble html={richHtml} segments={segments} />
+            ) : messages.length <= 1 ? (
+              messages[0]?.map((seg, i) => {
+                if (seg.type === "text")  return <TextBubble  key={i} html={seg.html} />;
+                if (seg.type === "image") return <ImageBubble key={i} src={seg.src} />;
+                if (seg.type === "video") return <VideoBubble key={i} src={seg.src} />;
+                if (seg.type === "file")  return <FileBubble  key={i} fileName={seg.fileName} fileSize={seg.fileSize} />;
+                return null;
+              })
+            ) : (
+              messages.map((msgSegs, mi) => (
+                <div key={mi} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  {mi > 0 && (
+                    <div style={{
+                      textAlign: "center", fontSize: 11,
+                      color: tg.datePillText,
+                      backgroundColor: tg.datePillBg,
+                      borderRadius: 10, padding: "2px 10px",
+                      alignSelf: "center",
+                    }}>
+                      {ti("split.previewLabel", { n: mi + 1 })}
+                    </div>
+                  )}
+                  {msgSegs.map((seg, i) => {
+                    if (seg.type === "text")  return <TextBubble  key={i} html={seg.html} />;
+                    if (seg.type === "image") return <ImageBubble key={i} src={seg.src} />;
+                    if (seg.type === "video") return <VideoBubble key={i} src={seg.src} />;
+                    if (seg.type === "file")  return <FileBubble  key={i} fileName={seg.fileName} fileSize={seg.fileSize} />;
+                    return null;
+                  })}
+                </div>
+              ))
+            )}
+          </div>
+        )}
       </div>
     </TGCtx.Provider>
   );

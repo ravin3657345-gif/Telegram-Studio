@@ -1,4 +1,5 @@
 pub mod bots;
+pub mod license;
 pub mod channels;
 pub mod dashboard;
 pub mod drafts;

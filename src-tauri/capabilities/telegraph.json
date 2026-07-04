@@ -6,7 +6,5 @@
   "remote": {
     "urls": ["https://telegra.ph/*", "https://edit.telegra.ph/*"]
   },
-  "permissions": [
-    "core:default"
-  ]
+  "permissions": []
 }

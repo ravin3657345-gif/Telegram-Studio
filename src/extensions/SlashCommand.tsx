@@ -135,17 +135,25 @@ interface SlashMenuProps {
 
 const SlashMenu = forwardRef<SlashMenuRef, SlashMenuProps>(({ items, command }, ref) => {
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const containerRef = React.useRef<HTMLDivElement>(null);
 
   useEffect(() => setSelectedIndex(0), [items]);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    const selected = container.querySelector<HTMLElement>("[data-selected='true']");
+    selected?.scrollIntoView({ block: "nearest" });
+  }, [selectedIndex]);
 
   useImperativeHandle(ref, () => ({
     onKeyDown({ event }) {
       if (event.key === "ArrowUp") {
-        setSelectedIndex((i) => (i - 1 + items.length) % items.length);
+        setSelectedIndex((i) => Math.max(0, i - 1));
         return true;
       }
       if (event.key === "ArrowDown") {
-        setSelectedIndex((i) => (i + 1) % items.length);
+        setSelectedIndex((i) => Math.min(items.length - 1, i + 1));
         return true;
       }
       if (event.key === "Enter") {
@@ -158,6 +166,7 @@ const SlashMenu = forwardRef<SlashMenuRef, SlashMenuProps>(({ items, command }, 
 
   return (
     <div
+      ref={containerRef}
       onWheel={(e) => e.stopPropagation()}
       style={{
         backgroundColor: "var(--bg-elevated)",
@@ -178,6 +187,7 @@ const SlashMenu = forwardRef<SlashMenuRef, SlashMenuProps>(({ items, command }, 
         items.map((item, i) => (
           <button
             key={item.label}
+            data-selected={i === selectedIndex ? "true" : undefined}
             onClick={() => command(item)}
             className="flex items-center gap-2.5 w-full px-2.5 py-1.5 text-left"
             style={{

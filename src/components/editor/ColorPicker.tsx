@@ -1,27 +1,29 @@
 import { useState, useRef, useEffect } from "react";
 import type { Editor } from "@tiptap/react";
 import { Baseline, Highlighter } from "lucide-react";
+import { t, type TranslationKey } from "@/lib/i18n";
+import { useSettingsStore } from "@/store/settingsStore";
 
-const TEXT_COLORS = [
-  { label: "Стандартный", value: null },
-  { label: "Красный",     value: "#e53e3e" },
-  { label: "Оранжевый",   value: "#dd6b20" },
-  { label: "Жёлтый",      value: "#d69e2e" },
-  { label: "Зелёный",     value: "#38a169" },
-  { label: "Синий",       value: "#3182ce" },
-  { label: "Фиолетовый",  value: "#805ad5" },
-  { label: "Серый",       value: "#718096" },
+const TEXT_COLORS: { key: TranslationKey; value: string | null }[] = [
+  { key: "color.default", value: null },
+  { key: "color.red",     value: "#e53e3e" },
+  { key: "color.orange",  value: "#dd6b20" },
+  { key: "color.yellow",  value: "#d69e2e" },
+  { key: "color.green",   value: "#38a169" },
+  { key: "color.blue",    value: "#3182ce" },
+  { key: "color.purple",  value: "#805ad5" },
+  { key: "color.gray",    value: "#718096" },
 ];
 
-const HIGHLIGHT_COLORS = [
-  { label: "Нет",          value: null },
-  { label: "Жёлтый",       value: "#fef08a" },
-  { label: "Зелёный",      value: "#bbf7d0" },
-  { label: "Синий",        value: "#bfdbfe" },
-  { label: "Розовый",      value: "#fecdd3" },
-  { label: "Оранжевый",    value: "#fed7aa" },
-  { label: "Фиолетовый",   value: "#e9d5ff" },
-  { label: "Серый",        value: "#e5e7eb" },
+const HIGHLIGHT_COLORS: { key: TranslationKey; value: string | null }[] = [
+  { key: "color.none",    value: null },
+  { key: "color.yellow",  value: "#fef08a" },
+  { key: "color.green",   value: "#bbf7d0" },
+  { key: "color.blue",    value: "#bfdbfe" },
+  { key: "color.pink",    value: "#fecdd3" },
+  { key: "color.orange",  value: "#fed7aa" },
+  { key: "color.purple",  value: "#e9d5ff" },
+  { key: "color.gray",    value: "#e5e7eb" },
 ];
 
 interface ColorPickerProps {
@@ -29,6 +31,7 @@ interface ColorPickerProps {
 }
 
 export function ColorPicker({ editor }: ColorPickerProps) {
+  useSettingsStore((s) => s.language);
   const [open, setOpen] = useState<"text" | "highlight" | null>(null);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -48,7 +51,7 @@ export function ColorPicker({ editor }: ColorPickerProps) {
       {/* Text color button */}
       <div className="relative">
         <button
-          title="Цвет текста"
+          title={t("color.textTitle")}
           onClick={() => setOpen(open === "text" ? null : "text")}
           className="flex items-center justify-center w-6 h-6 rounded transition-colors flex-col gap-0"
           style={{ color: "var(--text-secondary)" }}
@@ -78,7 +81,7 @@ export function ColorPicker({ editor }: ColorPickerProps) {
       {/* Highlight button */}
       <div className="relative">
         <button
-          title="Выделение цветом"
+          title={t("color.highlightTitle")}
           onClick={() => setOpen(open === "highlight" ? null : "highlight")}
           className="flex items-center justify-center w-6 h-6 rounded transition-colors"
           style={{ color: "var(--text-secondary)" }}
@@ -109,7 +112,7 @@ function ColorGrid({
   onSelect,
   current,
 }: {
-  colors: { label: string; value: string | null }[];
+  colors: { key: TranslationKey; value: string | null }[];
   onSelect: (v: string | null) => void;
   current: string | null | undefined;
 }) {
@@ -124,10 +127,10 @@ function ColorGrid({
         width: 120,
       }}
     >
-      {colors.map(({ label, value }) => (
+      {colors.map(({ key, value }) => (
         <button
-          key={label}
-          title={label}
+          key={key}
+          title={t(key)}
           onClick={() => onSelect(value)}
           className="w-6 h-6 rounded-md border-2 transition-transform hover:scale-110"
           style={{

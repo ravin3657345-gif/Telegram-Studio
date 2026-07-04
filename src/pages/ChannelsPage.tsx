@@ -1,20 +1,19 @@
 import { useState, useEffect, useRef } from "react";
 import {
   Radio, Plus, Trash2, BarChart2, ChevronDown,
-  Users, CheckCircle2, XCircle, AlertCircle, Loader, CheckCircle,
+  Users, CheckCircle2, XCircle, AlertCircle, Loader, CheckCircle, Bot, Pencil, Check,
 } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { TopBar } from "@/components/layout/TopBar";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Spinner } from "@/components/ui/Spinner";
 import { useChannelsStore } from "@/store/channelsStore";
-import { addChannel, deleteChannel, getChannels } from "@/lib/tauriApi";
+import { addChannel, deleteChannel, getChannels, updateChannelBot } from "@/lib/tauriApi";
 import { toast } from "@/store/uiStore";
-import { t } from "@/lib/i18n";
+import { t, ti } from "@/lib/i18n";
 import { useSettingsStore } from "@/store/settingsStore";
 import type { Channel } from "@/types/channel";
 
-const MAX_CHANNELS = 10;
 
 interface ChannelStats {
   channelId:    string;
@@ -54,7 +53,7 @@ function AddChannelModal({ onClose, onAdded }: AddChannelModalProps) {
     try {
       const ch = await addChannel(botId, canonical);
       onAdded(ch);
-      toast.success(`Канал ${ch.title} добавлен`);
+      toast.success(ti("channels.added", { title: ch.title }));
       onClose();
     } catch (e) {
       setError(String(e));
@@ -80,10 +79,10 @@ function AddChannelModal({ onClose, onAdded }: AddChannelModalProps) {
         boxShadow: "0 20px 60px rgba(0,0,0,0.5)",
       }}>
         <h2 style={{ fontSize: 16, fontWeight: 700, color: "var(--text-primary)", marginBottom: 6 }}>
-          Добавить канал
+          {t("channels.addTitle")}
         </h2>
         <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 20, lineHeight: 1.5 }}>
-          Бот должен быть администратором канала с правом публикации.
+          {t("channels.adminHint")}
         </p>
 
         {bots.length === 0 ? (
@@ -92,7 +91,7 @@ function AddChannelModal({ onClose, onAdded }: AddChannelModalProps) {
             backgroundColor: "rgba(243,156,18,0.10)", border: "1px solid rgba(243,156,18,0.25)",
           }}>
             <p style={{ fontSize: 13, color: "var(--warning)" }}>
-              Сначала добавьте бота на странице «Боты».
+              {t("channels.noBotHint")}
             </p>
           </div>
         ) : (
@@ -100,7 +99,7 @@ function AddChannelModal({ onClose, onAdded }: AddChannelModalProps) {
             {/* Bot selector */}
             <div style={{ marginBottom: 14 }}>
               <label style={{ fontSize: 12, color: "var(--text-secondary)", display: "block", marginBottom: 6 }}>
-                Бот
+                {t("channels.botLabel")}
               </label>
               <select
                 value={botId}
@@ -121,14 +120,14 @@ function AddChannelModal({ onClose, onAdded }: AddChannelModalProps) {
             {/* Username input */}
             <div style={{ marginBottom: 14 }}>
               <label style={{ fontSize: 12, color: "var(--text-secondary)", display: "block", marginBottom: 6 }}>
-                @username или ID канала
+                {t("channels.usernameLabel")}
               </label>
               <input
                 ref={inputRef}
                 value={username}
                 onChange={(e) => { setUsername(e.target.value); setError(null); }}
                 onKeyDown={(e) => e.key === "Enter" && handleAdd()}
-                placeholder="@mychannel или -1001234567890"
+                placeholder={t("channels.usernamePlaceholder")}
                 disabled={adding}
                 style={{
                   width: "100%", padding: "9px 12px", borderRadius: 8, fontSize: 13,
@@ -163,7 +162,7 @@ function AddChannelModal({ onClose, onAdded }: AddChannelModalProps) {
               color: "var(--text-secondary)", cursor: "pointer",
             }}
           >
-            Отмена
+            {t("common.cancel")}
           </button>
           <button
             onClick={handleAdd}
@@ -178,7 +177,7 @@ function AddChannelModal({ onClose, onAdded }: AddChannelModalProps) {
             }}
           >
             {adding && <Loader size={13} style={{ animation: "spin 1s linear infinite" }} />}
-            Добавить
+            {t("common.add")}
           </button>
         </div>
       </div>
@@ -190,11 +189,30 @@ function AddChannelModal({ onClose, onAdded }: AddChannelModalProps) {
 // ─── Channel card ─────────────────────────────────────────────────────────────
 
 function ChannelCard({ channel, onDelete }: { channel: Channel; onDelete: () => void }) {
-  const [open,     setOpen]     = useState(false);
-  const [stats,    setStats]    = useState<ChannelStats | null>(null);
-  const [loading,  setLoading]  = useState(false);
-  const [deleting, setDeleting] = useState(false);
+  const [open,        setOpen]        = useState(false);
+  const [stats,       setStats]       = useState<ChannelStats | null>(null);
+  const [loading,     setLoading]     = useState(false);
+  const [deleting,    setDeleting]    = useState(false);
+  const [editingBot,  setEditingBot]  = useState(false);
+  const [changingBot, setChangingBot] = useState(false);
+  const { bots, updateChannelBot: storeUpdateBot } = useChannelsStore();
   useSettingsStore((s) => s.language);
+
+  async function handleBotChange(newBotId: string) {
+    if (newBotId === channel.botId || changingBot) return;
+    setChangingBot(true);
+    try {
+      await updateChannelBot(channel.id, newBotId);
+      storeUpdateBot(channel.id, newBotId);
+      setEditingBot(false);
+      const bot = bots.find((b) => b.id === newBotId);
+      toast.success(ti("channels.botChanged", { username: bot?.username ?? newBotId }));
+    } catch (e) {
+      toast.error(String(e));
+    } finally {
+      setChangingBot(false);
+    }
+  }
 
   async function loadStats() {
     if (stats) { setOpen((v) => !v); return; }
@@ -225,12 +243,12 @@ function ChannelCard({ channel, onDelete }: { channel: Channel; onDelete: () => 
   }
 
   async function handleDelete() {
-    if (!confirm(`Удалить канал «${channel.title}»?`)) return;
+    if (!confirm(ti("channels.confirmDelete", { title: channel.title }))) return;
     setDeleting(true);
     try {
       await deleteChannel(channel.id);
       onDelete();
-      toast.success(`Канал ${channel.title} удалён`);
+      toast.success(ti("channels.deletedMsg", { title: channel.title }));
     } catch (e) {
       toast.error(String(e));
       setDeleting(false);
@@ -267,6 +285,49 @@ function ChannelCard({ channel, onDelete }: { channel: Channel; onDelete: () => 
             {channel.username ? `@${channel.username}` : t("channels.private")}
             {channel.memberCount != null && ` · 👥 ${channel.memberCount.toLocaleString()}`}
           </p>
+
+          {/* Bot row */}
+          <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 5 }}>
+            <Bot size={11} style={{ color: "var(--text-muted)", flexShrink: 0 }} />
+            {editingBot ? (
+              <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                <select
+                  autoFocus
+                  value={channel.botId}
+                  onChange={(e) => handleBotChange(e.target.value)}
+                  disabled={changingBot}
+                  style={{
+                    fontSize: 11, padding: "1px 4px", borderRadius: 5,
+                    backgroundColor: "var(--bg-elevated)",
+                    border: "1px solid var(--border-default)",
+                    color: "var(--text-primary)", outline: "none",
+                  }}
+                >
+                  {bots.map((b) => (
+                    <option key={b.id} value={b.id}>@{b.username}</option>
+                  ))}
+                </select>
+                {changingBot
+                  ? <Loader size={11} style={{ animation: "spin 1s linear infinite", color: "var(--text-muted)" }} />
+                  : <button onClick={() => setEditingBot(false)} style={{ background: "none", border: "none", cursor: "pointer", padding: 0, color: "var(--text-muted)" }}><Check size={11} /></button>}
+              </div>
+            ) : (
+              <>
+                <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                  @{bots.find((b) => b.id === channel.botId)?.username ?? "—"}
+                </span>
+                {bots.length > 1 && (
+                  <button
+                    onClick={() => setEditingBot(true)}
+                    style={{ background: "none", border: "none", cursor: "pointer", padding: "0 2px", color: "var(--text-muted)", lineHeight: 1 }}
+                    title={t("channels.changeBot")}
+                  >
+                    <Pencil size={10} />
+                  </button>
+                )}
+              </>
+            )}
+          </div>
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -365,7 +426,6 @@ function StatRow({ icon, label, value }: { icon: React.ReactNode; label: string;
 export function ChannelsPage() {
   const { channels, setChannels, addChannel: storeAdd, removeChannel } = useChannelsStore();
   const [showAdd, setShowAdd] = useState(false);
-  const atLimit = channels.length >= MAX_CHANNELS;
   useSettingsStore((s) => s.language);
 
   useEffect(() => {
@@ -382,44 +442,21 @@ export function ChannelsPage() {
     <>
       <TopBar
         actions={
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
-              {channels.length}/{MAX_CHANNELS}
-            </span>
-            <button
-              onClick={() => !atLimit && setShowAdd(true)}
-              disabled={atLimit}
-              style={{
-                display: "flex", alignItems: "center", gap: 6,
-                padding: "7px 14px", borderRadius: 8, fontSize: 13, fontWeight: 600,
-                backgroundColor: atLimit ? "var(--bg-elevated)" : "var(--accent)",
-                border: atLimit ? "1px solid var(--border-default)" : "none",
-                color: atLimit ? "var(--text-muted)" : "#fff",
-                cursor: atLimit ? "default" : "pointer",
-              }}
-              title={atLimit ? `Достигнут лимит ${MAX_CHANNELS} каналов` : "Добавить канал"}
-            >
-              <Plus size={14} />
-              {t("channels.add")}
-            </button>
-          </div>
+          <button
+            onClick={() => setShowAdd(true)}
+            style={{
+              display: "flex", alignItems: "center", gap: 6,
+              padding: "7px 14px", borderRadius: 8, fontSize: 13, fontWeight: 600,
+              backgroundColor: "var(--accent)", border: "none", color: "#fff", cursor: "pointer",
+            }}
+          >
+            <Plus size={14} />
+            {t("channels.add")}
+          </button>
         }
       />
 
       <div className="page-content max-w-3xl">
-        {atLimit && (
-          <div style={{
-            display: "flex", alignItems: "center", gap: 8, marginBottom: 16,
-            padding: "10px 14px", borderRadius: 10,
-            backgroundColor: "rgba(243,156,18,0.10)", border: "1px solid rgba(243,156,18,0.25)",
-          }}>
-            <AlertCircle size={15} style={{ color: "var(--warning)", flexShrink: 0 }} />
-            <span style={{ fontSize: 13, color: "var(--warning)" }}>
-              Достигнут лимит: максимум {MAX_CHANNELS} каналов
-            </span>
-          </div>
-        )}
-
         {channels.length === 0 ? (
           <EmptyState icon={Radio} title={t("channels.empty")} description={t("channels.emptyDesc")} />
         ) : (

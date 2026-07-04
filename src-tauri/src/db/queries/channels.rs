@@ -78,7 +78,18 @@ pub fn insert(conn: &Connection, ch: &Channel) -> Result<()> {
     Ok(())
 }
 
+pub fn update_bot_id(conn: &Connection, channel_id: &str, bot_id: &str) -> Result<()> {
+    let now = chrono::Utc::now().to_rfc3339();
+    conn.execute(
+        "UPDATE channels SET bot_id = ?1, updated_at = ?2 WHERE id = ?3",
+        params![bot_id, now, channel_id],
+    )?;
+    Ok(())
+}
+
 pub fn delete(conn: &Connection, id: &str) -> Result<()> {
+    conn.execute("DELETE FROM scheduled_posts WHERE channel_id = ?1", params![id])?;
+    conn.execute("DELETE FROM publication_history WHERE channel_id = ?1", params![id])?;
     conn.execute("DELETE FROM channels WHERE id = ?1", params![id])?;
     Ok(())
 }

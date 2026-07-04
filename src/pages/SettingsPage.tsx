@@ -1,39 +1,40 @@
-import { Sun, Moon, Monitor, User, Bot, Radio, Send, Palette, Bell } from "lucide-react";
-import { useState } from "react";
+import { Sun, Moon, Monitor, User, Send, Palette, Bell } from "lucide-react";
+import { useState, useEffect } from "react";
+import { getVersion } from "@tauri-apps/api/app";
+
 import { TopBar } from "@/components/layout/TopBar";
 import { useSettingsStore } from "@/store/settingsStore";
 import { telegraphOpenLogin } from "@/lib/tauriApi";
-import { t, setI18nLanguage } from "@/lib/i18n";
+import { t, setI18nLanguage, type TranslationKey } from "@/lib/i18n";
 import type { Theme, Language } from "@/types/settings";
 
 // ── Local nav definition ──────────────────────────────────────────────────────
 
-type NavSection = "profile" | "bots" | "channels" | "publish" | "appearance" | "notifications";
+type NavSection = "profile" | "publish" | "appearance" | "notifications";
 
 const NAV_ITEMS: Array<{ key: NavSection; icon: React.ReactNode; labelKey: string }> = [
-  { key: "profile",       icon: <User   size={15} />, labelKey: "settings.nav.profile"       },
-  { key: "bots",          icon: <Bot    size={15} />, labelKey: "settings.nav.bots"          },
-  { key: "channels",      icon: <Radio  size={15} />, labelKey: "settings.nav.channels"      },
-  { key: "publish",       icon: <Send   size={15} />, labelKey: "settings.nav.publish"       },
-  { key: "appearance",    icon: <Palette size={15} />, labelKey: "settings.nav.appearance"  },
-  { key: "notifications", icon: <Bell   size={15} />, labelKey: "settings.nav.notifications" },
+  { key: "profile",       icon: <User    size={15} />, labelKey: "settings.nav.profile"       },
+  { key: "publish",       icon: <Send    size={15} />, labelKey: "settings.nav.publish"       },
+  { key: "appearance",   icon: <Palette size={15} />, labelKey: "settings.nav.appearance"   },
+  { key: "notifications", icon: <Bell    size={15} />, labelKey: "settings.nav.notifications" },
 ];
 
 // ── Accent color presets ──────────────────────────────────────────────────────
 
-const ACCENT_PRESETS = [
-  { color: "#2c87c9", label: "Синий" },
-  { color: "#7a4fe0", label: "Фиолетовый" },
-  { color: "#3f9d5f", label: "Зелёный" },
-  { color: "#c77d33", label: "Оранжевый" },
-  { color: "#e03e8a", label: "Розовый" },
-  { color: "#37352f", label: "Чёрный" },
+const ACCENT_PRESETS: Array<{ color: string; labelKey: TranslationKey }> = [
+  { color: "#2c87c9", labelKey: "settings.color.blue" },
+  { color: "#7a4fe0", labelKey: "settings.color.purple" },
+  { color: "#3f9d5f", labelKey: "settings.color.green" },
+  { color: "#c77d33", labelKey: "settings.color.orange" },
+  { color: "#e03e8a", labelKey: "settings.color.pink" },
+  { color: "#37352f", labelKey: "settings.color.black" },
 ];
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export function SettingsPage() {
   const [activeSection, setActiveSection] = useState<NavSection>("appearance");
+  useSettingsStore((s) => s.language); // реактивность при смене языка
 
   return (
     <>
@@ -88,8 +89,6 @@ export function SettingsPage() {
                 <TelegraphSection />
               </>
             )}
-            {activeSection === "bots"     && <BotsStub />}
-            {activeSection === "channels" && <ChannelsStub />}
             {activeSection === "profile"  && <ProfileStub />}
             {activeSection === "notifications" && <NotificationsStub />}
             <AboutSection />
@@ -100,7 +99,9 @@ export function SettingsPage() {
   );
 }
 
-// ── Appearance section ─────────────────────────────────────────────────────────
+// ── About section (version read here, not in parent) ─────────────────────────
+
+
 
 function AppearanceSection() {
   const theme              = useSettingsStore((s) => s.theme);
@@ -109,8 +110,6 @@ function AppearanceSection() {
   const setLanguage        = useSettingsStore((s) => s.setLanguage);
   const accentColor        = useSettingsStore((s) => s.accentColor);
   const setAccentColor     = useSettingsStore((s) => s.setAccentColor);
-  const compactMode        = useSettingsStore((s) => s.compactMode);
-  const setCompactMode     = useSettingsStore((s) => s.setCompactMode);
   const largeFontEditor    = useSettingsStore((s) => s.largeFontEditor);
   const setLargeFontEditor = useSettingsStore((s) => s.setLargeFontEditor);
   const showPreview        = useSettingsStore((s) => s.showTelegramPreview);
@@ -174,13 +173,13 @@ function AppearanceSection() {
         {/* ── Accent color ─────────────────────────────────────────── */}
         <Field label={t("settings.accentColor")}>
           <div className="flex items-center gap-2">
-            {ACCENT_PRESETS.map(({ color, label }) => {
+            {ACCENT_PRESETS.map(({ color, labelKey }) => {
               const isSelected = accentColor === color;
               return (
                 <button
                   key={color}
                   onClick={() => setAccentColor(color)}
-                  title={label}
+                  title={t(labelKey)}
                   className="w-7 h-7 rounded-full transition-transform"
                   style={{
                     backgroundColor: color,
@@ -220,9 +219,6 @@ function AppearanceSection() {
 
       {/* ── Display toggles ──────────────────────────────────────────── */}
       <Section title={t("settings.editor")}>
-        <Field label={t("settings.compactMode")}>
-          <Toggle checked={compactMode} onChange={setCompactMode} />
-        </Field>
         <Field label={t("settings.showPreview")}>
           <Toggle checked={showPreview} onChange={setShowPreview} />
         </Field>
@@ -328,6 +324,8 @@ function TelegraphSection() {
 // ── About section ─────────────────────────────────────────────────────────────
 
 function AboutSection() {
+  const [appVersion, setAppVersion] = useState("...");
+  useEffect(() => { getVersion().then(setAppVersion).catch(() => setAppVersion("1.0.0")); }, []);
   return (
     <Section title={t("settings.about")}>
       <div
@@ -349,11 +347,11 @@ function AboutSection() {
             Telegram Studio
           </p>
           <p className="text-sm mt-0.5" style={{ color: "var(--text-muted)" }}>
-            {t("settings.version")} 0.5.0
+            {t("settings.version")} {appVersion}
           </p>
         </div>
         <p className="text-xs text-center max-w-xs" style={{ color: "var(--text-muted)" }}>
-          Локальный десктоп-клиент для публикации постов в Telegram-каналы
+          {t("settings.aboutDesc")}
         </p>
         <div
           className="flex items-center gap-1.5 text-xs px-3 py-1 rounded-full"
@@ -364,7 +362,7 @@ function AboutSection() {
           }}
         >
           <span>●</span>
-          <span>Работает полностью локально</span>
+          <span>{t("settings.localMode")}</span>
         </div>
       </div>
     </Section>
@@ -377,37 +375,18 @@ function ProfileStub() {
   return (
     <Section title={t("settings.nav.profile")}>
       <div className="px-4 py-6 text-center" style={{ color: "var(--text-muted)", fontSize: 13 }}>
-        Профиль настраивается через управление ботами и каналами
+        {t("settings.profileNote")}
       </div>
     </Section>
   );
 }
 
-function BotsStub() {
-  return (
-    <Section title={t("settings.nav.bots")}>
-      <div className="px-4 py-6 text-center" style={{ color: "var(--text-muted)", fontSize: 13 }}>
-        Управление ботами доступно в разделе «Боты» в боковом меню
-      </div>
-    </Section>
-  );
-}
-
-function ChannelsStub() {
-  return (
-    <Section title={t("settings.nav.channels")}>
-      <div className="px-4 py-6 text-center" style={{ color: "var(--text-muted)", fontSize: 13 }}>
-        Управление каналами доступно в разделе «Каналы» в боковом меню
-      </div>
-    </Section>
-  );
-}
 
 function NotificationsStub() {
   return (
     <Section title={t("settings.nav.notifications")}>
       <div className="px-4 py-6 text-center" style={{ color: "var(--text-muted)", fontSize: 13 }}>
-        Уведомления будут доступны в следующей версии
+        {t("settings.notificationsStub")}
       </div>
     </Section>
   );

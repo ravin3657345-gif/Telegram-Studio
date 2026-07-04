@@ -24,6 +24,10 @@ export interface MediaItem {
 }
 
 interface EditorState {
+  splitGaps:   number[];   // gap indices between top-level blocks where a divider sits
+  lockedGaps:  number[];   // gaps the user manually placed / moved (auto-split won't clear them)
+  setSplitGaps: (gaps: number[], locked?: number[]) => void;
+
   draftId:           string | null;
   editingHistoryId:  string | null;
   draftTitle:        string;
@@ -82,10 +86,15 @@ const INITIAL_STATE = {
   saveStatus:       "idle" as SaveStatus,
   lastSavedAt:      null as Date | null,
   publishMode:      "normal" as PublishMode,
+  splitGaps:        [] as number[],
+  lockedGaps:       [] as number[],
 };
 
 export const useEditorStore = create<EditorState>((set, get) => ({
   ...INITIAL_STATE,
+
+  setSplitGaps: (gaps, locked) =>
+    set({ splitGaps: gaps, lockedGaps: locked ?? get().lockedGaps }),
 
   setDraftId:           (id) => set({ draftId: id }),
   setEditingHistoryId:  (id) => set({ editingHistoryId: id }),

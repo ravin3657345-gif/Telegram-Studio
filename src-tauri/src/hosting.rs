@@ -45,8 +45,12 @@ pub async fn upload_file(bytes: Vec<u8>, mime_type: &str, file_name: &str) -> Re
     }
 
     let url = text.trim().to_string();
-    if !url.starts_with("https://") {
-        return Err(format!("litterbox: неожиданный ответ: {}", url));
+    // Accept only expected litterbox/catbox domains to prevent SSRF via Telegram
+    if !url.starts_with("https://files.catbox.moe/")
+        && !url.starts_with("https://litter.catbox.moe/")
+        && !url.starts_with("https://catbox.moe/")
+    {
+        return Err(format!("litterbox: неожиданный URL хоста: {}", url));
     }
     Ok(url)
 }

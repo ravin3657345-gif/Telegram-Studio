@@ -1,3 +1,19 @@
+/* ─── Toolbar horizontal scroll ───────────────────────────────────────────────── */
+
+.toolbar-scroll::-webkit-scrollbar {
+  height: 3px;
+}
+.toolbar-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.toolbar-scroll::-webkit-scrollbar-thumb {
+  background: var(--border-default);
+  border-radius: 2px;
+}
+.toolbar-scroll::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
 /* ─── EditorContent root ──────────────────────────────────────────────────────── */
 
 .tiptap-editor-root {
@@ -10,8 +26,8 @@
   flex: 1;
   padding: 24px 40px 32px;
   color: var(--text-primary);
-  font-size: 15px;
-  line-height: 26px;
+  font-size: var(--editor-font-size, 15px);
+  line-height: var(--editor-line-height, 26px);
   letter-spacing: 0.01em;
   cursor: text;
   user-select: text;

@@ -10,6 +10,7 @@ pub struct Template {
     pub name: String,
     pub content_json: String,
     pub parse_mode: String,
+    pub category: String,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -21,6 +22,7 @@ pub struct SaveTemplatePayload {
     pub name: String,
     pub content_json: String,
     pub parse_mode: Option<String>,
+    pub category: Option<String>,
 }
 
 #[tauri::command]
@@ -30,8 +32,8 @@ pub async fn get_templates(
     let db = state.db.lock().map_err(|e| e.to_string())?;
     let mut stmt = db
         .prepare(
-            "SELECT id, name, content_json, parse_mode, created_at, updated_at
-             FROM templates ORDER BY updated_at DESC",
+            "SELECT id, name, content_json, parse_mode, category, created_at, updated_at
+             FROM templates ORDER BY category ASC, updated_at DESC",
         )
         .map_err(|e| e.to_string())?;
 
@@ -42,8 +44,9 @@ pub async fn get_templates(
                 name:         row.get(1)?,
                 content_json: row.get(2)?,
                 parse_mode:   row.get(3)?,
-                created_at:   row.get(4)?,
-                updated_at:   row.get(5)?,
+                category:     row.get(4)?,
+                created_at:   row.get(5)?,
+                updated_at:   row.get(6)?,
             })
         })
         .map_err(|e| e.to_string())?;
@@ -65,19 +68,21 @@ pub async fn save_template(
         name: payload.name,
         content_json: payload.content_json,
         parse_mode: payload.parse_mode.unwrap_or_else(|| "HTML".to_string()),
+        category: payload.category.unwrap_or_else(|| "other".to_string()),
         created_at: now.clone(),
         updated_at: now,
     };
 
     db.execute(
-        "INSERT INTO templates (id, name, content_json, parse_mode, created_at, updated_at)
-         VALUES (?1,?2,?3,?4,?5,?6)
+        "INSERT INTO templates (id, name, content_json, parse_mode, category, created_at, updated_at)
+         VALUES (?1,?2,?3,?4,?5,?6,?7)
          ON CONFLICT(id) DO UPDATE SET
            name=excluded.name,
            content_json=excluded.content_json,
            parse_mode=excluded.parse_mode,
+           category=excluded.category,
            updated_at=excluded.updated_at",
-        rusqlite::params![t.id, t.name, t.content_json, t.parse_mode, t.created_at, t.updated_at],
+        rusqlite::params![t.id, t.name, t.content_json, t.parse_mode, t.category, t.created_at, t.updated_at],
     )
     .map_err(|e| e.to_string())?;
 

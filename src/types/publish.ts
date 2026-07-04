@@ -14,7 +14,7 @@ export interface ButtonPayload {
 }
 
 export interface PublishPayload {
-  botId: string;
+  botId?: string | null;
   channelIds: string[];
   contentHtml: string;
   media: MediaPayload[];
@@ -30,6 +30,7 @@ export interface PublishResult {
   success: boolean;
   telegramMsgId?: number | null;
   errorMessage?: string | null;
+  botUsername?: string | null;
 }
 
 export interface ScheduledPostInfo {

@@ -3,6 +3,7 @@ import { Plus } from "lucide-react";
 import { MediaAttachment } from "./MediaAttachment";
 import type { MediaItem } from "@/store/editorStore";
 import { TELEGRAM_MAX_MEDIA_GROUP } from "@/lib/constants";
+import { t, ti } from "@/lib/i18n";
 
 interface MediaGridProps {
   items: MediaItem[];
@@ -52,10 +53,10 @@ export function MediaGrid({ items, onRemove, onAddMore }: MediaGridProps) {
                 borderColor: "var(--border-default)",
                 color: "var(--text-muted)",
               }}
-              title="Добавить ещё"
+              title={t("media.addMore")}
             >
               <Plus size={20} />
-              <span className="text-2xs">Добавить</span>
+              <span className="text-2xs">{t("media.add")}</span>
             </button>
           </>
         )}
@@ -65,7 +66,7 @@ export function MediaGrid({ items, onRemove, onAddMore }: MediaGridProps) {
           className="text-2xs flex-shrink-0"
           style={{ color: "var(--text-muted)" }}
         >
-          {items.length}/{TELEGRAM_MAX_MEDIA_GROUP} файлов
+          {ti("media.fileLimit", { count: items.length, limit: TELEGRAM_MAX_MEDIA_GROUP })}
         </span>
       </div>
     </div>

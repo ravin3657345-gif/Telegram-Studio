@@ -85,3 +85,17 @@ pub async fn delete_channel(
     let db = state.db.lock().map_err(|e| e.to_string())?;
     channels_q::delete(&db, &channel_id).map_err(|e| e.to_string())
 }
+
+#[tauri::command]
+pub async fn update_channel_bot(
+    channel_id: String,
+    bot_id: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<(), String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    // Verify bot exists
+    bots_q::get_token(&db, &bot_id)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "Бот не найден".to_string())?;
+    channels_q::update_bot_id(&db, &channel_id, &bot_id).map_err(|e| e.to_string())
+}

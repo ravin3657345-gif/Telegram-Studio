@@ -39,6 +39,9 @@ export const addChannel = (
 export const deleteChannel = (channelId: string): Promise<void> =>
   invoke("delete_channel", { channelId });
 
+export const updateChannelBot = (channelId: string, botId: string): Promise<void> =>
+  invoke("update_channel_bot", { channelId, botId });
+
 // ── Черновики ────────────────────────────────────────────────────────────────
 
 export const getDrafts = (): Promise<DraftSummary[]> =>
@@ -105,7 +108,7 @@ export interface RichPhotoPayload {
 }
 
 export interface PublishRichPayload {
-  botId: string;
+  botId?: string | null;
   channelIds: string[];
   blocksJson: string;
   photos: RichPhotoPayload[];
@@ -116,7 +119,7 @@ export const publishRichPost = (payload: PublishRichPayload): Promise<PublishRes
   invoke("publish_rich_post", { payload });
 
 export interface PollPayload {
-  botId: string;
+  botId?: string | null;
   channelIds: string[];
   question: string;
   options: string[];
@@ -150,6 +153,7 @@ export interface HistoryForEdit {
   telegramMsgId:  number | null;
   telegramChatId: string | null;
   botId:          string;
+  publishMode:    string;
   attachments: {
     fileId:      string;
     dataBase64:  string;
@@ -161,8 +165,16 @@ export interface HistoryForEdit {
 export const getHistoryForEdit = (historyId: string): Promise<HistoryForEdit> =>
   invoke("get_history_for_edit", { historyId });
 
-export const editPublishedPost = (historyId: string, newText: string): Promise<void> =>
-  invoke("edit_published_post", { historyId, newText });
+export const editPublishedPost = (historyId: string, newText: string, contentJson?: string): Promise<void> =>
+  invoke("edit_published_post", { historyId, newText, contentJson: contentJson ?? null });
+
+export const republishRichPost = (
+  historyId: string,
+  blocksJson: string,
+  photos: RichPhotoPayload[],
+  contentJson?: string,
+): Promise<void> =>
+  invoke("republish_rich_post", { historyId, blocksJson, photos, contentJson: contentJson ?? null });
 
 // ── Шаблоны ──────────────────────────────────────────────────────────────────
 
@@ -174,3 +186,11 @@ export const saveTemplate = (payload: SaveTemplatePayload): Promise<Template> =>
 
 export const deleteTemplate = (templateId: string): Promise<void> =>
   invoke("delete_template", { templateId });
+
+// ── Лицензия ─────────────────────────────────────────────────────────────────
+
+export const getLicenseStatus = (): Promise<boolean> =>
+  invoke("get_license_status");
+
+export const activateLicense = (key: string): Promise<void> =>
+  invoke("activate_license", { key });
