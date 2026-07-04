@@ -93,6 +93,7 @@ pub struct DraftPayload {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct DraftMedia {
     pub id: String,
     pub draft_id: String,
@@ -108,6 +109,7 @@ pub struct DraftMedia {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct DraftButton {
     pub id: String,
     pub draft_id: String,

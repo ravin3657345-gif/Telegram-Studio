@@ -54,12 +54,22 @@ export function PublishPanel({ draftId }: PublishPanelProps) {
   );
   const hasFiles = hasAttachments || segments.some((s) => s.type === "file");
   const fileBlockedInRich = publishMode === "rich" && hasFiles;
+  // Telegraph articles embed inline images/video directly (tiptapToTelegraphNodes
+  // uploads them), but bottom-panel attachments (documents) have no place in an
+  // article and would otherwise be silently discarded on publish.
+  const fileBlockedInTelegraph = publishMode === "telegraph" && hasAttachments;
+  // Scheduled posts only ever carry `content_html` (scheduler/mod.rs sends via
+  // send_message only) — any media or poll segment would be silently dropped.
+  const hasNonTextSegments = segments.some((s) => s.type !== "text");
+  const mediaBlockedInSchedule = hasAttachments || hasNonTextSegments;
   const hasBots = bots.length > 0;
 
   const canPublish =
     hasBots && selectedChannelIds.length > 0 && hasContent &&
-    !fileBlockedInRich &&
+    !fileBlockedInRich && !fileBlockedInTelegraph &&
     status !== "publishing" && status !== "scheduling";
+
+  const canSchedule = canPublish && !mediaBlockedInSchedule;
 
   // ── Normal / Caption publish ─────────────────────────────────────────────────
 
@@ -351,7 +361,7 @@ export function PublishPanel({ draftId }: PublishPanelProps) {
   }
 
   async function handleSchedule(isoDate: string) {
-    if (!canPublish) return;
+    if (!canSchedule) return;
     setShowSchedule(false);
     reset();
     setStatus("scheduling");
@@ -553,6 +563,36 @@ export function PublishPanel({ draftId }: PublishPanelProps) {
           </div>
         )}
 
+        {/* File warning in Telegraph mode — attached documents have no place in an article */}
+        {fileBlockedInTelegraph && (
+          <div
+            className="flex items-start gap-2 px-3 py-2 rounded-lg text-xs"
+            style={{
+              backgroundColor: "rgba(251,191,36,0.1)",
+              border: "1px solid rgba(251,191,36,0.3)",
+              color: "var(--text-secondary)",
+            }}
+          >
+            <AlertCircle size={13} style={{ color: "#fbbf24", flexShrink: 0, marginTop: 1 }} />
+            <span>{t("publish.fileInTelegraph")}</span>
+          </div>
+        )}
+
+        {/* Media/poll warning for scheduled posts — scheduler only carries text */}
+        {mediaBlockedInSchedule && !fileBlockedInRich && !fileBlockedInTelegraph && (
+          <div
+            className="flex items-start gap-2 px-3 py-2 rounded-lg text-xs"
+            style={{
+              backgroundColor: "rgba(251,191,36,0.1)",
+              border: "1px solid rgba(251,191,36,0.3)",
+              color: "var(--text-secondary)",
+            }}
+          >
+            <AlertCircle size={13} style={{ color: "#fbbf24", flexShrink: 0, marginTop: 1 }} />
+            <span>{t("publish.mediaInSchedule")}</span>
+          </div>
+        )}
+
         {/* Edit mode banner */}
         {editingHistoryId && (
           <div style={{
@@ -598,7 +638,7 @@ export function PublishPanel({ draftId }: PublishPanelProps) {
                   : t("publish.button")}
               </Button>
 
-              <Button variant="ghost" size="sm" fullWidth disabled={!canPublish}
+              <Button variant="ghost" size="sm" fullWidth disabled={!canSchedule}
                 leftIcon={status === "scheduling" ? <Loader2 size={13} className="animate-spin" /> : <Clock size={13} />}
                 onClick={() => setShowSchedule(true)}
               >

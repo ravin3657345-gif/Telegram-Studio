@@ -216,6 +216,8 @@ export const ru = {
     "publish.modeLocked":           "режим зафиксирован",
     "publish.fileInRich":           "Файлы не поддерживаются в Rich режиме. Переключитесь на",
     "publish.fileInRichLink":       "По блокам",
+    "publish.fileInTelegraph":      "Прикреплённые файлы не поддерживаются статьями Telegraph и будут пропущены. Уберите вложения перед публикацией.",
+    "publish.mediaInSchedule":      "Отложенные посты пока поддерживают только текст — изображения, видео, файлы и опросы не будут отправлены. Уберите их или опубликуйте сразу.",
     "publish.defaultTitle":         "Публикация",
 
     // ── Диалог ссылки ────────────────────────────────────────────────────────
@@ -414,8 +416,8 @@ export const ru = {
     "publish.updateTelegram": "Обновить в Telegram",
     "schedule.reset":       "Сброс",
     "schedule.futureError": "Укажите дату и время в будущем",
-    "toolbar.collapsibleUnavail":     "Сворачиваемая цитата недоступна в Rich-режиме",
-    "toolbar.collapsibleUnavailHint": "Используйте обычный или Telegraph режим",
+    "toolbar.collapsibleUnavail":     "Сворачиваемая цитата недоступна в режиме Telegraph",
+    "toolbar.collapsibleUnavailHint": "Используйте обычный или Rich режим",
     "toolbar.makeNormal":             "Сделать обычной",
     "toolbar.makeCollapsible":        "Сделать сворачиваемой",
     "quote.makeNormal":      "Сделать обычной цитатой",

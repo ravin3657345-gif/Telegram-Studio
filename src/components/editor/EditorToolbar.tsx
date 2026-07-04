@@ -142,7 +142,9 @@ export function EditorToolbar({
       {editor.isActive("blockquote") && (
         <ToolbarButton
           title={
-            publishMode === "rich"
+            // Telegraph articles drop the `expandable` attribute entirely
+            // (telegraphConverter.ts never reads it) — Rich mode supports it fine.
+            publishMode === "telegraph"
               ? t("toolbar.collapsibleUnavail")
               : editor.getAttributes("blockquote").expandable
                 ? t("toolbar.makeNormal")
@@ -150,9 +152,9 @@ export function EditorToolbar({
           }
           icon={ChevronsDownUp}
           isActive={!!editor.getAttributes("blockquote").expandable}
-          disabled={publishMode === "rich"}
+          disabled={publishMode === "telegraph"}
           onClick={() => {
-            if (publishMode === "rich") {
+            if (publishMode === "telegraph") {
               toast("warning", t("toolbar.collapsibleUnavail"), t("toolbar.collapsibleUnavailHint"));
               return;
             }
