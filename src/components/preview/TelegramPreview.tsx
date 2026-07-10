@@ -1,8 +1,8 @@
 import { useMemo, useState, useRef, useEffect, createContext, useContext } from "react";
-import { Play, FileText, Eye } from "lucide-react";
+import { Play, FileText, Eye, Table2 } from "lucide-react";
 import { useEditorStore } from "@/store/editorStore";
 import { useSettingsStore } from "@/store/settingsStore";
-import { splitIntoMessagesAtGaps, type ContentSegment } from "@/lib/htmlConverter";
+import { splitIntoMessagesAtGaps, splitJsonAtGaps, type ContentSegment } from "@/lib/htmlConverter";
 import { tiptapToRichHtml } from "@/lib/richMessageConverter";
 import { t, ti } from "@/lib/i18n";
 import { sanitizeTelegramHtml as sanitize } from "@/lib/telegramSanitize";
@@ -65,6 +65,39 @@ function previewStyles(tg: TGPalette): string { return `
   .tg-preview-text br { display: block; content: ""; margin: 2px 0 }
   .tg-preview-text mark {
     background: rgba(255,220,0,0.25); color: inherit; border-radius: 2px; padding: 0 2px;
+  }
+  .tg-preview-text ul, .tg-preview-text ol {
+    margin: 2px 0 4px; padding-left: 22px;
+  }
+  .tg-preview-text ul { list-style: disc; }
+  .tg-preview-text ol { list-style: decimal; }
+  .tg-preview-text li { margin: 1px 0; }
+  .tg-preview-text ul:has(input[type="checkbox"]) { list-style: none; padding-left: 2px; }
+  .tg-preview-text input[type="checkbox"] {
+    margin-right: 6px; accent-color: ${tg.linkFg}; vertical-align: -2px;
+  }
+  .tg-preview-text hr {
+    border: none; border-top: 1px solid ${tg.quoteBorder}; margin: 8px 0; opacity: 0.5;
+  }
+  .tg-preview-text details {
+    border-left: 3px solid ${tg.quoteBorder}; background: ${tg.quoteBg};
+    margin: 4px 0; padding: 5px 10px; border-radius: 0 6px 6px 0;
+  }
+  .tg-preview-text details summary {
+    cursor: pointer; font-weight: 600; list-style: none;
+  }
+  .tg-preview-text details summary::-webkit-details-marker { display: none; }
+  .tg-preview-text details[open] summary { margin-bottom: 4px; }
+  .tg-preview-text table {
+    border-collapse: collapse; margin: 6px 0; width: 100%; font-size: 13px;
+    table-layout: fixed;
+  }
+  .tg-preview-text td, .tg-preview-text th {
+    border: 1px solid ${tg.quoteBorder}; padding: 4px 8px; text-align: left;
+    overflow-wrap: anywhere; word-break: break-word;
+  }
+  .tg-preview-text th {
+    background: ${tg.quoteBg}; font-weight: 600;
   }
 `; }
 
@@ -352,28 +385,63 @@ function FileBubble({ fileName, fileSize }: { fileName: string; fileSize: number
 type RichPart =
   | { type: "text";  html: string }
   | { type: "img";   src: string }
-  | { type: "video"; src: string };
+  | { type: "video"; src: string }
+  | { type: "audio"; src: string }
+  | { type: "table"; rows: number; cols: number };
 
-function RichBubble({ html, segments }: { html: string; segments: ContentSegment[] }) {
+// blockAudio isn't recognized by the normal-mode converter that builds
+// `segments` (it's Rich-only — see htmlConverter.ts), so unlike image/video
+// there's no ready-made list of local blob srcs to pull from. Walk the raw
+// TipTap doc directly instead, in document order.
+function collectAudioSrcs(contentJson: string): string[] {
+  const out: string[] = [];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  function walk(node: any) {
+    if (!node) return;
+    if (node.type === "blockAudio" && node.attrs?.src) out.push(node.attrs.src);
+    (node.content ?? []).forEach(walk);
+  }
+  try { walk(JSON.parse(contentJson)); } catch { /* ignore malformed/partial JSON while typing */ }
+  return out;
+}
+
+function RichBubble({ html, segments, contentJson }: { html: string; segments: ContentSegment[]; contentJson: string }) {
   const tg = useTG();
   const parts = useMemo<RichPart[]>(() => {
     const imgSrcs = segments.filter(s => s.type === "image").map(s => (s as any).src as string);
     const vidSrcs = segments.filter(s => s.type === "video").map(s => (s as any).src as string);
-    let imgIdx = 0, vidIdx = 0;
-    const re = /<(img|video)\s[^>]*src="([^"]+)"[^>]*\/?>/g;
+    const audSrcs = collectAudioSrcs(contentJson);
+    let imgIdx = 0, vidIdx = 0, audIdx = 0;
+    // <tg-collage>/<tg-slideshow> are structural-only wrappers around the
+    // <img>/<video> tags below — this preview has no grid/carousel layout of
+    // its own, so just drop the wrapper markup and let the images render in
+    // sequence (real Telegram either groups them or ignores the wrapper too).
+    const cleanHtml = html.replace(/<\/?tg-(collage|slideshow)[^>]*>/g, "");
+    // A real table physically can't fit a bubble this narrow (300px) without
+    // becoming an unreadable, cramped mess — swap it for a compact "here's a
+    // table" schematic instead of trying to render the actual grid.
+    const re = /<table[^>]*>([\s\S]*?)<\/table>|<(img|video|audio)\s[^>]*src="([^"]+)"[^>]*\/?>(?:<\/audio>)?/g;
     const result: RichPart[] = [];
     let last = 0, m: RegExpExecArray | null;
-    while ((m = re.exec(html)) !== null) {
-      if (m.index > last) result.push({ type: "text", html: html.slice(last, m.index) });
-      result.push(m[1] === "img"
-        ? { type: "img",   src: imgSrcs[imgIdx++] ?? "" }
-        : { type: "video", src: vidSrcs[vidIdx++] ?? "" });
+    while ((m = re.exec(cleanHtml)) !== null) {
+      if (m.index > last) result.push({ type: "text", html: cleanHtml.slice(last, m.index) });
+      if (m[1] !== undefined) {
+        const rows = (m[1].match(/<tr[ >]/g) || []).length;
+        const cells = (m[1].match(/<t[hd][ >]/g) || []).length;
+        result.push({ type: "table", rows, cols: rows > 0 ? Math.round(cells / rows) : 0 });
+      } else {
+        result.push(
+          m[2] === "img"   ? { type: "img",   src: imgSrcs[imgIdx++] ?? "" } :
+          m[2] === "video" ? { type: "video", src: vidSrcs[vidIdx++] ?? "" } :
+                              { type: "audio", src: audSrcs[audIdx++] ?? "" }
+        );
+      }
       last = re.lastIndex;
     }
-    if (last < html.length) result.push({ type: "text", html: html.slice(last) });
+    if (last < cleanHtml.length) result.push({ type: "text", html: cleanHtml.slice(last) });
     return result;
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [html]);
+  }, [html, contentJson]);
 
   return (
     <div style={{
@@ -387,6 +455,17 @@ function RichBubble({ html, segments }: { html: string; segments: ContentSegment
       {parts.map((p, i) => {
         if (p.type === "img")  return p.src ? <img  key={i} src={p.src} alt="" draggable={false} style={{ width: "100%", maxHeight: 280, objectFit: "cover", display: "block" }} /> : null;
         if (p.type === "video") return p.src ? <video key={i} src={p.src} preload="metadata" style={{ width: "100%", maxHeight: 280, objectFit: "cover", display: "block" }} /> : null;
+        if (p.type === "audio") return p.src ? <audio key={i} src={p.src} controls preload="metadata" style={{ width: "100%", display: "block", margin: "8px 12px", maxWidth: "calc(100% - 24px)" }} /> : null;
+        if (p.type === "table") return (
+          <div key={i} style={{
+            display: "flex", alignItems: "center", gap: 8,
+            margin: "8px 12px", padding: "8px 10px",
+            borderRadius: 8, border: `1px solid ${tg.quoteBorder}`, background: tg.quoteBg,
+          }}>
+            <Table2 size={15} color={tg.linkFg} style={{ flexShrink: 0 }} />
+            <span style={{ fontSize: 12.5 }}>{ti("preview.table", { rows: p.rows, cols: p.cols })}</span>
+          </div>
+        );
         const trimmed = p.html.trim();
         return trimmed ? <div key={i} style={{ padding: "8px 12px 4px", wordBreak: "break-word" }}><TelegramText html={trimmed} /></div> : null;
       })}
@@ -421,13 +500,28 @@ export function TelegramPreview() {
 
   const segments = messages.flat();
 
-  const richHtml = useMemo(() => {
-    if (publishMode !== "rich") return "";
-    return tiptapToRichHtml(contentJson || '{"type":"doc","content":[]}', effectiveTitle).html;
-  }, [contentJson, effectiveTitle, publishMode]);
+  // Rich posts split into multiple sendRichMessage calls exactly like normal
+  // posts split into multiple sendMessage calls (see PublishPanel.tsx's
+  // publishViaRichMessage) — each split chunk needs its own <RichBubble>,
+  // same as the normal-mode messages.map(...) branch below, or the preview
+  // would keep showing one giant unsplit bubble for a post that will
+  // actually go out as several separate messages.
+  const richJsonChunks = useMemo(() => {
+    if (publishMode !== "rich") return [];
+    return splitJsonAtGaps(contentJson || '{"type":"doc","content":[]}', splitGaps);
+  }, [contentJson, splitGaps, publishMode]);
 
-  const isEmpty = segments.length === 0 ||
-    segments.every((s) => s.type === "text" && !s.html.trim());
+  const richHtmlChunks = useMemo(() => {
+    return richJsonChunks.map((chunk, i) => tiptapToRichHtml(chunk, i === 0 ? effectiveTitle : "").html);
+  }, [richJsonChunks, effectiveTitle]);
+
+  // segments come from the normal-mode converter, which has no table concept
+  // at all (see htmlConverter.ts) — a Rich post consisting of nothing but a
+  // table would otherwise always read as empty and never show the bubble.
+  const hasTable = publishMode === "rich" && (contentJson ?? "").includes('"type":"blockTable"');
+  const hasAudio = publishMode === "rich" && (contentJson ?? "").includes('"type":"blockAudio"');
+  const isEmpty = !hasTable && !hasAudio && (segments.length === 0 ||
+    segments.every((s) => s.type === "text" && !s.html.trim()));
 
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -461,7 +555,30 @@ export function TelegramPreview() {
         ) : (
           <div key={publishMode} className="tg-mode-content" style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             {publishMode === "rich" ? (
-              <RichBubble html={richHtml} segments={segments} />
+              richHtmlChunks.length <= 1 ? (
+                <RichBubble
+                  html={richHtmlChunks[0] ?? ""}
+                  segments={messages[0] ?? []}
+                  contentJson={richJsonChunks[0] ?? contentJson ?? '{"type":"doc","content":[]}'}
+                />
+              ) : (
+                richHtmlChunks.map((html, ci) => (
+                  <div key={ci} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    {ci > 0 && (
+                      <div style={{
+                        textAlign: "center", fontSize: 11,
+                        color: tg.datePillText,
+                        backgroundColor: tg.datePillBg,
+                        borderRadius: 10, padding: "2px 10px",
+                        alignSelf: "center",
+                      }}>
+                        {ti("split.previewLabel", { n: ci + 1 })}
+                      </div>
+                    )}
+                    <RichBubble html={html} segments={messages[ci] ?? []} contentJson={richJsonChunks[ci]} />
+                  </div>
+                ))
+              )
             ) : messages.length <= 1 ? (
               messages[0]?.map((seg, i) => {
                 if (seg.type === "text")  return <TextBubble  key={i} html={seg.html} />;

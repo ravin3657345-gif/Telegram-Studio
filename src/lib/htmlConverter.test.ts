@@ -31,6 +31,12 @@ describe("tiptapToTelegramHtml", () => {
     expect(it2).toBe("<i>Hi</i>");
   });
 
+  it("drops subscript/superscript/highlight marks — Telegram's regular sendMessage HTML doesn't support <sub>/<sup>/<mark>, only Rich Messages do", () => {
+    expect(tiptapToTelegramHtml(doc(para(text("Hi", [mark("subscript")]))))).toBe("Hi");
+    expect(tiptapToTelegramHtml(doc(para(text("Hi", [mark("superscript")]))))).toBe("Hi");
+    expect(tiptapToTelegramHtml(doc(para(text("Hi", [mark("highlight")]))))).toBe("Hi");
+  });
+
   it("escapes HTML-significant characters", () => {
     expect(tiptapToTelegramHtml(doc(para(text("a < b & c > d"))))).toBe(
       "a &lt; b &amp; c &gt; d",
@@ -64,12 +70,56 @@ describe("tiptapToTelegramHtml", () => {
     expect(h1).toBe("<b>Title</b>");
   });
 
+  it("renders blockFaq (spoiler) as an expandable blockquote", () => {
+    const out = tiptapToTelegramHtml(
+      doc({ type: "blockFaq", attrs: { question: "Q", answer: "plain answer" } }),
+    );
+    expect(out).toBe("<blockquote expandable>Q\nplain answer</blockquote>");
+  });
+
+  it("converts blockFaq's rich-text answer markup instead of escaping it", () => {
+    // Regression: the answer is sanitized mini-HTML from a contentEditable
+    // body, not plain text — it must come out as real <b> tags, not &lt;b&gt;.
+    const out = tiptapToTelegramHtml(
+      doc({ type: "blockFaq", attrs: { question: "Q", answer: "<b>bold</b> and <i>italic</i>" } }),
+    );
+    expect(out).toContain("<b>bold</b> and <i>italic</i>");
+    expect(out).not.toContain("&lt;b&gt;");
+  });
+
+  it("skips blockFaq entirely when both question and answer are empty", () => {
+    expect(tiptapToTelegramHtml(doc({ type: "blockFaq", attrs: { question: "", answer: "" } }))).toBe("");
+  });
+
   it("renders a code block with language class", () => {
     const out = tiptapToTelegramHtml(
       doc({ type: "codeBlock", attrs: { language: "rust" }, content: [text("fn main(){}")] }),
     );
     expect(out).toContain('<pre><code class="language-rust">');
     expect(out).toContain("fn main(){}");
+  });
+
+  it("renders an unchecked checkItem with an empty box", () => {
+    const out = tiptapToTelegramHtml(doc({ type: "checkItem", attrs: { checked: false }, content: [text("Buy milk")] }));
+    expect(out).toBe("☐ Buy milk");
+  });
+
+  it("renders a checked checkItem with a filled box", () => {
+    const out = tiptapToTelegramHtml(doc({ type: "checkItem", attrs: { checked: true }, content: [text("Done")] }));
+    expect(out).toBe("☑ Done");
+  });
+
+  it("renders a callout as an emoji-prefixed blockquote", () => {
+    const out = tiptapToTelegramHtml(
+      doc({ type: "callout", attrs: { emoji: "💡" }, content: [para(text("Heads up"))] }),
+    );
+    expect(out).toBe("<blockquote>💡 Heads up</blockquote>");
+  });
+
+  it("drops anchorPoint — anchors only work in Rich messages, not regular HTML", () => {
+    const out = tiptapToTelegramHtml(doc({ type: "anchorPoint" }, para(text("hi"))));
+    expect(out).not.toContain("name=");
+    expect(out).toContain("hi");
   });
 });
 

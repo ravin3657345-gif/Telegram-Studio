@@ -319,26 +319,57 @@ pub async fn send_rich_message(
     client.call("sendRichMessage", &body).await
 }
 
-/// Remove `<img src="PLACEHOLDER"/>` tags from HTML when upload failed.
+/// Remove a failed-upload `<img src="PLACEHOLDER"/>`/`<video src="PLACEHOLDER"/>`
+/// tag from Rich HTML when the placeholder never got resolved to a real URL —
+/// same self-closing shape whether the tag is standalone or inside a
+/// `<tg-collage>` group (a dedicated content-based `<photo>URL</photo>` form
+/// was tried and confirmed broken: Telegram doesn't recognize it, strips the
+/// tag, and auto-links the bare URL text left behind).
 pub fn remove_img_placeholder(html: &str, placeholder: &str) -> String {
-    let mut result = String::new();
-    let mut remaining = html;
-    while let Some(img_start) = remaining.find("<img") {
-        let before = &remaining[..img_start];
-        let after = &remaining[img_start..];
-        if let Some(img_end) = after.find('>') {
-            let tag = &after[..=img_end];
-            if tag.contains(placeholder) {
-                result.push_str(before.trim_end_matches('\n'));
-                remaining = after[img_end + 1..].trim_start_matches('\n');
-                continue;
+    let candidates = [
+        format!("<img src=\"{placeholder}\"/>"),
+        format!("<video src=\"{placeholder}\"/>"),
+    ];
+    for candidate in &candidates {
+        if let Some(pos) = html.find(candidate.as_str()) {
+            let mut result = html[..pos].to_string();
+            result.push_str(&html[pos + candidate.len()..]);
+            return result;
+        }
+    }
+    html.to_string()
+}
+
+/// After per-photo placeholder removal a `<tg-collage>`/`<tg-slideshow>`
+/// group can end up with zero surviving `<img>`/`<video>` children — e.g.
+/// every photo in that one group failed to upload while the rest of the post
+/// (text, other groups) is fine. Telegram rejects the WHOLE message with
+/// `RICH_MESSAGE_PHOTO_NO_MEDIA_FOUND` if any group is left empty, so strip
+/// such empty wrappers entirely rather than let one failed group take down
+/// everything else that uploaded fine.
+pub fn strip_empty_media_groups(html: &str) -> String {
+    let mut result = html.to_string();
+    for tag in ["tg-collage", "tg-slideshow"] {
+        let open_needle = format!("<{tag}");
+        let close_tag = format!("</{tag}>");
+        let mut search_from = 0usize;
+        loop {
+            let Some(rel_open) = result[search_from..].find(&open_needle) else { break };
+            let open_start = search_from + rel_open;
+            let Some(rel_gt) = result[open_start..].find('>') else { break };
+            let open_end = open_start + rel_gt + 1;
+            let Some(rel_close) = result[open_end..].find(&close_tag) else { break };
+            let close_start = open_end + rel_close;
+            let close_end = close_start + close_tag.len();
+            let inner = &result[open_end..close_start];
+            if inner.contains("<img") || inner.contains("<video") {
+                search_from = close_end;
+            } else {
+                result.replace_range(open_start..close_end, "");
+                search_from = open_start;
             }
         }
-        result.push_str(before);
-        result.push_str("<img");
-        remaining = &after[4..];
     }
-    result.push_str(remaining);
     result
 }
 

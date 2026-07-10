@@ -1,43 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { tiptapToRichBlocks, tiptapToRichHtml } from "./richMessageConverter";
+import { tiptapToRichHtml } from "./richMessageConverter";
 
 const doc = (...content: unknown[]) => JSON.stringify({ type: "doc", content });
 const para = (...children: unknown[]) => ({ type: "paragraph", content: children });
 const text = (t: string, marks?: unknown[]) =>
   marks ? { type: "text", text: t, marks } : { type: "text", text: t };
-
-describe("tiptapToRichBlocks", () => {
-  it("returns empty blocks for invalid JSON", () => {
-    expect(tiptapToRichBlocks("nope")).toEqual({ blocksJson: "[]", photos: [] });
-  });
-
-  it("converts a paragraph to a paragraph block", () => {
-    const { blocksJson } = tiptapToRichBlocks(doc(para(text("hello"))));
-    const blocks = JSON.parse(blocksJson);
-    expect(blocks[0].type).toBe("paragraph");
-  });
-
-  it("drops empty paragraphs", () => {
-    const { blocksJson } = tiptapToRichBlocks(doc(para(text("   "))));
-    expect(JSON.parse(blocksJson)).toEqual([]);
-  });
-
-  it("prepends the title as a heading", () => {
-    const { blocksJson } = tiptapToRichBlocks(doc(para(text("body"))), "Title");
-    const blocks = JSON.parse(blocksJson);
-    expect(blocks[0].type).toBe("section_heading");
-  });
-
-  it("collects photos as attach:// placeholders", () => {
-    const { blocksJson, photos } = tiptapToRichBlocks(
-      doc({ type: "blockImage", attrs: { fileId: "f1", fileName: "a.png", mimeType: "image/png" } }),
-    );
-    expect(photos).toHaveLength(1);
-    expect(photos[0].fileId).toBe("f1");
-    const blocks = JSON.parse(blocksJson);
-    expect(blocks[0].photo).toBe(`attach://${photos[0].attachName}`);
-  });
-});
+const mark = (type: string) => ({ type });
 
 describe("tiptapToRichHtml", () => {
   it("wraps paragraphs in <p> tags", () => {
@@ -64,6 +32,52 @@ describe("tiptapToRichHtml", () => {
     expect(html).toContain(`<img src="attach://${photos[0].attachName}"/>`);
   });
 
+  it("renders subscript/superscript/highlight as <sub>/<sup>/<mark> — confirmed supported by the Rich HTML style docs, unlike regular sendMessage", () => {
+    expect(tiptapToRichHtml(doc(para(text("Hi", [mark("subscript")])))).html).toContain("<sub>Hi</sub>");
+    expect(tiptapToRichHtml(doc(para(text("Hi", [mark("superscript")])))).html).toContain("<sup>Hi</sup>");
+    expect(tiptapToRichHtml(doc(para(text("Hi", [mark("highlight")])))).html).toContain("<mark>Hi</mark>");
+  });
+
+  it("wraps 2+ adjacent images/videos in a <tg-collage>, using the confirmed-working <img>/<video src> tags inside", () => {
+    const { html, photos } = tiptapToRichHtml(
+      doc(
+        { type: "blockImage", attrs: { fileId: "a", fileName: "a.jpg", mimeType: "image/jpeg" } },
+        { type: "blockImage", attrs: { fileId: "b", fileName: "b.jpg", mimeType: "image/jpeg" } },
+        { type: "blockVideo", attrs: { fileId: "c", fileName: "c.mp4", mimeType: "video/mp4" } },
+      ),
+    );
+    expect(photos).toHaveLength(3);
+    expect(html).toBe(
+      `<tg-collage><img src="attach://${photos[0].attachName}"/>` +
+      `<img src="attach://${photos[1].attachName}"/>` +
+      `<video src="attach://${photos[2].attachName}"/></tg-collage>`,
+    );
+  });
+
+  it("wraps a run in <tg-slideshow> when the group's layout is set to slideshow", () => {
+    const { html, photos } = tiptapToRichHtml(
+      doc(
+        { type: "blockImage", attrs: { fileId: "a", fileName: "a.jpg", mimeType: "image/jpeg", groupLayout: "slideshow" } },
+        { type: "blockImage", attrs: { fileId: "b", fileName: "b.jpg", mimeType: "image/jpeg", groupLayout: "slideshow" } },
+      ),
+    );
+    expect(html).toBe(
+      `<tg-slideshow><img src="attach://${photos[0].attachName}"/>` +
+      `<img src="attach://${photos[1].attachName}"/></tg-slideshow>`,
+    );
+  });
+
+  it("does not wrap a lone image in <tg-collage>", () => {
+    const { html } = tiptapToRichHtml(
+      doc(
+        { type: "blockImage", attrs: { fileId: "a", fileName: "a.jpg", mimeType: "image/jpeg" } },
+        para(text("between")),
+        { type: "blockImage", attrs: { fileId: "b", fileName: "b.jpg", mimeType: "image/jpeg" } },
+      ),
+    );
+    expect(html).not.toContain("tg-collage");
+  });
+
   it("renders bullet lists", () => {
     const { html } = tiptapToRichHtml(
       doc({
@@ -72,5 +86,115 @@ describe("tiptapToRichHtml", () => {
       }),
     );
     expect(html).toBe("<ul><li>one</li></ul>");
+  });
+
+  it("renders an unchecked checkItem as a native HTML checkbox list item", () => {
+    const { html } = tiptapToRichHtml(doc({ type: "checkItem", attrs: { checked: false }, content: [text("Buy milk")] }));
+    expect(html).toBe('<ul><li><input type="checkbox">Buy milk</li></ul>');
+  });
+
+  it("renders a checked checkItem with the checked attribute", () => {
+    const { html } = tiptapToRichHtml(doc({ type: "checkItem", attrs: { checked: true }, content: [text("Done")] }));
+    expect(html).toBe('<ul><li><input type="checkbox" checked>Done</li></ul>');
+  });
+
+  it("groups consecutive checkItems into a single <ul>", () => {
+    const { html } = tiptapToRichHtml(
+      doc(
+        { type: "checkItem", attrs: { checked: true }, content: [text("One")] },
+        { type: "checkItem", attrs: { checked: false }, content: [text("Two")] },
+      ),
+    );
+    expect(html).toBe(
+      '<ul><li><input type="checkbox" checked>One</li>' +
+      '<li><input type="checkbox">Two</li></ul>',
+    );
+  });
+
+  it("renders a callout as an emoji-prefixed blockquote", () => {
+    const { html } = tiptapToRichHtml(
+      doc({ type: "callout", attrs: { emoji: "💡" }, content: [para(text("Heads up"))] }),
+    );
+    expect(html).toBe("<blockquote>💡 Heads up</blockquote>");
+  });
+
+  it("renders a blockquote's paragraph content nested inside <blockquote>", () => {
+    const { html } = tiptapToRichHtml(
+      doc({ type: "blockquote", content: [para(text("Quoted text"))] }),
+    );
+    expect(html).toBe("<blockquote><p>Quoted text</p></blockquote>");
+  });
+
+  // Live-tested 2026-07-09 against the real API: a <pre><code> nested inside
+  // <blockquote> comes back from Telegram as its own separate "pre" block, not
+  // flattened text — so the converter must recurse into nested block content
+  // instead of extracting inline text only.
+  it("preserves a code block nested inside a blockquote as a real <pre><code>, not flattened text", () => {
+    const { html } = tiptapToRichHtml(
+      doc({
+        type: "blockquote",
+        content: [
+          para(text("Before:")),
+          { type: "codeBlock", content: [{ type: "text", text: "const x = 1;" }] },
+          para(text("After.")),
+        ],
+      }),
+    );
+    expect(html).toBe(
+      "<blockquote><p>Before:</p><pre><code>const x = 1;</code></pre><p>After.</p></blockquote>",
+    );
+  });
+
+  // Live-tested 2026-07-09: sent <blockquote expandable> and got back a plain
+  // non-collapsible blockquote from Telegram — Rich Messages don't support
+  // this attribute at all (unlike regular sendMessage HTML), so the converter
+  // must never emit it, regardless of the block's `expandable` attribute.
+  it("never emits an 'expandable' attribute on <blockquote> (unsupported by Rich Messages)", () => {
+    const { html } = tiptapToRichHtml(
+      doc({ type: "blockquote", attrs: { expandable: true }, content: [para(text("Quoted"))] }),
+    );
+    expect(html).not.toContain("expandable");
+    expect(html).toBe("<blockquote><p>Quoted</p></blockquote>");
+  });
+
+  it("converts a blockFaq answer's mini-HTML markup into real Rich HTML tags, not escaped literal text", () => {
+    // Regression: the answer used to go through escapeHtml(), turning
+    // "<b>bold</b>" into the literal text "&lt;b&gt;bold&lt;/b&gt;" instead of
+    // real bold formatting.
+    const { html } = tiptapToRichHtml(
+      doc({ type: "blockFaq", attrs: { question: "Q", answer: "<b>bold</b> plain" } }),
+    );
+    expect(html).toBe("<details><summary>Q</summary><b>bold</b> plain</details>");
+  });
+
+  it("renders an anchorPoint as an invisible named anchor", () => {
+    const { html } = tiptapToRichHtml(doc({ type: "anchorPoint" }));
+    expect(html).toBe('<a name="top"></a>');
+  });
+
+  it("renders a link with a #top href unchanged, for jump-to-anchor links", () => {
+    const { html } = tiptapToRichHtml(
+      doc(para(text("👆 Лифт", [{ type: "link", attrs: { href: "#top" } }]))),
+    );
+    expect(html).toBe('<p><a href="#top">👆 Лифт</a></p>');
+  });
+
+  it("renders a blockTable as <table> with <th> header row and <td> body rows", () => {
+    const { html } = tiptapToRichHtml(
+      doc({
+        type: "blockTable",
+        content: [
+          { type: "tableRow", content: [
+            { type: "tableCell", attrs: { header: true }, content: [text("A")] },
+            { type: "tableCell", attrs: { header: true }, content: [text("B")] },
+          ] },
+          { type: "tableRow", content: [
+            { type: "tableCell", attrs: { header: false }, content: [text("1")] },
+            { type: "tableCell", attrs: { header: false }, content: [text("2")] },
+          ] },
+        ],
+      }),
+    );
+    expect(html).toBe("<table bordered><tr><th>A</th><th>B</th></tr><tr><td>1</td><td>2</td></tr></table>");
   });
 });

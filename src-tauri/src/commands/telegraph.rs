@@ -55,16 +55,23 @@ pub async fn telegraph_open_login(app: AppHandle) -> Result<(), String> {
         let _ = w.close();
     }
 
-    WebviewWindowBuilder::new(
+    #[allow(unused_mut)]
+    let mut builder = WebviewWindowBuilder::new(
         &app,
         "telegraph_login",
         WebviewUrl::External(auth_url.parse::<url::Url>().map_err(|e| e.to_string())?),
     )
     .title("Войти в Telegraph")
-    .inner_size(480.0, 380.0)
-    .center()
-    .build()
-    .map_err(|e| e.to_string())?;
+    .inner_size(480.0, 380.0);
+
+    // Centering a window is a desktop concept — mobile webviews are fullscreen,
+    // and `.center()` isn't available on that target at all.
+    #[cfg(desktop)]
+    {
+        builder = builder.center();
+    }
+
+    builder.build().map_err(|e| e.to_string())?;
 
     Ok(())
 }

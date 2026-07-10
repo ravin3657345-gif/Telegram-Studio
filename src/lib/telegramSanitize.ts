@@ -4,15 +4,17 @@ import DOMPurify from "dompurify";
 // posts. Shared by the preview and any other component that shows user HTML.
 export const TELEGRAM_TAGS = [
   "b", "strong", "i", "em", "u", "s", "strike", "del",
-  "code", "pre", "a", "br", "blockquote",
-  "h1", "h2", "h3", "ul", "ol", "li",
+  "code", "pre", "a", "br", "blockquote", "hr",
+  "h1", "h2", "h3", "ul", "ol", "li", "input",
   "tg-spoiler", "mark", "sub", "sup",
-  "img", "video", "span", "details", "summary",
+  "img", "video", "audio", "span", "details", "summary",
+  "table", "tr", "td", "th",
 ];
 
 export const TELEGRAM_ATTRS = [
   "href", "src", "alt", "data-post-title", "class", "style",
-  "loop", "preload", "playsInline", "expandable",
+  "loop", "preload", "playsInline", "expandable", "controls",
+  "type", "checked", "disabled", "bordered",
 ];
 
 /** Sanitize HTML down to the tag/attribute set Telegram supports. */

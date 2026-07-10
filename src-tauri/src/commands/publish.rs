@@ -56,9 +56,11 @@ pub struct ScheduledPostInfo {
     pub id: String,
     pub draft_id: Option<String>,
     pub channel_id: String,
+    pub channel_title: String,
     pub bot_id: String,
     pub scheduled_at: String,
     pub status: String,
+    pub content_preview: Option<String>,
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -121,7 +123,10 @@ fn build_keyboard(buttons: &[Vec<ButtonPayload>]) -> Option<InlineKeyboardMarkup
     Some(InlineKeyboardMarkup { inline_keyboard: rows })
 }
 
-async fn publish_to_channel(
+// pub(crate) — also called from scheduler::process_pending to send scheduled
+// posts that carry persisted media, reusing the same photo/video/document
+// branching logic as immediate publish instead of duplicating it.
+pub(crate) async fn publish_to_channel(
     client: &TelegramClient,
     telegram_chat_id: &str,
     payload: &PublishPayload,
@@ -212,6 +217,41 @@ fn save_history(
             publish_mode,
         ],
     );
+}
+
+/// Advances a draft's status to 'published' once at least one channel got it.
+/// A no-op for kind='template' rows or missing ids — WHERE clause just matches nothing.
+fn mark_draft_published(db: &rusqlite::Connection, draft_id: &str) {
+    let _ = db.execute(
+        "UPDATE drafts SET status = 'published' WHERE id = ?1 AND kind = 'draft'",
+        rusqlite::params![draft_id],
+    );
+}
+
+/// Called once a scheduled post (see scheduler::process_pending) reaches a
+/// terminal state for one of a draft's channels.
+/// - `success = true` → the draft counts as published (unconditional).
+/// - `success = false` (cancelled or permanently failed) → falls back to
+///   'draft' only if no other channel for this draft is still pending, and
+///   only if it hasn't already been published via a different channel.
+pub fn sync_draft_status_on_terminal(db: &rusqlite::Connection, draft_id: &str, success: bool) {
+    if success {
+        mark_draft_published(db, draft_id);
+        return;
+    }
+    let remaining: i64 = db
+        .query_row(
+            "SELECT COUNT(*) FROM scheduled_posts WHERE draft_id = ?1 AND status = 'pending'",
+            rusqlite::params![draft_id],
+            |r| r.get(0),
+        )
+        .unwrap_or(0);
+    if remaining == 0 {
+        let _ = db.execute(
+            "UPDATE drafts SET status = 'draft' WHERE id = ?1 AND kind = 'draft' AND status = 'scheduled'",
+            rusqlite::params![draft_id],
+        );
+    }
 }
 
 // ─── Bot ordering helper ──────────────────────────────────────────────────────
@@ -321,6 +361,9 @@ pub async fn publish_post(
                 r.msg_id, success, r.err_msg.as_deref(),
                 "normal",
             );
+            if success {
+                if let Some(draft_id) = &payload.draft_id { mark_draft_published(&db, draft_id); }
+            }
         }
         results.push(PublishResult {
             channel_id:      channel.id.clone(),
@@ -361,10 +404,37 @@ pub async fn schedule_post(
         }
     };
 
+    // Re-scheduling an already-scheduled draft (edit a scheduled post, change
+    // the time/content, hit "Schedule" again) must REPLACE its existing
+    // pending schedule, not add a second one next to it — otherwise both the
+    // old and the new entries fire, and the calendar shows what looks like a
+    // duplicate "new" post instead of the edited one.
+    if let Some(draft_id) = &payload.draft_id {
+        let mut stmt = db
+            .prepare("SELECT id FROM scheduled_posts WHERE draft_id = ?1 AND status = 'pending'")
+            .map_err(|e| e.to_string())?;
+        let superseded_ids: Vec<String> = stmt
+            .query_map(rusqlite::params![draft_id], |r| r.get(0))
+            .map_err(|e| e.to_string())?
+            .filter_map(|r| r.ok())
+            .collect();
+        drop(stmt);
+
+        for old_id in &superseded_ids {
+            cleanup_scheduled_media(&db, &state.app_dir, old_id);
+        }
+
+        db.execute(
+            "UPDATE scheduled_posts SET status='cancelled', updated_at=?1 WHERE draft_id=?2 AND status='pending'",
+            rusqlite::params![now, draft_id],
+        )
+        .map_err(|e| e.to_string())?;
+    }
+
     let mut infos = Vec::new();
 
     for ch_id in &payload.channel_ids {
-        let _ = channels_q::find_by_id(&db, ch_id)
+        let channel = channels_q::find_by_id(&db, ch_id)
             .map_err(|e| e.to_string())?
             .ok_or_else(|| format!("Канал {} не найден", ch_id))?;
 
@@ -386,34 +456,69 @@ pub async fn schedule_post(
         )
         .map_err(|e| e.to_string())?;
 
+        // Persist media to disk so it survives until the scheduler sends it —
+        // each channel gets its own copy (simpler and safer than sharing a
+        // ref-counted file across multiple scheduled_posts rows).
+        if !payload.media.is_empty() {
+            use base64::Engine;
+            let media_dir = state.app_dir.join("scheduled_media").join(&id);
+            std::fs::create_dir_all(&media_dir)
+                .map_err(|e| format!("Не удалось создать директорию: {}", e))?;
+
+            for (i, item) in payload.media.iter().enumerate() {
+                let raw = base64::engine::general_purpose::STANDARD
+                    .decode(&item.data_base64)
+                    .map_err(|_| format!("Ошибка декодирования файла «{}»", item.file_name))?;
+                if raw.is_empty() { continue; }
+
+                let ext = item.file_name
+                    .rsplit('.')
+                    .next()
+                    .unwrap_or("bin")
+                    .chars()
+                    .filter(|c| c.is_alphanumeric())
+                    .take(10)
+                    .collect::<String>();
+                let ext = if ext.is_empty() { "bin".to_string() } else { ext };
+
+                let file_path = media_dir.join(format!("{}.{}", i, ext));
+                std::fs::write(&file_path, &raw)
+                    .map_err(|e| format!("Ошибка сохранения файла: {}", e))?;
+
+                let media_id = Uuid::new_v4().to_string();
+                let path_str = file_path.to_string_lossy().into_owned();
+                db.execute(
+                    "INSERT INTO scheduled_media
+                     (id, scheduled_post_id, file_path, file_name, mime_type, media_type, file_size, sort_order, created_at)
+                     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9)",
+                    rusqlite::params![
+                        media_id, id, path_str, item.file_name, item.mime_type,
+                        item.media_type, raw.len() as i64, i as i64, now,
+                    ],
+                ).map_err(|e| e.to_string())?;
+            }
+        }
+
         infos.push(ScheduledPostInfo {
             id,
             draft_id: payload.draft_id.clone(),
             channel_id: ch_id.clone(),
+            channel_title: channel.title.clone(),
             bot_id: bot_id.clone(),
             scheduled_at: schedule_at.clone(),
             status: "pending".to_string(),
+            content_preview: crate::commands::history::strip_html_preview(&payload.content_html, 60),
         });
+    }
+
+    if let Some(draft_id) = &payload.draft_id {
+        let _ = db.execute(
+            "UPDATE drafts SET status = 'scheduled' WHERE id = ?1 AND kind = 'draft'",
+            rusqlite::params![draft_id],
+        );
     }
 
     Ok(infos)
-}
-
-// ─── Rich message helpers ─────────────────────────────────────────────────────
-
-/// Remove a photo/video block from JSON blocks array when upload failed.
-fn remove_unresolved_media_block(blocks_json: &str, placeholder: &str) -> String {
-    let Ok(mut arr) = serde_json::from_str::<serde_json::Value>(blocks_json) else {
-        return blocks_json.to_string();
-    };
-    if let Some(blocks) = arr.as_array_mut() {
-        blocks.retain(|b| {
-            let photo = b.get("photo").and_then(|v| v.as_str()).unwrap_or("");
-            let video = b.get("video").and_then(|v| v.as_str()).unwrap_or("");
-            photo != placeholder && video != placeholder
-        });
-    }
-    serde_json::to_string(&arr).unwrap_or_else(|_| blocks_json.to_string())
 }
 
 // ─── Rich message (Bot API 10.1) ─────────────────────────────────────────────
@@ -432,8 +537,7 @@ pub struct RichPhotoPayload {
 pub struct PublishRichPayload {
     pub bot_id: Option<String>,
     pub channel_ids: Vec<String>,
-    /// JSON array of rich blocks
-    pub blocks_json: String,
+    pub rich_html: String,
     pub photos: Vec<RichPhotoPayload>,
     pub draft_id: Option<String>,
 }
@@ -459,7 +563,7 @@ pub async fn publish_rich_post(
 
     // Photos are uploaded to an external host (catbox.moe) — no Telegram token needed.
     use base64::Engine;
-    let mut html = payload.blocks_json.clone();
+    let mut html = payload.rich_html.clone();
     for p in &payload.photos {
         let placeholder = format!("attach://{}", p.attach_name);
 
@@ -472,7 +576,8 @@ pub async fn publish_rich_post(
             .map_err(|e| format!("base64 decode: {}", e))?;
 
         let is_video = p.mime_type.starts_with("video/");
-        let (upload_bytes, upload_mime, upload_name) = if is_video {
+        let is_audio = p.mime_type.starts_with("audio/");
+        let (upload_bytes, upload_mime, upload_name) = if is_video || is_audio {
             (raw, p.mime_type.clone(), p.file_name.clone())
         } else {
             let (jpeg, _, _) = crate::image_utils::normalize_to_jpeg(raw, &p.file_name)
@@ -493,18 +598,15 @@ pub async fn publish_rich_post(
             }
             Err(e) => {
                 log::warn!("[rich] photo host failed for {}: {}", p.attach_name, e);
-                if html.trim_start().starts_with('[') {
-                    // Blocks format: remove the photo/video block with this placeholder
-                    html = remove_unresolved_media_block(&html, &placeholder);
-                } else {
-                    // HTML format: remove broken <img> tag
-                    html = methods::remove_img_placeholder(&html, &placeholder);
-                }
+                html = methods::remove_img_placeholder(&html, &placeholder);
             }
         }
     }
 
-    let html = html.trim().to_string();
+    // A group can lose every photo in it (host down for the whole batch)
+    // while other groups/text uploaded fine — an empty <tg-collage>/
+    // <tg-slideshow> makes Telegram reject the whole message, so drop it.
+    let html = methods::strip_empty_media_groups(html.trim());
     let mut results = Vec::new();
 
     for channel in &channels {
@@ -551,10 +653,13 @@ pub async fn publish_rich_post(
                 &db, &channel.id,
                 r.bot_id.as_deref().unwrap_or(""),
                 payload.draft_id.as_deref(),
-                &payload.blocks_json,
+                &payload.rich_html,
                 r.msg_id, success, r.err_msg.as_deref(),
                 "rich",
             );
+            if success {
+                if let Some(draft_id) = &payload.draft_id { mark_draft_published(&db, draft_id); }
+            }
         }
         results.push(PublishResult {
             channel_id:      channel.id.clone(),
@@ -678,27 +783,41 @@ pub async fn get_scheduled_posts(
     let db = state.db.lock().map_err(|e| e.to_string())?;
     let mut stmt = db
         .prepare(
-            "SELECT id, draft_id, channel_id, bot_id, scheduled_at, status
-             FROM scheduled_posts
-             WHERE status = 'pending'
-             ORDER BY scheduled_at ASC",
+            "SELECT sp.id, sp.draft_id, sp.channel_id, COALESCE(c.title, ''), sp.bot_id,
+                    sp.scheduled_at, sp.status, COALESCE(sp.content_html, '')
+             FROM scheduled_posts sp
+             LEFT JOIN channels c ON c.id = sp.channel_id
+             WHERE sp.status = 'pending'
+             ORDER BY sp.scheduled_at ASC",
         )
         .map_err(|e| e.to_string())?;
 
     let rows = stmt
         .query_map([], |row| {
+            let html: String = row.get(7)?;
             Ok(ScheduledPostInfo {
                 id: row.get(0)?,
                 draft_id: row.get(1)?,
                 channel_id: row.get(2)?,
-                bot_id: row.get(3)?,
-                scheduled_at: row.get(4)?,
-                status: row.get(5)?,
+                channel_title: row.get(3)?,
+                bot_id: row.get(4)?,
+                scheduled_at: row.get(5)?,
+                status: row.get(6)?,
+                content_preview: crate::commands::history::strip_html_preview(&html, 60),
             })
         })
         .map_err(|e| e.to_string())?;
 
     rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+}
+
+/// Removes a scheduled post's persisted media (disk files + DB rows).
+/// Safe to call for posts with no media (no-op). Used when a scheduled post
+/// reaches a terminal state (cancelled, published, or permanently failed) —
+/// the files are no longer needed after that point.
+pub fn cleanup_scheduled_media(db: &rusqlite::Connection, app_dir: &std::path::Path, post_id: &str) {
+    let _ = std::fs::remove_dir_all(app_dir.join("scheduled_media").join(post_id));
+    let _ = db.execute("DELETE FROM scheduled_media WHERE scheduled_post_id = ?1", [post_id]);
 }
 
 /// Отменить запланированный пост
@@ -709,11 +828,27 @@ pub async fn cancel_scheduled_post(
 ) -> Result<(), String> {
     let db = state.db.lock().map_err(|e| e.to_string())?;
     let now = Utc::now().to_rfc3339();
+
+    let draft_id: Option<String> = db
+        .query_row(
+            "SELECT draft_id FROM scheduled_posts WHERE id = ?1",
+            rusqlite::params![post_id],
+            |r| r.get(0),
+        )
+        .ok()
+        .flatten();
+
     db.execute(
         "UPDATE scheduled_posts SET status='cancelled', updated_at=?1 WHERE id=?2",
         rusqlite::params![now, post_id],
     )
     .map_err(|e| e.to_string())?;
+    cleanup_scheduled_media(&db, &state.app_dir, &post_id);
+
+    if let Some(draft_id) = draft_id {
+        sync_draft_status_on_terminal(&db, &draft_id, false);
+    }
+
     Ok(())
 }
 
@@ -722,7 +857,7 @@ pub async fn cancel_scheduled_post(
 #[tauri::command]
 pub async fn republish_rich_post(
     history_id: String,
-    blocks_json: String,
+    rich_html: String,
     photos: Vec<RichPhotoPayload>,
     content_json: Option<String>,
     state: tauri::State<'_, AppState>,
@@ -757,7 +892,7 @@ pub async fn republish_rich_post(
     };
 
     // Upload photos and replace placeholders
-    let mut html = blocks_json.clone();
+    let mut html = rich_html.clone();
     for p in &photos {
         let placeholder = format!("attach://{}", p.attach_name);
 
@@ -769,7 +904,8 @@ pub async fn republish_rich_post(
             .map_err(|e| format!("base64 decode: {}", e))?;
 
         let is_video = p.mime_type.starts_with("video/");
-        let (upload_bytes, upload_mime, upload_name) = if is_video {
+        let is_audio = p.mime_type.starts_with("audio/");
+        let (upload_bytes, upload_mime, upload_name) = if is_video || is_audio {
             (raw, p.mime_type.clone(), p.file_name.clone())
         } else {
             let (jpeg, _, _) = crate::image_utils::normalize_to_jpeg(raw, &p.file_name)
@@ -791,16 +927,12 @@ pub async fn republish_rich_post(
             }
             Err(e) => {
                 log::warn!("[republish_rich] photo host failed for {}: {}", p.attach_name, e);
-                if html.trim_start().starts_with('[') {
-                    html = remove_unresolved_media_block(&html, &placeholder);
-                } else {
-                    html = methods::remove_img_placeholder(&html, &placeholder);
-                }
+                html = methods::remove_img_placeholder(&html, &placeholder);
             }
         }
     }
 
-    let html = html.trim().to_string();
+    let html = methods::strip_empty_media_groups(html.trim());
     let client = TelegramClient::new(&token);
 
     // Send new rich message

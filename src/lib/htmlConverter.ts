@@ -1,5 +1,5 @@
 // Converts TipTap JSON document to Telegram HTML for real-time preview.
-// Mirror of src-tauri/src/telegram/markup.rs (used client-side only).
+import { miniHtmlToTelegramHtml } from "./miniHtml";
 
 interface TiptapMark {
   type: string;
@@ -75,9 +75,24 @@ function renderNode(node: TiptapNode): string {
     case "hardBreak":
       return "\n";
 
+    case "checkItem": {
+      const checked = !!node.attrs?.checked;
+      const box = checked ? "☑" : "☐";
+      return `${box} ${renderInline(node)}\n`;
+    }
+
+    case "callout": {
+      const emoji = (node.attrs?.emoji as string) || "💡";
+      const inner = (node.content ?? []).map(renderNode).join("").trimEnd();
+      return `<blockquote>${emoji} ${inner}</blockquote>\n\n`;
+    }
+
     case "blockFaq": {
       const q = escapeHtml((node.attrs?.question as string) ?? "");
-      const a = escapeHtml((node.attrs?.answer as string) ?? "");
+      // The answer is sanitized mini-HTML (bold/italic/underline/strike + paragraphs)
+      // from the spoiler body editor, not plain text — convert its markup rather
+      // than escaping it wholesale (which would show literal <b> tags to users).
+      const a = miniHtmlToTelegramHtml((node.attrs?.answer as string) ?? "");
       if (!q && !a) return "";
       const body = a ? `${q}\n${a}` : q;
       return `<blockquote expandable>${body}</blockquote>\n\n`;
@@ -88,6 +103,19 @@ function renderNode(node: TiptapNode): string {
     case "blockVideo":
     case "blockPoll":
     case "messageSplit":
+      return "";
+
+    // Tables and audio are Rich-mode only (Bot API 10.1) — publish is
+    // blocked outside Rich mode while either exists in the post (see
+    // PublishPanel.tsx), but no-op here too as a safety net rather than
+    // falling through to renderInline, which would garble things (a table's
+    // cell text into a run-on string; audio has no text content at all).
+    case "blockTable":
+    case "blockAudio":
+      return "";
+
+    // Anchors only work in Rich messages (Bot API 10.1) — no-op elsewhere.
+    case "anchorPoint":
       return "";
 
     default:
@@ -138,15 +166,13 @@ function applyMarks(text: string, marks: TiptapMark[]): string {
       case "spoiler":
         result = `<tg-spoiler>${result}</tg-spoiler>`;
         break;
-      case "subscript":
-        result = `<sub>${result}</sub>`;
-        break;
-      case "superscript":
-        result = `<sup>${result}</sup>`;
-        break;
-      case "highlight":
-        result = `<mark>${result}</mark>`;
-        break;
+      // subscript/superscript/highlight have no equivalent in Telegram's
+      // regular sendMessage HTML — only Rich Messages support <sub>/<sup>/
+      // <mark> (confirmed against the official "Formatting options" section,
+      // which lists the tags supported here and doesn't include them; sending
+      // an unsupported tag makes Telegram reject the whole message). Drop the
+      // mark and keep the plain text, same graceful-degradation the
+      // Telegraph converter already does for marks it can't represent.
       case "link": {
         const href = mark.attrs?.href as string | undefined;
         if (href && /^https?:\/\//i.test(href)) {

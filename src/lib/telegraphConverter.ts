@@ -106,6 +106,18 @@ function convertBlock(node: TiptapNode): TelegraphNode[] {
       return [{ tag: "pre", children: [{ tag: "code", children: [text] }] }];
     }
 
+    case "checkItem": {
+      const box = node.attrs?.checked ? "☑" : "☐";
+      const children = convertInline(node.content ?? []);
+      return [{ tag: "p", children: [`${box} `, ...children] }];
+    }
+
+    case "callout": {
+      const emoji = (node.attrs?.emoji as string) || "💡";
+      const children = (node.content ?? []).flatMap((child) => convertInline(child.content ?? []));
+      return [{ tag: "blockquote", children: [`${emoji} `, ...children] }];
+    }
+
     case "bulletList": {
       const items: TelegraphElement[] = (node.content ?? []).map((li) => ({
         tag: "li",

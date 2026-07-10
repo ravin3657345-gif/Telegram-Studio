@@ -37,9 +37,16 @@ export interface ScheduledPostInfo {
   id: string;
   draftId?: string | null;
   channelId: string;
+  channelTitle: string;
   botId: string;
   scheduledAt: string;
   status: string;
+  contentPreview?: string | null;
+}
+
+export interface TodayStats {
+  published: number;
+  failed: number;
 }
 
 export interface BotInfo {

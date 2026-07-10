@@ -2,15 +2,17 @@ import { useState } from "react";
 import { Send, Clock, CheckCircle2, AlertCircle, Loader2, ExternalLink, FileText, Layers, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { ScheduleDialog } from "@/components/editor/ScheduleDialog";
+import { PublishConfirmDialog } from "@/components/editor/PublishConfirmDialog";
 import { useChannelsStore } from "@/store/channelsStore";
 import { usePublishStore } from "@/store/publishStore";
 import { useEditorStore } from "@/store/editorStore";
-import { publishPost, schedulePost, telegraphPublish, publishRichPost, republishRichPost, sendPoll, editPublishedPost } from "@/lib/tauriApi";
+import { publishPost, schedulePost, telegraphPublish, publishRichPost, republishRichPost, sendPoll, editPublishedPost, upsertDraft } from "@/lib/tauriApi";
 import { segmentDocument, splitIntoMessagesAtGaps, splitJsonAtGaps } from "@/lib/htmlConverter";
 import type { TextSegment, PollSegment } from "@/lib/htmlConverter";
 import { tiptapToTelegraphNodes } from "@/lib/telegraphConverter";
 import { tiptapToRichHtml } from "@/lib/richMessageConverter";
 import { fileRegistry } from "@/lib/fileRegistry";
+import { collectInlineAttachments } from "@/lib/attachmentRestore";
 import { useAttachmentStore } from "@/store/attachmentStore";
 import { t, ti } from "@/lib/i18n";
 import { useSettingsStore } from "@/store/settingsStore";
@@ -26,13 +28,14 @@ export function PublishPanel({ draftId }: PublishPanelProps) {
   const { bots, channels } = useChannelsStore();
   const { selectedChannelIds, status, results, lastError,
           toggleChannel, setStatus, setResults, setError, reset } = usePublishStore();
-  const { contentJson, postTitle, includeTitle, publishMode, setPublishMode, editingHistoryId, setEditingHistoryId } = useEditorStore();
+  const { contentJson, postTitle, includeTitle, publishMode, setPublishMode, editingHistoryId, setEditingHistoryId, draftTitle, setDraftId } = useEditorStore();
   useSettingsStore((s) => s.language);
   const bumpHistory      = useUiStore((s) => s.bumpHistory);
   const attachedFiles    = useAttachmentStore((s) => s.files);
   const clearAttachments = useAttachmentStore((s) => s.clearAll);
 
   const [showSchedule, setShowSchedule] = useState(false);
+  const [showPublishConfirm, setShowPublishConfirm] = useState(false);
   const [telegraphUrl, setTelegraphUrl] = useState<string | null>(null);
 
   const splitGaps      = useEditorStore((s) => s.splitGaps);
@@ -44,7 +47,16 @@ export function PublishPanel({ draftId }: PublishPanelProps) {
   );
   const segments = messages.flat();
   const hasAttachments = attachedFiles.length > 0;
-  const hasContent = hasAttachments || segments.some(
+  // Tables are Rich Messages only (Bot API 10.1's RichBlockTable) — normal
+  // HTML and Telegraph articles have no table concept at all, and the
+  // segments above (built from the normal-mode converter) never see one, so
+  // a Rich post consisting of nothing but a table would otherwise register
+  // as "no content" and get its publish button disabled outright.
+  const hasTable = (contentJson ?? "").includes('"type":"blockTable"');
+  // Same reasoning as hasTable — audio is also Rich-only (Bot API 10.1's
+  // <audio> tag), invisible to the normal-mode segments below.
+  const hasAudio = (contentJson ?? "").includes('"type":"blockAudio"');
+  const hasContent = hasAttachments || (publishMode === "rich" && (hasTable || hasAudio)) || segments.some(
     (s) =>
       (s.type === "text" && s.html.trim()) ||
       s.type === "image" ||
@@ -54,19 +66,29 @@ export function PublishPanel({ draftId }: PublishPanelProps) {
   );
   const hasFiles = hasAttachments || segments.some((s) => s.type === "file");
   const fileBlockedInRich = publishMode === "rich" && hasFiles;
-  // Telegraph articles embed inline images/video directly (tiptapToTelegraphNodes
+  // Telegraph articles embed inline images directly (tiptapToTelegraphNodes
   // uploads them), but bottom-panel attachments (documents) have no place in an
   // article and would otherwise be silently discarded on publish.
   const fileBlockedInTelegraph = publishMode === "telegraph" && hasAttachments;
-  // Scheduled posts only ever carry `content_html` (scheduler/mod.rs sends via
-  // send_message only) — any media or poll segment would be silently dropped.
-  const hasNonTextSegments = segments.some((s) => s.type !== "text");
-  const mediaBlockedInSchedule = hasAttachments || hasNonTextSegments;
+  // Telegraph does NOT support video at all — telegraphConverter.ts's
+  // blockVideo case is a deliberate no-op (`return []`), so without this
+  // check a video would silently vanish from the published article with no
+  // warning anywhere.
+  const videoBlockedInTelegraph = publishMode === "telegraph" && segments.some((s) => s.type === "video");
+  const tableBlockedOutsideRich = publishMode !== "rich" && hasTable;
+  const audioBlockedOutsideRich = publishMode !== "rich" && hasAudio;
+  // Scheduled posts support text + images/video/files (scheduler persists media
+  // to disk and sends it via the same photo/video/document logic as immediate
+  // publish). Polls are the one segment type with no scheduled-send path yet —
+  // sendPoll is a separate Telegram API call the scheduler doesn't make.
+  const hasPollSegment = segments.some((s) => s.type === "poll");
+  const mediaBlockedInSchedule = hasPollSegment;
   const hasBots = bots.length > 0;
 
   const canPublish =
     hasBots && selectedChannelIds.length > 0 && hasContent &&
-    !fileBlockedInRich && !fileBlockedInTelegraph &&
+    !fileBlockedInRich && !fileBlockedInTelegraph && !videoBlockedInTelegraph &&
+    !tableBlockedOutsideRich && !audioBlockedOutsideRich &&
     status !== "publishing" && status !== "scheduling";
 
   const canSchedule = canPublish && !mediaBlockedInSchedule;
@@ -192,7 +214,8 @@ export function PublishPanel({ draftId }: PublishPanelProps) {
           const file = fileRegistry.getFile(p.fileId);
           if (!file) return null;
           const isVideo = file.type.startsWith("video/");
-          const { base64: dataBase64, mimeType, fileName } = isVideo
+          const isAudio = file.type.startsWith("audio/");
+          const { base64: dataBase64, mimeType, fileName } = isVideo || isAudio
             ? { base64: await fileToBase64(file), mimeType: file.type, fileName: file.name }
             : await normalizeImageToJpeg(file);
           return { attachName: p.attachName, dataBase64, mimeType, fileName };
@@ -202,7 +225,7 @@ export function PublishPanel({ draftId }: PublishPanelProps) {
       const res = await publishRichPost({
         botId: null,
         channelIds: selectedChannelIds,
-        blocksJson: html,
+        richHtml: html,
         photos: filledPhotos.filter((p): p is NonNullable<typeof p> => p !== null),
         draftId: ci === 0 ? (draftId ?? null) : null,
       });
@@ -303,7 +326,8 @@ export function PublishPanel({ draftId }: PublishPanelProps) {
             const file = fileRegistry.getFile(p.fileId);
             if (!file) return null;
             const isVideo = file.type.startsWith("video/");
-            const { base64: dataBase64, mimeType, fileName } = isVideo
+            const isAudio = file.type.startsWith("audio/");
+            const { base64: dataBase64, mimeType, fileName } = isVideo || isAudio
               ? { base64: await fileToBase64(file), mimeType: file.type, fileName: file.name }
               : await normalizeImageToJpeg(file);
             return { attachName: p.attachName, dataBase64, mimeType, fileName };
@@ -371,13 +395,53 @@ export function PublishPanel({ draftId }: PublishPanelProps) {
       .join("\n\n")
       .trim();
     try {
+      // A scheduled post with no draftId has nowhere to live once it's fired
+      // or cancelled — it never shows up in Drafts (which only lists rows
+      // from the drafts table) and reopening it from the calendar has no
+      // content to load. Autosave normally creates the draft, but it's
+      // debounced, so scheduling right after typing (or with autosave
+      // disabled) can beat it to the punch. Make sure one exists here too.
+      let effectiveDraftId = draftId;
+      if (!effectiveDraftId) {
+        const attachments = await collectInlineAttachments(contentJson || "{}");
+        const draft = await upsertDraft({
+          title: draftTitle,
+          postTitle,
+          contentJson: contentJson || "{}",
+          attachments: attachments.length ? attachments : undefined,
+        });
+        effectiveDraftId = draft.id;
+        setDraftId(draft.id);
+      }
+
+      // Encode inline (image/video/file) segments — same encoding used for
+      // immediate publish — plus any fresh bottom-panel attachments. The
+      // scheduler persists these to disk and sends them at fire time.
+      type Encoded = { fileName: string; mimeType: string; mediaType: string; dataBase64: string };
+      const encoded: Encoded[] = [];
+      for (const seg of segments) {
+        if (seg.type !== "image" && seg.type !== "video" && seg.type !== "file") continue;
+        const file = fileRegistry.getFile(seg.fileId);
+        if (!file) continue;
+        const { base64: dataBase64, mimeType, fileName } = seg.type === "image"
+          ? await normalizeImageToJpeg(file)
+          : { base64: await fileToBase64(file), mimeType: seg.mimeType, fileName: seg.fileName };
+        encoded.push({ fileName, mimeType, mediaType: seg.type, dataBase64 });
+      }
+      const freshAttachments = useAttachmentStore.getState().files;
+      for (const att of freshAttachments) {
+        const file = fileRegistry.getFile(att.id);
+        if (!file) throw new Error(ti("attach.fileGone", { name: att.name }));
+        encoded.push({ fileName: att.name, mimeType: att.mimeType, mediaType: "file", dataBase64: await fileToBase64(file) });
+      }
+
       await schedulePost({
         botId: bots[0]?.id ?? null,
         channelIds: selectedChannelIds,
         contentHtml: textHtml || "—",
-        media: [],
+        media: encoded,
         buttons: [],
-        draftId: draftId ?? null,
+        draftId: effectiveDraftId,
         scheduleAt: isoDate,
       });
       setStatus("done");
@@ -393,7 +457,8 @@ export function PublishPanel({ draftId }: PublishPanelProps) {
 
   return (
     <>
-      <div className="flex flex-col gap-3 px-4 pt-4 pb-4">
+      <div className="flex flex-col" style={{ flex: "1 1 auto", minHeight: 0 }}>
+      <div className="flex flex-col gap-3 px-4 pt-4 pb-3 flex-1 overflow-y-auto" style={{ minHeight: 0 }}>
         <p className="text-2xs font-semibold uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>
           {t("publish.section")}
         </p>
@@ -464,6 +529,7 @@ export function PublishPanel({ draftId }: PublishPanelProps) {
               ] as const).map(({ id, icon, label, hint }) => (
                 <label
                   key={id}
+                  title={hint}
                   className="flex items-center gap-2 cursor-pointer rounded-md px-2 py-1.5 transition-colors"
                   style={{
                     backgroundColor: publishMode === id ? "rgba(42,171,238,0.08)" : "transparent",
@@ -480,10 +546,7 @@ export function PublishPanel({ draftId }: PublishPanelProps) {
                     className="accent-blue-500 w-3 h-3 flex-shrink-0"
                   />
                   <span style={{ color: publishMode === id ? "var(--accent)" : "var(--text-muted)", flexShrink: 0 }}>{icon}</span>
-                  <div className="flex flex-col min-w-0">
-                    <span className="text-xs font-medium leading-tight" style={{ color: publishMode === id ? "var(--accent)" : "var(--text-primary)" }}>{label}</span>
-                    <span className="text-2xs leading-tight" style={{ color: "var(--text-muted)" }}>{hint}</span>
-                  </div>
+                  <span className="text-xs font-medium leading-tight min-w-0" style={{ color: publishMode === id ? "var(--accent)" : "var(--text-primary)" }}>{label}</span>
                 </label>
               ))}
             </div>
@@ -578,6 +641,78 @@ export function PublishPanel({ draftId }: PublishPanelProps) {
           </div>
         )}
 
+        {/* Video warning in Telegraph mode — telegraphConverter.ts silently drops video entirely */}
+        {videoBlockedInTelegraph && (
+          <div
+            className="flex items-start gap-2 px-3 py-2 rounded-lg text-xs"
+            style={{
+              backgroundColor: "rgba(251,191,36,0.1)",
+              border: "1px solid rgba(251,191,36,0.3)",
+              color: "var(--text-secondary)",
+            }}
+          >
+            <AlertCircle size={13} style={{ color: "#fbbf24", flexShrink: 0, marginTop: 1 }} />
+            <span>
+              {t("publish.videoOutsideTelegraph")}&nbsp;
+              <button
+                style={{ color: "var(--accent)", textDecoration: "underline", background: "none", border: "none", cursor: "pointer", padding: 0, font: "inherit" }}
+                onClick={() => setPublishMode("normal")}
+              >
+                {t("publish.fileInRichLink")}
+              </button>
+              .
+            </span>
+          </div>
+        )}
+
+        {/* Table warning outside Rich mode — tables only exist in Rich Messages */}
+        {tableBlockedOutsideRich && (
+          <div
+            className="flex items-start gap-2 px-3 py-2 rounded-lg text-xs"
+            style={{
+              backgroundColor: "rgba(251,191,36,0.1)",
+              border: "1px solid rgba(251,191,36,0.3)",
+              color: "var(--text-secondary)",
+            }}
+          >
+            <AlertCircle size={13} style={{ color: "#fbbf24", flexShrink: 0, marginTop: 1 }} />
+            <span>
+              {t("publish.tableOutsideRich")}&nbsp;
+              <button
+                style={{ color: "var(--accent)", textDecoration: "underline", background: "none", border: "none", cursor: "pointer", padding: 0, font: "inherit" }}
+                onClick={() => setPublishMode("rich")}
+              >
+                {t("publish.tableOutsideRichLink")}
+              </button>
+              .
+            </span>
+          </div>
+        )}
+
+        {/* Audio warning outside Rich mode — audio only exists in Rich Messages */}
+        {audioBlockedOutsideRich && (
+          <div
+            className="flex items-start gap-2 px-3 py-2 rounded-lg text-xs"
+            style={{
+              backgroundColor: "rgba(251,191,36,0.1)",
+              border: "1px solid rgba(251,191,36,0.3)",
+              color: "var(--text-secondary)",
+            }}
+          >
+            <AlertCircle size={13} style={{ color: "#fbbf24", flexShrink: 0, marginTop: 1 }} />
+            <span>
+              {t("publish.audioOutsideRich")}&nbsp;
+              <button
+                style={{ color: "var(--accent)", textDecoration: "underline", background: "none", border: "none", cursor: "pointer", padding: 0, font: "inherit" }}
+                onClick={() => setPublishMode("rich")}
+              >
+                {t("publish.audioOutsideRichLink")}
+              </button>
+              .
+            </span>
+          </div>
+        )}
+
         {/* Media/poll warning for scheduled posts — scheduler only carries text */}
         {mediaBlockedInSchedule && !fileBlockedInRich && !fileBlockedInTelegraph && (
           <div
@@ -615,41 +750,57 @@ export function PublishPanel({ draftId }: PublishPanelProps) {
             </button>
           </div>
         )}
+      </div>
 
-        {/* Buttons */}
-        <div className="flex flex-col gap-2 mt-1">
-          {editingHistoryId ? (
-            <Button
-              variant="primary" size="sm" fullWidth
-              disabled={updating || !contentJson}
-              leftIcon={updating ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
-              onClick={handleUpdate}
+      {/* Buttons — pinned footer, always visible regardless of how tall the
+          scrollable content above is (channel list, warnings, etc.) */}
+      <div
+        className="flex flex-col gap-2 px-4 pt-3 pb-4 flex-shrink-0"
+        style={{ borderTop: "1px solid var(--border-subtle)" }}
+      >
+        {editingHistoryId ? (
+          <Button
+            variant="primary" size="sm" fullWidth
+            disabled={updating || !contentJson}
+            leftIcon={updating ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
+            onClick={handleUpdate}
+          >
+            {updating ? t("publish.updating") : t("publish.updateTelegram")}
+          </Button>
+        ) : (
+          <>
+            <Button variant="primary" size="sm" fullWidth disabled={!canPublish}
+              className="soft-ui-sm"
+              leftIcon={status === "publishing" ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
+              onClick={() => setShowPublishConfirm(true)}
             >
-              {updating ? t("publish.updating") : t("publish.updateTelegram")}
+              {status === "publishing"
+                ? (publishMode === "telegraph" ? t("publish.publishingTelegraph") : t("publish.publishing"))
+                : t("publish.button")}
             </Button>
-          ) : (
-            <>
-              <Button variant="primary" size="sm" fullWidth disabled={!canPublish}
-                leftIcon={status === "publishing" ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
-                onClick={handlePublish}
-              >
-                {status === "publishing"
-                  ? (publishMode === "telegraph" ? t("publish.publishingTelegraph") : t("publish.publishing"))
-                  : t("publish.button")}
-              </Button>
 
-              <Button variant="ghost" size="sm" fullWidth disabled={!canSchedule}
-                leftIcon={status === "scheduling" ? <Loader2 size={13} className="animate-spin" /> : <Clock size={13} />}
-                onClick={() => setShowSchedule(true)}
-              >
-                {status === "scheduling" ? t("publish.scheduling") : t("publish.schedule")}
-              </Button>
-            </>
-          )}
-        </div>
+            <Button variant="ghost" size="sm" fullWidth disabled={!canSchedule}
+              leftIcon={status === "scheduling" ? <Loader2 size={13} className="animate-spin" /> : <Clock size={13} />}
+              onClick={() => setShowSchedule(true)}
+            >
+              {status === "scheduling" ? t("publish.scheduling") : t("publish.schedule")}
+            </Button>
+          </>
+        )}
+      </div>
       </div>
 
       {showSchedule && <ScheduleDialog onConfirm={handleSchedule} onClose={() => setShowSchedule(false)} />}
+
+      {showPublishConfirm && (
+        <PublishConfirmDialog
+          channels={channels.filter((c) => selectedChannelIds.includes(c.id))}
+          publishMode={publishMode}
+          postTitle={effectiveTitle}
+          onConfirm={() => { setShowPublishConfirm(false); handlePublish(); }}
+          onClose={() => setShowPublishConfirm(false)}
+        />
+      )}
     </>
   );
 }

@@ -1,5 +1,13 @@
 // Converts TipTap JSON → HTML for Telegram's sendRichMessage (Bot API 10.1).
 // Paragraphs use <p> tags (not \n\n) because sendRichMessage parses real HTML.
+//
+// InputRichMessage (what sendRichMessage actually accepts) is just a plain
+// `{ html }` string — there is no JSON-blocks-tree input format. The
+// RichBlock/RichText object tree Telegram documents is what you get BACK when
+// reading an already-sent rich message, not something you construct to send.
+
+import { miniHtmlToTelegramHtml } from "./miniHtml";
+import { ANCHOR_TOP_NAME } from "@/extensions/BlockAnchor";
 
 interface TiptapMark { type: string; attrs?: Record<string, unknown> }
 interface TiptapNode {
@@ -10,72 +18,6 @@ interface TiptapNode {
   content?: TiptapNode[];
 }
 
-// ─── RichText tree ───────────────────────────────────────────────────────────
-
-type RichTextPlain      = { type: "plain";         text: string };
-type RichTextNested     = { type: "bold" | "italic" | "underline" | "strikethrough" | "code" | "spoiler" | "subscript" | "superscript" | "marked"; text: RichText };
-type RichTextUrl        = { type: "url";            text: RichText; url: string };
-type RichTextConcat     = { type: "concat";         texts: RichText[] };
-type RichText = RichTextPlain | RichTextNested | RichTextUrl | RichTextConcat;
-
-function plainText(s: string): RichTextPlain {
-  return { type: "plain", text: s };
-}
-
-function concatRichText(parts: RichText[]): RichText {
-  if (parts.length === 0) return plainText("");
-  if (parts.length === 1) return parts[0];
-  return { type: "concat", texts: parts };
-}
-
-function applyMarksToRichText(inner: RichText, marks: TiptapMark[]): RichText {
-  let result = inner;
-  for (const m of marks) {
-    switch (m.type) {
-      case "bold":        result = { type: "bold",        text: result }; break;
-      case "italic":      result = { type: "italic",      text: result }; break;
-      case "underline":   result = { type: "underline",   text: result }; break;
-      case "strike":      result = { type: "strikethrough", text: result }; break;
-      case "code":        result = { type: "code",        text: result }; break;
-      case "spoiler":     result = { type: "spoiler",     text: result }; break;
-      case "subscript":   result = { type: "subscript",   text: result }; break;
-      case "superscript": result = { type: "superscript", text: result }; break;
-      case "highlight":   result = { type: "marked",      text: result }; break;
-      case "link": {
-        const url = m.attrs?.href as string | undefined;
-        if (url) result = { type: "url", text: result, url };
-        break;
-      }
-    }
-  }
-  return result;
-}
-
-function buildRichText(nodes: TiptapNode[]): RichText {
-  const parts: RichText[] = [];
-
-  function walk(node: TiptapNode) {
-    if (node.type === "text") {
-      const raw = node.text ?? "";
-      if (!raw) return;
-      let rt: RichText = plainText(raw);
-      if (node.marks?.length) rt = applyMarksToRichText(rt, node.marks);
-      parts.push(rt);
-      return;
-    }
-    if (node.type === "hardBreak") {
-      parts.push(plainText("\n"));
-      return;
-    }
-    for (const child of node.content ?? []) walk(child);
-  }
-
-  for (const node of nodes) walk(node);
-  return concatRichText(parts);
-}
-
-// ─── Photo items ──────────────────────────────────────────────────────────────
-
 export interface RichPhotoItem {
   attachName: string;
   dataBase64: string;
@@ -84,169 +26,197 @@ export interface RichPhotoItem {
   fileId: string;
 }
 
-type RichBlockParagraph    = { type: "paragraph";       text: RichText };
-type RichBlockHeading      = { type: "section_heading"; text: RichText; level: number };
-type RichBlockQuote        = { type: "block_quotation" | "block_expandable_quotation"; text: RichText };
-type RichBlockPre          = { type: "preformatted";    text: RichText; language?: string };
-type RichBlockList         = { type: "list";            items: { text: RichText }[]; ordered: boolean };
-type RichBlockDivider      = { type: "divider" };
-type RichBlockPhoto        = { type: "photo";           photo: string };
-type RichBlockVideo        = { type: "video";           video: string };
-type RichBlockDetails      = { type: "details";         summary: RichText; blocks: RichBlock[] };
-type RichBlock =
-  | RichBlockParagraph | RichBlockHeading | RichBlockQuote
-  | RichBlockPre | RichBlockList | RichBlockDivider | RichBlockPhoto | RichBlockVideo
-  | RichBlockDetails;
-
-// ─── Block conversion ─────────────────────────────────────────────────────────
-
-function convertBlock(
+// Renders one blockImage/blockVideo node as an attach:// placeholder tag and
+// records it in `photos` for upload — shared by lone media and <tg-collage> runs.
+// Confirmed by live test: <photo>URL</photo>/<video>URL</video> (content-based,
+// per docs) is NOT recognized — Telegram strips the tag and keeps the bare URL
+// text, which then auto-links instead of rendering as media. Always use the
+// self-closing <img src="..."/>/<video src="..."/> form that's confirmed to
+// work standalone; if the <tg-collage> wrapper itself isn't recognized either,
+// these inner tags still render fine on their own, just not grid-grouped.
+function renderRichMediaTag(
   node: TiptapNode,
   photos: RichPhotoItem[],
-  imgCounter: { n: number },
-): RichBlock[] {
+  nextCounter: () => number,
+): string {
+  const isVideo = node.type === "blockVideo";
+  const attachName = `${isVideo ? "vid" : "img"}_${nextCounter()}`;
+  photos.push({
+    attachName,
+    dataBase64: "",
+    mimeType: (node.attrs?.mimeType as string) ?? (isVideo ? "video/mp4" : "image/jpeg"),
+    fileName: (node.attrs?.fileName as string) ?? (isVideo ? "video.mp4" : "image.jpg"),
+    fileId:   (node.attrs?.fileId   as string) ?? "",
+  });
+  const placeholder = `attach://${attachName}`;
+  return isVideo ? `<video src="${placeholder}"/>` : `<img src="${placeholder}"/>`;
+}
+
+// Converts a list of sibling TipTap block nodes to concatenated Rich HTML.
+// Used both for the document's top-level content and recursively for content
+// nested inside a blockquote (blockquote's schema is `content: "block+"` —
+// live-tested 2026-07-09: Telegram genuinely preserves a block nested inside a
+// <blockquote> as its own nested block, e.g. a <pre><code> inside a quote came
+// back as a separate "pre" block, not flattened text) — same grouping/lookahead
+// logic (media runs, checklist runs) applies at any nesting depth.
+function convertBlockList(
+  nodes: TiptapNode[],
+  photos: RichPhotoItem[],
+  counter: { n: number },
+): string {
+  const parts: string[] = [];
+
+  for (let i = 0; i < nodes.length; i++) {
+    const node = nodes[i];
+
+    if (node.type === "blockImage" || node.type === "blockVideo") {
+      // Group 2+ adjacent media blocks into a <tg-collage> grid or a
+      // <tg-slideshow> carousel (user's choice per group, editor's
+      // MediaGroupLayoutToggle) — mirrors how the normal publish mode bundles
+      // consecutive media into one sendMediaGroup. A lone image/video stays a
+      // plain <img>/<video> tag.
+      const run: TiptapNode[] = [node];
+      while (
+        i + 1 < nodes.length &&
+        (nodes[i + 1].type === "blockImage" || nodes[i + 1].type === "blockVideo")
+      ) {
+        run.push(nodes[++i]);
+      }
+      const isGroup = run.length > 1;
+      const tags = run.map((n) => renderRichMediaTag(n, photos, () => counter.n++));
+      if (isGroup) {
+        const layout = (run[0].attrs?.groupLayout as string) ?? "collage";
+        if (layout === "slideshow") {
+          parts.push(`<tg-slideshow>${tags.join("")}</tg-slideshow>`);
+        } else {
+          parts.push(`<tg-collage>${tags.join("")}</tg-collage>`);
+        }
+      } else {
+        parts.push(tags[0]);
+      }
+      continue;
+    }
+
+    if (node.type === "checkItem") {
+      // Native checkbox list items (<ul><li><input type="checkbox">...) instead
+      // of a plain paragraph with a ☑/☐ glyph — group consecutive checkItems
+      // into one <ul>, same lookahead pattern as the media grouping above.
+      const run: TiptapNode[] = [node];
+      while (i + 1 < nodes.length && nodes[i + 1].type === "checkItem") run.push(nodes[++i]);
+      const lis = run.map((n) => {
+        const checkedAttr = n.attrs?.checked ? " checked" : "";
+        return `<li><input type="checkbox"${checkedAttr}>${extractRichText(n)}</li>`;
+      }).join("");
+      parts.push(`<ul>${lis}</ul>`);
+      continue;
+    }
+
+    const html = convertSingleNode(node, photos, counter);
+    if (html) parts.push(html);
+  }
+
+  return parts.join("");
+}
+
+function convertSingleNode(
+  node: TiptapNode,
+  photos: RichPhotoItem[],
+  counter: { n: number },
+): string {
   switch (node.type) {
     case "paragraph": {
-      const rt = buildRichText(node.content ?? []);
-      if (rt.type === "plain" && !rt.text.trim()) return [];
-      return [{ type: "paragraph", text: rt }];
+      const text = extractRichText(node);
+      return text.trim() ? `<p>${text}</p>` : "";
     }
-
     case "heading": {
-      const level = (node.attrs?.level as number) ?? 1;
-      const rt = buildRichText(node.content ?? []);
-      return [{ type: "section_heading", text: rt, level }];
+      const lvl = (node.attrs?.level as number) ?? 2;
+      const text = extractRichText(node);
+      return text.trim() ? `<h${lvl}>${text}</h${lvl}>` : "";
     }
-
     case "blockquote": {
-      const paragraphs = node.content ?? [];
-      const inlines: TiptapNode[] = [];
-      for (let i = 0; i < paragraphs.length; i++) {
-        if (i > 0) inlines.push({ type: "hardBreak" });
-        inlines.push(...(paragraphs[i].content ?? []));
-      }
-      const rt = buildRichText(inlines);
-      if (node.attrs?.expandable) {
-        return [{ type: "block_expandable_quotation", text: rt }];
-      }
-      return [{ type: "block_quotation", text: rt }];
+      // Live-tested 2026-07-09: Rich Messages don't support an expandable/
+      // collapsible blockquote at all — sent <blockquote expandable>, the
+      // parsed-back message showed a plain non-collapsible blockquote with no
+      // trace of the attribute. <details><summary> is the real collapsible
+      // mechanism in Rich mode; a quote just stays a quote either way.
+      const inner = convertBlockList(node.content ?? [], photos, counter);
+      return inner.trim() ? `<blockquote>${inner}</blockquote>` : "";
     }
-
     case "codeBlock": {
       const raw = (node.content ?? []).map((n) => n.text ?? "").join("");
-      const lang = (node.attrs?.language as string | undefined) ?? "";
-      return [{ type: "preformatted", text: plainText(raw), language: lang || undefined }];
+      const esc = raw.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+      return esc ? `<pre><code>${esc}</code></pre>` : "";
     }
-
+    case "callout": {
+      const emoji = (node.attrs?.emoji as string) || "💡";
+      const inner = (node.content ?? []).map(extractRichText).join("<br>");
+      return inner.trim() ? `<blockquote>${emoji} ${inner}</blockquote>` : "";
+    }
     case "bulletList": {
-      const items = (node.content ?? []).map((li) => {
-        const inlines = (li.content ?? []).flatMap((p) => p.content ?? []);
-        return { text: buildRichText(inlines) };
-      });
-      return [{ type: "list", items, ordered: false }];
+      const lis = (node.content ?? []).map((li) => `<li>${extractRichText(li)}</li>`).join("");
+      return lis ? `<ul>${lis}</ul>` : "";
     }
-
     case "orderedList": {
-      const items = (node.content ?? []).map((li) => {
-        const inlines = (li.content ?? []).flatMap((p) => p.content ?? []);
-        return { text: buildRichText(inlines) };
-      });
-      return [{ type: "list", items, ordered: true }];
+      const lis = (node.content ?? []).map((li) => `<li>${extractRichText(li)}</li>`).join("");
+      return lis ? `<ol>${lis}</ol>` : "";
     }
-
     case "horizontalRule":
-      return [{ type: "divider" }];
-
+      return "<hr/>";
+    case "blockTable": {
+      const rows = (node.content ?? []).map((row) => {
+        const cells = (row.content ?? []).map((cell) => {
+          const tag = cell.attrs?.header ? "th" : "td";
+          return `<${tag}>${extractRichText(cell)}</${tag}>`;
+        }).join("");
+        return `<tr>${cells}</tr>`;
+      }).join("");
+      // Without `bordered`, Telegram renders the cells' text with no visible
+      // grid lines at all — just floating text roughly where the cells would
+      // be, confirmed by a live send.
+      return rows ? `<table bordered>${rows}</table>` : "";
+    }
+    case "blockAudio": {
+      // Same attach:// placeholder + upload-queue mechanism as blockImage/
+      // blockVideo (renderRichMediaTag) — kept separate since audio is never
+      // grouped into a <tg-collage>/<tg-slideshow> the way photos/videos are.
+      const attachName = `aud_${counter.n++}`;
+      photos.push({
+        attachName,
+        dataBase64: "",
+        mimeType: (node.attrs?.mimeType as string) ?? "audio/mpeg",
+        fileName: (node.attrs?.fileName as string) ?? "audio.mp3",
+        fileId:   (node.attrs?.fileId   as string) ?? "",
+      });
+      return `<audio src="attach://${attachName}"></audio>`;
+    }
+    case "anchorPoint":
+      // Invisible marker — Bot API 10.1 Rich Messages support in-document
+      // anchors/jump links, unlike regular Telegram HTML messages.
+      return `<a name="${ANCHOR_TOP_NAME}"></a>`;
     case "blockFaq": {
-      const q = (node.attrs?.question as string) ?? "";
-      const a = (node.attrs?.answer   as string) ?? "";
-      if (!q && !a) return [];
-      const answerBlock: RichBlock = { type: "paragraph", text: plainText(a) };
-      return [{
-        type: "details",
-        summary: plainText(q),
-        blocks: a ? [answerBlock] : [],
-      } as RichBlockDetails];
+      const q = escapeHtml((node.attrs?.question as string) ?? "");
+      // The answer is sanitized mini-HTML (bold/italic/underline/strike) from
+      // the spoiler body editor — convert its markup to the matching Telegram
+      // HTML tags rather than escaping it as literal text (which would show
+      // raw "<b>...</b>" to readers instead of actual bold formatting).
+      const a = miniHtmlToTelegramHtml((node.attrs?.answer as string) ?? "");
+      return (q || a) ? `<details><summary>${q}</summary>${a}</details>` : "";
     }
-
-    case "blockDetails": {
-      const s = (node.attrs?.summary as string) ?? "";
-      const c = (node.attrs?.content as string) ?? "";
-      if (!s && !c) return [];
-      return [{
-        type: "details",
-        summary: plainText(s),
-        blocks: c ? [{ type: "paragraph" as const, text: plainText(c) }] : [],
-      } as RichBlockDetails];
+    default: {
+      const text = extractRichText(node);
+      return text.trim() ? `<p>${text}</p>` : "";
     }
-
-    case "blockImage": {
-      const fileId   = (node.attrs?.fileId   as string) ?? "";
-      const fileName = (node.attrs?.fileName as string) ?? "image.jpg";
-      const mimeType = (node.attrs?.mimeType as string) ?? "image/jpeg";
-      const attachName = `img_${imgCounter.n++}`;
-      photos.push({ attachName, dataBase64: "", mimeType, fileName, fileId });
-      return [{ type: "photo", photo: `attach://${attachName}` }];
-    }
-
-    case "blockVideo": {
-      const fileId   = (node.attrs?.fileId   as string) ?? "";
-      const fileName = (node.attrs?.fileName as string) ?? "video.mp4";
-      const mimeType = (node.attrs?.mimeType as string) ?? "video/mp4";
-      const attachName = `vid_${imgCounter.n++}`;
-      photos.push({ attachName, dataBase64: "", mimeType, fileName, fileId });
-      return [{ type: "video", video: `attach://${attachName}` }];
-    }
-
-    case "blockPoll":
-      // Polls are not supported in Rich messages — caller should warn user
-      return [];
-
-    default:
-      return [];
   }
-}
-
-// ─── Public API ───────────────────────────────────────────────────────────────
-
-export interface RichMessageResult {
-  blocksJson: string;
-  photos: RichPhotoItem[];
-}
-
-// old alias kept for PublishPanel import
-export interface RichPhotoItemOld extends RichPhotoItem {}
-
-export function tiptapToRichBlocks(json: string, postTitle = ""): RichMessageResult {
-  let doc: TiptapNode;
-  try { doc = JSON.parse(json) as TiptapNode; }
-  catch { return { blocksJson: "[]", photos: [] }; }
-
-  const blocks: RichBlock[] = [];
-  const photos: RichPhotoItem[] = [];
-  const imgCounter = { n: 0 };
-
-  if (postTitle.trim()) {
-    blocks.push({ type: "section_heading", text: plainText(postTitle.trim()), level: 1 });
-  }
-
-  for (const node of doc.content ?? []) {
-    blocks.push(...convertBlock(node, photos, imgCounter));
-  }
-
-  return { blocksJson: JSON.stringify(blocks), photos };
 }
 
 // Converts TipTap JSON to HTML for sendRichMessage.
-// Text nodes use the same converter as normal publish (preserves lists, spacing, etc.)
-// Media blocks become <img>/<video> placeholders that Rust replaces with real URLs.
 export function tiptapToRichHtml(json: string, postTitle = ""): { html: string; photos: RichPhotoItem[] } {
   let doc: TiptapNode;
   try { doc = JSON.parse(json) as TiptapNode; }
   catch { return { html: "", photos: [] }; }
 
   const photos: RichPhotoItem[] = [];
-  let counter = 0;
+  const counter = { n: 0 };
   const parts: string[] = [];
 
   if (postTitle.trim()) {
@@ -254,75 +224,7 @@ export function tiptapToRichHtml(json: string, postTitle = ""): { html: string; 
     parts.push(`<h2>${esc}</h2>`);
   }
 
-  for (const node of doc.content ?? []) {
-    if (node.type === "horizontalRule") {
-      parts.push("<hr/>");
-    } else if (node.type === "blockFaq") {
-      const q = escapeHtml((node.attrs?.question as string) ?? "");
-      const a = escapeHtml((node.attrs?.answer   as string) ?? "");
-      if (q || a) {
-        parts.push(`<details><summary>${q}</summary>${a}</details>`);
-      }
-    } else if (node.type === "blockImage") {
-      const attachName = `img_${counter++}`;
-      photos.push({
-        attachName,
-        dataBase64: "",
-        mimeType:  (node.attrs?.mimeType as string) ?? "image/jpeg",
-        fileName:  (node.attrs?.fileName as string) ?? "image.jpg",
-        fileId:    (node.attrs?.fileId   as string) ?? "",
-      });
-      parts.push(`<img src="attach://${attachName}"/>`);
-    } else if (node.type === "blockVideo") {
-      const attachName = `vid_${counter++}`;
-      photos.push({
-        attachName,
-        dataBase64: "",
-        mimeType:  (node.attrs?.mimeType as string) ?? "video/mp4",
-        fileName:  (node.attrs?.fileName as string) ?? "video.mp4",
-        fileId:    (node.attrs?.fileId   as string) ?? "",
-      });
-      parts.push(`<video src="attach://${attachName}"/>`);
-    } else if (node.type === "bulletList") {
-      const lis = (node.content ?? []).map((li) => `<li>${extractRichText(li)}</li>`).join("");
-      if (lis) parts.push(`<ul>${lis}</ul>`);
-    } else if (node.type === "orderedList") {
-      const lis = (node.content ?? []).map((li) => `<li>${extractRichText(li)}</li>`).join("");
-      if (lis) parts.push(`<ol>${lis}</ol>`);
-    } else {
-      switch (node.type) {
-        case "paragraph": {
-          const text = extractRichText(node);
-          if (text.trim()) parts.push(`<p>${text}</p>`);
-          break;
-        }
-        case "heading": {
-          const lvl = (node.attrs?.level as number) ?? 2;
-          const text = extractRichText(node);
-          if (text.trim()) parts.push(`<h${lvl}>${text}</h${lvl}>`);
-          break;
-        }
-        case "blockquote": {
-          const inner = (node.content ?? []).map(extractRichText).join("<br>");
-          if (inner.trim()) {
-            const tag = node.attrs?.expandable ? "blockquote expandable" : "blockquote";
-            parts.push(`<${tag}>${inner}</${tag.split(" ")[0]}>`);
-          }
-          break;
-        }
-        case "codeBlock": {
-          const raw = (node.content ?? []).map((n) => n.text ?? "").join("");
-          const esc = raw.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-          if (esc) parts.push(`<pre><code>${esc}</code></pre>`);
-          break;
-        }
-        default: {
-          const text = extractRichText(node);
-          if (text.trim()) parts.push(`<p>${text}</p>`);
-        }
-      }
-    }
-  }
+  parts.push(convertBlockList(doc.content ?? [], photos, counter));
 
   return { html: parts.join(""), photos };
 }

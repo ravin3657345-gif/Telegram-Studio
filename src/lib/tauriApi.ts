@@ -9,6 +9,7 @@ import type {
   PublishPayload,
   PublishResult,
   ScheduledPostInfo,
+  TodayStats,
 } from "@/types/publish";
 
 // ── Боты ────────────────────────────────────────────────────────────────────
@@ -78,6 +79,9 @@ export const getScheduledPosts = (): Promise<ScheduledPostInfo[]> =>
 export const cancelScheduledPost = (postId: string): Promise<void> =>
   invoke("cancel_scheduled_post", { postId });
 
+export const getTodayStats = (): Promise<TodayStats> =>
+  invoke("get_today_stats");
+
 // ── Telegraph ─────────────────────────────────────────────────────────────────
 
 export interface TelegraphImagePayload {
@@ -110,7 +114,7 @@ export interface RichPhotoPayload {
 export interface PublishRichPayload {
   botId?: string | null;
   channelIds: string[];
-  blocksJson: string;
+  richHtml: string;
   photos: RichPhotoPayload[];
   draftId?: string | null;
 }
@@ -170,22 +174,28 @@ export const editPublishedPost = (historyId: string, newText: string, contentJso
 
 export const republishRichPost = (
   historyId: string,
-  blocksJson: string,
+  richHtml: string,
   photos: RichPhotoPayload[],
   contentJson?: string,
 ): Promise<void> =>
-  invoke("republish_rich_post", { historyId, blocksJson, photos, contentJson: contentJson ?? null });
+  invoke("republish_rich_post", { historyId, richHtml, photos, contentJson: contentJson ?? null });
 
 // ── Шаблоны ──────────────────────────────────────────────────────────────────
 
 export const getTemplates = (): Promise<Template[]> =>
   invoke("get_templates");
 
+export const getTemplate = (templateId: string): Promise<Template> =>
+  invoke("get_template", { templateId });
+
 export const saveTemplate = (payload: SaveTemplatePayload): Promise<Template> =>
   invoke("save_template", { payload });
 
 export const deleteTemplate = (templateId: string): Promise<void> =>
   invoke("delete_template", { templateId });
+
+export const recordTemplateUse = (templateId: string): Promise<void> =>
+  invoke("record_template_use", { templateId });
 
 // ── Лицензия ─────────────────────────────────────────────────────────────────
 
