@@ -1,4 +1,4 @@
-export type DraftStatus = "draft" | "published" | "scheduled" | "deleted";
+export type DraftStatus = "draft" | "scheduled" | "published";
 export type ParseMode  = "HTML" | "MarkdownV2";
 
 export interface DraftMedia {
@@ -40,6 +40,8 @@ export interface Draft {
   contentText?: string | null;
   parseMode: ParseMode;
   status: DraftStatus;
+  templateId?: string | null;
+  templateName?: string | null;
   media: DraftMedia[];
   buttons: DraftButton[];
   attachments: DraftAttachment[];
@@ -55,6 +57,8 @@ export interface DraftSummary {
   mediaCount: number;
   buttonCount: number;
   status: DraftStatus;
+  /** Earliest still-pending scheduled_posts.scheduled_at for this draft, if any. */
+  scheduledAt?: string | null;
   updatedAt: string;
 }
 
@@ -65,5 +69,6 @@ export interface DraftPayload {
   contentJson: string;
   contentText?: string;
   parseMode?: ParseMode;
+  templateId?: string;
   attachments?: DraftAttachment[];
 }

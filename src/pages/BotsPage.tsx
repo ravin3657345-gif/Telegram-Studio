@@ -71,7 +71,7 @@ function AddBotModal({ onClose, onAdded }: AddBotModalProps) {
     >
       <div
         style={{
-          width: 440, backgroundColor: "var(--bg-surface)",
+          width: 440, maxWidth: "calc(100vw - 32px)", backgroundColor: "var(--bg-surface)",
           border: "1px solid var(--border-subtle)",
           borderRadius: 14, padding: 24,
           boxShadow: "0 20px 60px rgba(0,0,0,0.5)",

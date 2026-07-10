@@ -72,3 +72,34 @@ pub async fn get_channel_dashboard(
         last_post_at,
     })
 }
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TodayStats {
+    pub published: i64,
+    pub failed: i64,
+}
+
+/// Aggregate publish activity for today, across all channels — a summary
+/// widget doesn't have one specific channel_id to key off of like
+/// `get_channel_dashboard` does.
+#[tauri::command]
+pub async fn get_today_stats(state: tauri::State<'_, AppState>) -> Result<TodayStats, String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+
+    let published: i64 = db.query_row(
+        "SELECT COUNT(*) FROM publication_history
+         WHERE status = 'published' AND date(published_at) = date('now')",
+        [],
+        |r| r.get(0),
+    ).unwrap_or(0);
+
+    let failed: i64 = db.query_row(
+        "SELECT COUNT(*) FROM publication_history
+         WHERE status = 'failed' AND date(published_at) = date('now')",
+        [],
+        |r| r.get(0),
+    ).unwrap_or(0);
+
+    Ok(TodayStats { published, failed })
+}

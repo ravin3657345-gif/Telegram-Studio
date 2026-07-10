@@ -3,8 +3,9 @@ use tauri::{AppHandle, Manager};
 use tokio::time::{interval, Duration};
 
 use crate::{
+    commands::publish::{cleanup_scheduled_media, publish_to_channel, sync_draft_status_on_terminal, PublishPayload},
     db::{queries::{bots as bots_q, settings as settings_q}, AppState},
-    telegram::{client::TelegramClient, methods},
+    telegram::{client::TelegramClient, methods, methods::MediaItem},
 };
 use tstudio_core::retry::{is_permanent_telegram_error, next_retry_decision, RetryDecision};
 
@@ -73,7 +74,7 @@ async fn process_pending(app: &AppHandle) -> Result<(), String> {
     };
 
     for row in pending {
-        let (ordered_bots, opt_chat_id, content) = {
+        let (ordered_bots, opt_chat_id, content, media) = {
             let db = state.db.lock().map_err(|e| e.to_string())?;
 
             // Load all bots; put the scheduled bot first, then fallback to others
@@ -119,11 +120,16 @@ async fn process_pending(app: &AppHandle) -> Result<(), String> {
                 })
                 .unwrap_or_default();
 
-            (all_bots, opt_chat_id, content)
+            // Load persisted media (if any) and re-encode fresh from disk —
+            // never held in memory between schedule time and send time.
+            let media = load_scheduled_media(&db, &row.id);
+
+            (all_bots, opt_chat_id, content, media)
         };
 
         if ordered_bots.is_empty() {
             update_status(&state, &row.id, "failed", Some("Нет доступных ботов"))?;
+            cleanup_media_for(&state, &row.id);
             continue;
         }
 
@@ -131,6 +137,7 @@ async fn process_pending(app: &AppHandle) -> Result<(), String> {
             Some(id) => id,
             None => {
                 update_status(&state, &row.id, "failed", Some("Канал не найден"))?;
+                cleanup_media_for(&state, &row.id);
                 continue;
             }
         };
@@ -141,13 +148,31 @@ async fn process_pending(app: &AppHandle) -> Result<(), String> {
 
         for bot in &ordered_bots {
             let client = TelegramClient::new(&bot.token);
-            match methods::send_message(&client, &chat_id, &content, "HTML", None).await {
-                Ok(_) => {
+
+            let send_result = if media.is_empty() {
+                methods::send_message(&client, &chat_id, &content, "HTML", None)
+                    .await
+                    .map(|_| ())
+                    .map_err(|e| e.to_string())
+            } else {
+                let payload = PublishPayload {
+                    bot_id: None,
+                    channel_ids: vec![],
+                    content_html: content.clone(),
+                    media: media.clone(),
+                    buttons: vec![],
+                    draft_id: None,
+                    schedule_at: None,
+                };
+                publish_to_channel(&client, &chat_id, &payload).await.map(|_| ())
+            };
+
+            match send_result {
+                Ok(()) => {
                     published = true;
                     break;
                 }
-                Err(e) => {
-                    let err_str = e.to_string();
+                Err(err_str) => {
                     let is_perm = is_permanent_telegram_error(&err_str);
                     last_err = err_str;
                     last_was_transient = !is_perm;
@@ -160,16 +185,79 @@ async fn process_pending(app: &AppHandle) -> Result<(), String> {
 
         if published {
             update_status(&state, &row.id, "published", None)?;
+            cleanup_media_for(&state, &row.id);
+            sync_draft_status(&state, row.draft_id.as_deref(), true);
         } else if last_was_transient {
             // Don't permafail on a network blip — leave 'pending' so the next
             // tick retries, up to MAX_TRANSIENT_RETRIES.
             record_transient_failure(&state, &row.id, row.retry_count, &last_err)?;
         } else {
             update_status(&state, &row.id, "failed", Some(last_err.as_str()))?;
+            cleanup_media_for(&state, &row.id);
+            sync_draft_status(&state, row.draft_id.as_deref(), false);
         }
     }
 
     Ok(())
+}
+
+/// Loads a scheduled post's persisted media, re-encoding each file's bytes
+/// fresh from disk as base64. Missing/unreadable files are skipped (logged),
+/// not fatal — a post shouldn't fail entirely because one attachment vanished.
+fn load_scheduled_media(db: &rusqlite::Connection, post_id: &str) -> Vec<MediaItem> {
+    use base64::Engine;
+
+    let mut stmt = match db.prepare(
+        "SELECT file_path, file_name, mime_type, media_type
+         FROM scheduled_media WHERE scheduled_post_id = ?1 ORDER BY sort_order",
+    ) {
+        Ok(s) => s,
+        Err(_) => return vec![],
+    };
+
+    let rows: Vec<(String, String, String, String)> = stmt
+        .query_map([post_id], |r| {
+            Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))
+        })
+        .map(|it| it.filter_map(|r| r.ok()).collect())
+        .unwrap_or_default();
+
+    rows.into_iter()
+        .filter_map(|(file_path, file_name, mime_type, media_type)| {
+            match std::fs::read(&file_path) {
+                Ok(bytes) => Some(MediaItem {
+                    file_name,
+                    mime_type,
+                    media_type,
+                    data_base64: base64::engine::general_purpose::STANDARD.encode(bytes),
+                }),
+                Err(e) => {
+                    log::warn!("[scheduler] missing media file {file_path}: {e}");
+                    None
+                }
+            }
+        })
+        .collect()
+}
+
+/// Best-effort: lock failures here are logged, not propagated — this is a
+/// side-effect sync, must never block the scheduler's own status update.
+fn sync_draft_status(state: &AppState, draft_id: Option<&str>, success: bool) {
+    let Some(draft_id) = draft_id else { return };
+    match state.db.lock() {
+        Ok(db) => sync_draft_status_on_terminal(&db, draft_id, success),
+        Err(e) => log::warn!("[scheduler] could not lock db to sync draft status: {e}"),
+    }
+}
+
+/// Best-effort media cleanup after a scheduled post reaches a terminal state.
+/// A lock-acquisition failure here is logged, not propagated — cleanup is
+/// housekeeping and must never block the scheduler's own status update.
+fn cleanup_media_for(state: &AppState, post_id: &str) {
+    match state.db.lock() {
+        Ok(db) => cleanup_scheduled_media(&db, &state.app_dir, post_id),
+        Err(e) => log::warn!("[scheduler] could not lock db for media cleanup: {e}"),
+    }
 }
 
 fn update_status(

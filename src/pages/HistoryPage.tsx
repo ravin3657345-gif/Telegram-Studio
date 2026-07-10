@@ -14,6 +14,7 @@ interface HistoryItem {
   id: string;
   channelId: string;
   channelTitle: string;
+  postTitle: string;
   botId: string;
   telegramMsgId: number | null;
   telegramChatId: string | null;
@@ -174,10 +175,10 @@ function HistoryCard({
       <div className="flex-1 min-w-0">
         <div className="flex items-center justify-between gap-2">
           <p className="text-sm font-medium truncate" style={{ color: "var(--text-primary)" }}>
-            {item.channelTitle || item.channelId}
+            {item.postTitle.trim() || t("editor.untitled")}
           </p>
-          <span className="text-2xs flex-shrink-0" style={{ color: "var(--text-muted)" }}>
-            {pubDate}
+          <span className="text-2xs flex-shrink-0 truncate" style={{ color: "var(--text-muted)", maxWidth: 160 }}>
+            {item.channelTitle || item.channelId} · {pubDate}
           </span>
         </div>
 

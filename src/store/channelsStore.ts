@@ -22,6 +22,15 @@ interface ChannelsState {
   setActiveChannel: (id: string | null) => void;
 }
 
+// Some DB rows can end up pointing at the same Telegram channel (e.g. added
+// via two different bots) — keep only the first occurrence for display.
+export function dedupeChannels(channels: Channel[]): Channel[] {
+  const seen = new Set<string>();
+  return channels.filter((c) =>
+    seen.has(c.telegramId) ? false : !!seen.add(c.telegramId)
+  );
+}
+
 export const useChannelsStore = create<ChannelsState>()(
   persist(
     (set) => ({

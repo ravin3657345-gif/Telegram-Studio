@@ -47,14 +47,13 @@ export function LicenseGate({ children }: Props) {
     if (e.key === "Enter") handleActivate();
   }
 
+  // 4-byte nonce + 64-byte Ed25519 signature, base32-encoded (see
+  // src-tauri/core/src/license.rs) — always exactly 109 characters once
+  // dashes/whitespace are stripped, however the key was formatted.
+  const LICENSE_KEY_LEN = 109;
+
   function formatInput(raw: string) {
-    const clean = raw.toUpperCase().replace(/[^A-Z0-9]/g, "");
-    const parts: string[] = [];
-    if (clean.length > 0)  parts.push("TELEGA");
-    if (clean.length > 0)  parts.push(clean.slice(0, 5));
-    if (clean.length > 5)  parts.push(clean.slice(5, 10));
-    if (clean.length > 10) parts.push(clean.slice(10, 15));
-    return parts.join("-");
+    return raw.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, LICENSE_KEY_LEN);
   }
 
   return (
@@ -115,11 +114,15 @@ export function LicenseGate({ children }: Props) {
             value={key}
             onChange={(e) => {
               setError("");
-              setKey(formatInput(e.target.value.replace(/^TELEGA-/i, "").replace(/-/g, "")));
+              setKey(formatInput(e.target.value));
             }}
             onKeyDown={handleKeyDown}
-            placeholder="TELEGA-XXXXX-XXXXX-XXXXX"
-            maxLength={23}
+            placeholder="XXXXX-XXXXX-XXXXX-…"
+            // Generous headroom above LICENSE_KEY_LEN: a pasted key is often
+            // dash-formatted, and those separators must survive to reach
+            // formatInput's own stripping — a tight maxLength would let the
+            // browser truncate raw characters (dashes included) first.
+            maxLength={200}
             spellCheck={false}
             autoFocus
             style={{
@@ -129,7 +132,7 @@ export function LicenseGate({ children }: Props) {
               border: `1.5px solid ${error ? "var(--danger)" : "var(--border-default)"}`,
               backgroundColor: "var(--bg-elevated)",
               color: "var(--text-primary)",
-              fontSize: 14, fontFamily: "monospace", letterSpacing: "0.08em",
+              fontSize: 13, fontFamily: "monospace", letterSpacing: "0.02em",
               outline: "none",
               transition: "border-color 0.15s",
             }}

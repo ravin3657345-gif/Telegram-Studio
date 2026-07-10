@@ -106,6 +106,17 @@ pub fn insert(conn: &Connection, bot: &Bot) -> Result<()> {
     Ok(())
 }
 
+/// Refreshes the bot's cached display name/username from a fresh getMe
+/// response — picks up renames without requiring the user to re-add the bot.
+pub fn update_info(conn: &Connection, bot_id: &str, name: &str, username: &str) -> Result<()> {
+    let now = chrono::Utc::now().to_rfc3339();
+    conn.execute(
+        "UPDATE bots SET name = ?1, username = ?2, updated_at = ?3 WHERE id = ?4",
+        params![name, username, now, bot_id],
+    )?;
+    Ok(())
+}
+
 pub fn delete(conn: &Connection, id: &str) -> Result<()> {
     // Remove all data referencing this bot before deleting to satisfy FK constraints
     conn.execute("DELETE FROM scheduled_posts WHERE bot_id = ?1", params![id])?;

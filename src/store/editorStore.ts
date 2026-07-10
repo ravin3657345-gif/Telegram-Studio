@@ -38,6 +38,7 @@ interface EditorState {
   saveStatus:        SaveStatus;
   lastSavedAt:       Date | null;
   publishMode:       PublishMode;
+  templateName:      string | null; // set when the current draft was created from a template
 
   setDraftId:           (id: string | null) => void;
   setEditingHistoryId:  (id: string | null) => void;
@@ -46,6 +47,7 @@ interface EditorState {
   setIncludeTitle:   (v: boolean) => void;
   setContentJson:    (json: string) => void;
   setPublishMode:    (mode: PublishMode) => void;
+  setTemplateName:   (name: string | null) => void;
 
   addMedia:     (files: File[]) => { added: number; errors: string[] };
   removeMedia:  (id: string) => void;
@@ -88,6 +90,7 @@ const INITIAL_STATE = {
   publishMode:      "normal" as PublishMode,
   splitGaps:        [] as number[],
   lockedGaps:       [] as number[],
+  templateName:     null as string | null,
 };
 
 export const useEditorStore = create<EditorState>((set, get) => ({
@@ -103,6 +106,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   setIncludeTitle: (v)     => set({ includeTitle: v }),
   setContentJson:  (json)  => set({ contentJson: json }),
   setPublishMode:  (mode)  => set({ publishMode: mode }),
+  setTemplateName: (name)  => set({ templateName: name }),
 
   addMedia(files) {
     const existing = get().media;

@@ -9,48 +9,12 @@ import { t } from "@/lib/i18n";
 import { useSettingsStore } from "@/store/settingsStore";
 import { useDraftsStore } from "@/store/draftsStore";
 import type { ScheduledPostInfo } from "@/types/publish";
-
-// ── Calendar helpers ──────────────────────────────────────────────────────────
-
-// Jan 1–7 2024 = Mon–Sun — used to derive locale weekday names
-const WEEKDAY_BASE_DATES = Array.from({ length: 7 }, (_, i) => new Date(2024, 0, i + 1));
-
-function startOfMonth(year: number, month: number): Date {
-  return new Date(year, month, 1);
-}
-
-function daysInMonth(year: number, month: number): number {
-  return new Date(year, month + 1, 0).getDate();
-}
-
-/** Return Monday-based weekday index (0=Mon … 6=Sun) */
-function weekdayMon(date: Date): number {
-  return (date.getDay() + 6) % 7;
-}
-
-// Build calendar grid (always 6 rows × 7 cols, padded with null)
-function buildCalendarGrid(year: number, month: number): Array<Date | null> {
-  const firstDay = startOfMonth(year, month);
-  const startPad = weekdayMon(firstDay);
-  const days = daysInMonth(year, month);
-  const grid: Array<Date | null> = [];
-
-  for (let i = 0; i < startPad; i++) grid.push(null);
-  for (let d = 1; d <= days; d++) grid.push(new Date(year, month, d));
-  while (grid.length % 7 !== 0) grid.push(null);
-  return grid;
-}
-
-function sameDay(a: Date, b: Date): boolean {
-  return a.getFullYear() === b.getFullYear() &&
-    a.getMonth() === b.getMonth() &&
-    a.getDate() === b.getDate();
-}
+import { WEEKDAY_BASE_DATES, buildCalendarGrid, sameDay } from "@/lib/calendarGrid";
 
 // ── Chip colors ───────────────────────────────────────────────────────────────
 
 function chipStyle(isPast: boolean) {
-  if (isPast) return { color: "var(--status-ready-color)", bg: "var(--status-ready-bg)" };
+  if (isPast) return { color: "var(--status-published-color)", bg: "var(--status-published-bg)" };
   return { color: "var(--status-sched-color)", bg: "var(--status-sched-bg)" };
 }
 
@@ -183,7 +147,7 @@ export function SchedulePage() {
 
               {/* Legend */}
               <div className="flex items-center gap-3" style={{ fontSize: 11 }}>
-                <LegendItem color="var(--status-ready-color)" label={t("sched.legend.published")} />
+                <LegendItem color="var(--status-published-color)" label={t("sched.legend.published")} />
                 <LegendItem color="var(--status-sched-color)" label={t("sched.legend.scheduled")} />
                 <LegendItem color="var(--status-draft-color)" label={t("sched.legend.draft")} />
               </div>

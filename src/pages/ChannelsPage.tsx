@@ -7,7 +7,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { TopBar } from "@/components/layout/TopBar";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Spinner } from "@/components/ui/Spinner";
-import { useChannelsStore } from "@/store/channelsStore";
+import { useChannelsStore, dedupeChannels } from "@/store/channelsStore";
 import { addChannel, deleteChannel, getChannels, updateChannelBot } from "@/lib/tauriApi";
 import { toast } from "@/store/uiStore";
 import { t, ti } from "@/lib/i18n";
@@ -74,7 +74,7 @@ function AddChannelModal({ onClose, onAdded }: AddChannelModalProps) {
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
       <div style={{
-        width: 460, backgroundColor: "var(--bg-surface)",
+        width: 460, maxWidth: "calc(100vw - 32px)", backgroundColor: "var(--bg-surface)",
         border: "1px solid var(--border-subtle)", borderRadius: 14, padding: 24,
         boxShadow: "0 20px 60px rgba(0,0,0,0.5)",
       }}>
@@ -378,17 +378,17 @@ function ChannelCard({ channel, onDelete }: { channel: Channel; onDelete: () => 
               <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{t("channels.loading")}</span>
             </div>
           ) : stats ? (
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px 32px" }}>
-              <StatRow icon={<Users size={13} />}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              <StatTile icon={<Users size={13} />}
                 label={t("channels.subscribers")}
                 value={stats.memberCount != null ? stats.memberCount.toLocaleString("ru") : "—"} />
-              <StatRow icon={<CheckCircle2 size={13} style={{ color: "var(--success)" }} />}
+              <StatTile icon={<CheckCircle2 size={13} style={{ color: "var(--success)" }} />}
                 label={t("channels.success")}
                 value={`${stats.postsSuccess} / ${stats.postsTotal}`} />
-              <StatRow icon={<XCircle size={13} style={{ color: "var(--danger)" }} />}
+              <StatTile icon={<XCircle size={13} style={{ color: "var(--danger)" }} />}
                 label={t("channels.failed")}
                 value={String(stats.postsFailed)} />
-              <StatRow icon={<Radio size={13} />}
+              <StatTile icon={<Radio size={13} />}
                 label={t("channels.lastPost")}
                 value={lastPost ?? t("channels.noLastPost")} />
               <div style={{ gridColumn: "1/-1", marginTop: 4 }}>
@@ -411,12 +411,20 @@ function ChannelCard({ channel, onDelete }: { channel: Channel; onDelete: () => 
   );
 }
 
-function StatRow({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
+function StatTile({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+    <div
+      className="soft-ui-sm"
+      style={{
+        display: "flex", alignItems: "center", gap: 8,
+        padding: "9px 12px", borderRadius: 10, backgroundColor: "var(--bg-surface)",
+      }}
+    >
       <span style={{ color: "var(--text-muted)", flexShrink: 0 }}>{icon}</span>
-      <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>{label}:</span>
-      <span style={{ fontSize: 12, fontWeight: 500, color: "var(--text-primary)" }}>{value}</span>
+      <div style={{ display: "flex", flexDirection: "column", gap: 1, minWidth: 0 }}>
+        <span style={{ fontSize: 10.5, color: "var(--text-secondary)" }}>{label}</span>
+        <span style={{ fontSize: 12.5, fontWeight: 600, color: "var(--text-primary)" }}>{value}</span>
+      </div>
     </div>
   );
 }
@@ -430,11 +438,7 @@ export function ChannelsPage() {
 
   useEffect(() => {
     getChannels()
-      .then((chs) => {
-        // Deduplicate by telegramId (keeps first occurrence)
-        const seen = new Set<string>();
-        setChannels(chs.filter((c) => seen.has(c.telegramId) ? false : !!seen.add(c.telegramId)));
-      })
+      .then((chs) => setChannels(dedupeChannels(chs)))
       .catch(() => {});
   }, []);
 

@@ -9,6 +9,9 @@ pub fn run(conn: &Connection) -> Result<()> {
     migrate_v6(conn)?;
     migrate_v7(conn)?;
     migrate_v8(conn)?;
+    migrate_v9(conn)?;
+    migrate_v10(conn)?;
+    migrate_v11(conn)?;
     seed_settings(conn)?;
     Ok(())
 }
@@ -120,6 +123,81 @@ fn migrate_v8(conn: &Connection) -> Result<()> {
     let _ = conn.execute_batch(
         "ALTER TABLE scheduled_posts ADD COLUMN retry_count INTEGER NOT NULL DEFAULT 0;"
     );
+    Ok(())
+}
+
+fn migrate_v9(conn: &Connection) -> Result<()> {
+    // Media (images/video/documents) attached to a scheduled post — persisted
+    // to disk so it survives until the scheduler actually sends it, mirroring
+    // the draft_media pattern. See scheduler::process_pending.
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS scheduled_media (
+            id                TEXT PRIMARY KEY,
+            scheduled_post_id TEXT NOT NULL,
+            file_path         TEXT NOT NULL,
+            file_name         TEXT NOT NULL,
+            mime_type         TEXT NOT NULL,
+            media_type        TEXT NOT NULL,
+            file_size         INTEGER NOT NULL,
+            sort_order        INTEGER NOT NULL DEFAULT 0,
+            created_at        TEXT NOT NULL,
+            FOREIGN KEY (scheduled_post_id) REFERENCES scheduled_posts(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_scheduled_media ON scheduled_media(scheduled_post_id, sort_order);"
+    )?;
+    Ok(())
+}
+
+fn migrate_v10(conn: &Connection) -> Result<()> {
+    // Template variables feature: track how often/when a template was used,
+    // and which template a draft was created from (for display only — no FK
+    // enforcement, a stale id just means the join finds no name later).
+    let _ = conn.execute_batch(
+        "ALTER TABLE templates ADD COLUMN usage_count INTEGER NOT NULL DEFAULT 0;"
+    );
+    let _ = conn.execute_batch(
+        "ALTER TABLE templates ADD COLUMN last_used_at TEXT;"
+    );
+    let _ = conn.execute_batch(
+        "ALTER TABLE drafts ADD COLUMN template_id TEXT;"
+    );
+    Ok(())
+}
+
+fn migrate_v11(conn: &Connection) -> Result<()> {
+    // Unify templates into drafts as kind='template' rows — a template is
+    // conceptually just a reusable post, and keeping it in a separate table
+    // meant duplicating soft-delete/attachments/list logic and left templates
+    // without any media persistence at all (see the ALTER for media below).
+    let _ = conn.execute_batch("ALTER TABLE drafts ADD COLUMN kind TEXT NOT NULL DEFAULT 'draft';");
+    let _ = conn.execute_batch("ALTER TABLE drafts ADD COLUMN category TEXT;");
+    let _ = conn.execute_batch("ALTER TABLE drafts ADD COLUMN usage_count INTEGER NOT NULL DEFAULT 0;");
+    let _ = conn.execute_batch("ALTER TABLE drafts ADD COLUMN last_used_at TEXT;");
+
+    let templates_exists: bool = conn
+        .query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='templates'",
+            [],
+            |r| r.get::<_, i64>(0),
+        )
+        .map(|c| c > 0)
+        .unwrap_or(false);
+
+    if templates_exists {
+        conn.execute_batch(
+            "INSERT INTO drafts (id, title, post_title, content_json, content_text, parse_mode,
+                                 status, kind, category, usage_count, last_used_at,
+                                 created_at, updated_at)
+             SELECT id, name, '', content_json, NULL, parse_mode,
+                    'draft', 'template', category, usage_count, last_used_at,
+                    created_at, updated_at
+             FROM templates;
+             DROP TABLE templates;"
+        )?;
+    }
+
+    conn.execute_batch("CREATE INDEX IF NOT EXISTS idx_drafts_kind ON drafts(kind);")?;
+
     Ok(())
 }
 

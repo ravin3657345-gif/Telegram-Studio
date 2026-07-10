@@ -1,11 +1,14 @@
-import { Sun, Moon, Monitor, User, Send, Palette, Bell } from "lucide-react";
-import { useState, useEffect } from "react";
+import { Sun, Moon, Monitor, User, Send, Palette, Bell, Smile } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import { getVersion } from "@tauri-apps/api/app";
 
 import { TopBar } from "@/components/layout/TopBar";
 import { useSettingsStore } from "@/store/settingsStore";
 import { telegraphOpenLogin } from "@/lib/tauriApi";
+import { EmojiPicker } from "@/components/editor/EmojiPicker";
 import { t, setI18nLanguage, type TranslationKey } from "@/lib/i18n";
+import { useIsMobileLayout } from "@/hooks/useIsMobileLayout";
 import type { Theme, Language } from "@/types/settings";
 
 // ── Local nav definition ──────────────────────────────────────────────────────
@@ -35,49 +38,63 @@ const ACCENT_PRESETS: Array<{ color: string; labelKey: TranslationKey }> = [
 export function SettingsPage() {
   const [activeSection, setActiveSection] = useState<NavSection>("appearance");
   useSettingsStore((s) => s.language); // реактивность при смене языка
+  const isMobile = useIsMobileLayout();
+
+  const navButtons = NAV_ITEMS.map(({ key, icon, labelKey }) => {
+    const isActive = activeSection === key;
+    return (
+      <button
+        key={key}
+        onClick={() => setActiveSection(key)}
+        className={
+          isMobile
+            ? "flex items-center gap-1.5 px-3 h-8 rounded-md text-sm transition-colors flex-shrink-0"
+            : "flex items-center gap-2.5 w-full px-3 h-8 rounded-md mb-0.5 text-sm transition-colors text-left"
+        }
+        style={{
+          backgroundColor: isActive ? "var(--bg-active)" : "transparent",
+          color: isActive ? "var(--text-primary)" : "var(--text-secondary)",
+          fontWeight: isActive ? 500 : 400,
+        }}
+        onMouseEnter={(e) => {
+          if (!isActive) (e.currentTarget as HTMLElement).style.backgroundColor = "var(--bg-hover)";
+        }}
+        onMouseLeave={(e) => {
+          if (!isActive) (e.currentTarget as HTMLElement).style.backgroundColor = "transparent";
+        }}
+      >
+        <span style={{ color: isActive ? "var(--accent)" : "var(--text-muted)", flexShrink: 0 }}>
+          {icon}
+        </span>
+        {t(labelKey as any)}
+      </button>
+    );
+  });
 
   return (
     <>
       <TopBar />
-      <div className="flex flex-1 overflow-hidden">
-        {/* ── Local nav ──────────────────────────────────────────────────── */}
-        <div
-          className="flex-shrink-0 border-r overflow-y-auto"
-          style={{
-            width: 220,
-            backgroundColor: "var(--bg-sidebar)",
-            borderColor: "var(--border-subtle)",
-          }}
-        >
-          <div className="py-4 px-2">
-            {NAV_ITEMS.map(({ key, icon, labelKey }) => {
-              const isActive = activeSection === key;
-              return (
-                <button
-                  key={key}
-                  onClick={() => setActiveSection(key)}
-                  className="flex items-center gap-2.5 w-full px-3 h-8 rounded-md mb-0.5 text-sm transition-colors text-left"
-                  style={{
-                    backgroundColor: isActive ? "var(--bg-active)" : "transparent",
-                    color: isActive ? "var(--text-primary)" : "var(--text-secondary)",
-                    fontWeight: isActive ? 500 : 400,
-                  }}
-                  onMouseEnter={(e) => {
-                    if (!isActive) (e.currentTarget as HTMLElement).style.backgroundColor = "var(--bg-hover)";
-                  }}
-                  onMouseLeave={(e) => {
-                    if (!isActive) (e.currentTarget as HTMLElement).style.backgroundColor = "transparent";
-                  }}
-                >
-                  <span style={{ color: isActive ? "var(--accent)" : "var(--text-muted)", flexShrink: 0 }}>
-                    {icon}
-                  </span>
-                  {t(labelKey as any)}
-                </button>
-              );
-            })}
+      <div className={isMobile ? "flex flex-col flex-1 overflow-hidden" : "flex flex-1 overflow-hidden"}>
+        {/* ── Local nav: left rail on desktop, horizontal scroll row on mobile ── */}
+        {isMobile ? (
+          <div
+            className="flex gap-1 overflow-x-auto flex-shrink-0 border-b px-2 py-2"
+            style={{ backgroundColor: "var(--bg-sidebar)", borderColor: "var(--border-subtle)" }}
+          >
+            {navButtons}
           </div>
-        </div>
+        ) : (
+          <div
+            className="flex-shrink-0 border-r overflow-y-auto"
+            style={{
+              width: 220,
+              backgroundColor: "var(--bg-sidebar)",
+              borderColor: "var(--border-subtle)",
+            }}
+          >
+            <div className="py-4 px-2">{navButtons}</div>
+          </div>
+        )}
 
         {/* ── Section content ─────────────────────────────────────────────── */}
         <div className="flex-1 overflow-y-auto">
@@ -112,10 +129,42 @@ function AppearanceSection() {
   const setAccentColor     = useSettingsStore((s) => s.setAccentColor);
   const largeFontEditor    = useSettingsStore((s) => s.largeFontEditor);
   const setLargeFontEditor = useSettingsStore((s) => s.setLargeFontEditor);
+  const anchorLinkText     = useSettingsStore((s) => s.anchorLinkText);
+  const setAnchorLinkText  = useSettingsStore((s) => s.setAnchorLinkText);
   const showPreview        = useSettingsStore((s) => s.showTelegramPreview);
   const setShowPreview     = useSettingsStore((s) => s.setShowTelegramPreview);
   const showCharCounter    = useSettingsStore((s) => s.showCharCounter);
   const setShowCharCounter = useSettingsStore((s) => s.setShowCharCounter);
+  const setHasSeenOnboardingTour = useSettingsStore((s) => s.setHasSeenOnboardingTour);
+  const navigate = useNavigate();
+
+  // ── Emoji insertion for the anchor-link-text input ──────────────────────
+  const anchorInputRef = useRef<HTMLInputElement>(null);
+  const savedCursorPos = useRef(0);
+  const [showAnchorEmojiPicker, setShowAnchorEmojiPicker] = useState(false);
+  const [anchorEmojiAnchor, setAnchorEmojiAnchor] = useState<DOMRect | undefined>();
+
+  function handleAnchorEmojiClick() {
+    const input = anchorInputRef.current;
+    savedCursorPos.current = input?.selectionStart ?? anchorLinkText.length;
+    setAnchorEmojiAnchor(input?.getBoundingClientRect());
+    setShowAnchorEmojiPicker((prev) => !prev);
+  }
+
+  function handleAnchorEmojiInsert(native: string) {
+    const pos = savedCursorPos.current;
+    const next = anchorLinkText.slice(0, pos) + native + anchorLinkText.slice(pos);
+    setAnchorLinkText(next);
+    savedCursorPos.current = pos + native.length;
+    const nextPos = savedCursorPos.current;
+    requestAnimationFrame(() => {
+      const input = anchorInputRef.current;
+      if (input) {
+        input.focus();
+        input.setSelectionRange(nextPos, nextPos);
+      }
+    });
+  }
 
   const themeOptions: Array<{ value: Theme; labelKey: string; icon: React.ReactNode }> = [
     { value: "light",  labelKey: "settings.theme.light",  icon: <Sun     size={18} strokeWidth={1.75} /> },
@@ -230,6 +279,64 @@ function AppearanceSection() {
         </Field>
         <Field label={t("settings.autosave")}>
           <AutosaveControl />
+        </Field>
+        <Field label={t("settings.replayTour")}>
+          <button
+            onClick={() => { navigate("/editor"); setHasSeenOnboardingTour(false); }}
+            className="flex items-center gap-1.5 px-3 h-8 rounded-lg text-sm transition-colors border"
+            style={{
+              backgroundColor: "var(--bg-elevated)",
+              color: "var(--text-secondary)",
+              borderColor: "var(--border-default)",
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.color = "var(--text-primary)"; }}
+            onMouseLeave={(e) => { e.currentTarget.style.color = "var(--text-secondary)"; }}
+          >
+            {t("settings.replayTourButton")}
+          </button>
+        </Field>
+        <Field label={t("settings.anchorLinkText")}>
+          <div className="flex items-center gap-1.5">
+            <input
+              ref={anchorInputRef}
+              type="text"
+              value={anchorLinkText}
+              onChange={(e) => setAnchorLinkText(e.target.value)}
+              placeholder={t("anchor.linkText")}
+              maxLength={60}
+              className="h-8 px-3 rounded-lg text-sm border"
+              style={{
+                backgroundColor: "var(--bg-input)",
+                borderColor: "var(--border-default)",
+                color: "var(--text-primary)",
+                outline: "none",
+                width: 180,
+              }}
+            />
+            <button
+              type="button"
+              aria-label={t("toolbar.emoji")}
+              title={t("toolbar.emoji")}
+              onClick={handleAnchorEmojiClick}
+              className="flex items-center justify-center h-8 w-8 rounded-lg border transition-colors"
+              style={{
+                backgroundColor: "var(--bg-elevated)",
+                borderColor: "var(--border-default)",
+                color: "var(--text-secondary)",
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.color = "var(--text-primary)"; }}
+              onMouseLeave={(e) => { e.currentTarget.style.color = "var(--text-secondary)"; }}
+            >
+              <Smile size={15} strokeWidth={1.75} />
+            </button>
+          </div>
+          {showAnchorEmojiPicker && (
+            <EmojiPicker
+              onSelect={handleAnchorEmojiInsert}
+              onClose={() => setShowAnchorEmojiPicker(false)}
+              anchorRect={anchorEmojiAnchor}
+            />
+          )}
         </Field>
       </Section>
     </>
@@ -414,9 +521,14 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  const isMobile = useIsMobileLayout();
   return (
     <div
-      className="flex items-center justify-between px-4 py-3"
+      className={
+        isMobile
+          ? "flex flex-col gap-2 px-4 py-3"
+          : "flex items-center justify-between px-4 py-3"
+      }
       style={{ borderColor: "var(--border-subtle)" }}
     >
       <span className="text-sm" style={{ color: "var(--text-primary)" }}>{label}</span>

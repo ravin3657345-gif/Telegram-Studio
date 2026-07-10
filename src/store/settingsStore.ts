@@ -3,6 +3,9 @@ import { persist } from "zustand/middleware";
 import type { Theme, Language, ParseMode } from "@/types/settings";
 import { setI18nLanguage } from "@/lib/i18n";
 
+export type SidebarWidgetId = "clock" | "channels" | "drafts" | "nextPost" | "todayStats";
+export const SIDEBAR_WIDGET_IDS: SidebarWidgetId[] = ["clock", "channels", "drafts", "nextPost", "todayStats"];
+
 function darkenHex(hex: string, pct = 0.15): string {
   const n = parseInt(hex.replace("#", ""), 16);
   const r = Math.max(0, Math.round(((n >> 16) & 0xff) * (1 - pct)));
@@ -28,6 +31,10 @@ interface SettingsState {
   accentColor: string;
   largeFontEditor: boolean;
   showTelegramPreview: boolean;
+  sidebarWidget: SidebarWidgetId;
+  hasSeenOnboardingTour: boolean;
+  // Empty string = use the default translated "👆 Лифт" text.
+  anchorLinkText: string;
 
   setTheme: (theme: Theme) => void;
   setLanguage: (lang: Language) => void;
@@ -40,12 +47,15 @@ interface SettingsState {
   setAccentColor: (color: string) => void;
   setLargeFontEditor: (v: boolean) => void;
   setShowTelegramPreview: (v: boolean) => void;
+  setSidebarWidget: (id: SidebarWidgetId) => void;
+  setHasSeenOnboardingTour: (v: boolean) => void;
+  setAnchorLinkText: (text: string) => void;
 }
 
 export const useSettingsStore = create<SettingsState>()(
   persist(
     (set) => ({
-      theme:                "dark",
+      theme:                "light",
       language:             "ru",
       autosaveInterval:     2000,
       defaultParseMode:     "HTML",
@@ -56,6 +66,9 @@ export const useSettingsStore = create<SettingsState>()(
       accentColor:          "#2c87c9",
       largeFontEditor:      false,
       showTelegramPreview:  true,
+      sidebarWidget:        "clock",
+      hasSeenOnboardingTour: false,
+      anchorLinkText:       "",
 
       setTheme:                (theme)    => set({ theme }),
       setLanguage:             (language) => { set({ language }); setI18nLanguage(language); },
@@ -75,6 +88,9 @@ export const useSettingsStore = create<SettingsState>()(
         applyEditorFont(v);
       },
       setShowTelegramPreview: (v) => set({ showTelegramPreview: v }),
+      setSidebarWidget: (id) => set({ sidebarWidget: id }),
+      setHasSeenOnboardingTour: (v) => set({ hasSeenOnboardingTour: v }),
+      setAnchorLinkText: (text) => set({ anchorLinkText: text }),
     }),
     {
       name: "ts-settings",

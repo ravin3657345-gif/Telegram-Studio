@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { X, CheckCircle2, XCircle, Info, AlertTriangle } from "lucide-react";
 import type { ToastItem } from "@/store/uiStore";
-import { useUiStore } from "@/store/uiStore";
+import { useUiStore, TOAST_DURATIONS } from "@/store/uiStore";
 import clsx from "clsx";
 
 const ICONS = {
@@ -18,13 +18,6 @@ const ACCENT_COLORS = {
   warning: "var(--warning)",
 };
 
-const DURATIONS = {
-  success: 4000,
-  error:   8000,
-  info:    4000,
-  warning: 6000,
-};
-
 interface ToastProps {
   toast: ToastItem;
 }
@@ -34,7 +27,7 @@ export function Toast({ toast }: ToastProps) {
   const progressRef = useRef<HTMLDivElement>(null);
   const Icon = ICONS[toast.type];
   const accent = ACCENT_COLORS[toast.type];
-  const duration = DURATIONS[toast.type];
+  const duration = TOAST_DURATIONS[toast.type];
 
   useEffect(() => {
     const timer = setTimeout(() => dismiss(toast.id), duration);
@@ -73,6 +66,18 @@ export function Toast({ toast }: ToastProps) {
           <p className="text-xs mt-0.5" style={{ color: "var(--text-secondary)" }}>
             {toast.description}
           </p>
+        )}
+        {toast.action && (
+          <button
+            onClick={() => {
+              toast.action!.onClick();
+              dismiss(toast.id);
+            }}
+            className="text-xs font-semibold mt-1.5"
+            style={{ color: accent, textDecoration: "underline", background: "none", border: "none", padding: 0, cursor: "pointer" }}
+          >
+            {toast.action.label}
+          </button>
         )}
       </div>
 

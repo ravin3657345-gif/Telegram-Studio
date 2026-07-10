@@ -39,6 +39,9 @@ pub struct Draft {
     pub content_text: Option<String>,
     pub parse_mode: String,
     pub status: String,
+    pub template_id: Option<String>,
+    /// Joined from `templates.name` for display only — not a stored column.
+    pub template_name: Option<String>,
     pub media: Vec<DraftMedia>,
     pub buttons: Vec<DraftButton>,
     pub attachments: Vec<DraftAttachment>,
@@ -56,6 +59,7 @@ pub struct DraftSummary {
     pub media_count: i64,
     pub button_count: i64,
     pub status: String,
+    pub scheduled_at: Option<String>,
     pub updated_at: String,
 }
 
@@ -88,6 +92,10 @@ pub struct DraftPayload {
     pub content_json: String,
     pub content_text: Option<String>,
     pub parse_mode: Option<String>,
+    /// Set only when creating a draft from a template; omitted on every later
+    /// autosave, which must preserve the existing row's value instead of
+    /// clearing it (see commands::drafts::upsert_draft).
+    pub template_id: Option<String>,
     /// Files referenced by blockImage/blockVideo nodes
     pub attachments: Option<Vec<DraftAttachmentPayload>>,
 }

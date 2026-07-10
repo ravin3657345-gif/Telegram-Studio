@@ -46,8 +46,28 @@ pub async fn validate_bot_token(
 
 #[tauri::command]
 pub async fn get_bots(state: tauri::State<'_, AppState>) -> Result<Vec<Bot>, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
-    bots_q::find_all(&db).map_err(|e| e.to_string())
+    let mut bots = {
+        let db = state.db.lock().map_err(|e| e.to_string())?;
+        bots_q::find_all(&db).map_err(|e| e.to_string())?
+    };
+
+    // Refresh each bot's display name/username from a fresh getMe call, so a
+    // rename in @BotFather shows up without re-adding the bot. Best-effort —
+    // an unreachable/revoked bot just keeps its cached name.
+    for bot in &mut bots {
+        let client = TelegramClient::new(&bot.token);
+        let Ok(user) = methods::get_me(&client).await else { continue };
+
+        let new_username = user.username.unwrap_or_else(|| user.first_name.clone());
+        if user.first_name != bot.name || new_username != bot.username {
+            let db = state.db.lock().map_err(|e| e.to_string())?;
+            let _ = bots_q::update_info(&db, &bot.id, &user.first_name, &new_username);
+            bot.name = user.first_name;
+            bot.username = new_username;
+        }
+    }
+
+    Ok(bots)
 }
 
 #[tauri::command]

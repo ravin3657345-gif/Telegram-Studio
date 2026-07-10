@@ -8,12 +8,14 @@ interface SidebarItemProps {
   icon: LucideIcon;
   label: string;
   badge?: number;
+  dataTour?: string;
 }
 
-export function SidebarItem({ to, icon: Icon, label, badge }: SidebarItemProps) {
+export function SidebarItem({ to, icon: Icon, label, badge, dataTour }: SidebarItemProps) {
   return (
     <NavLink
       to={to}
+      data-tour={dataTour}
       className={({ isActive }) =>
         clsx(
           "relative flex items-center gap-2.5 px-3 h-9 rounded-md mx-2 transition-colors text-sm font-medium select-none",

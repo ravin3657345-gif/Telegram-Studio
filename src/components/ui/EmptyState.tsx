@@ -18,12 +18,8 @@ export function EmptyState({ icon: Icon, title, description, action }: EmptyStat
       style={{ animation: "pageFadeIn 0.25s ease-out both" }}
     >
       <div
-        className="flex items-center justify-center w-16 h-16 rounded-2xl mb-2"
-        style={{
-          background: "linear-gradient(135deg, var(--accent-subtle) 0%, var(--bg-elevated) 100%)",
-          border: "1px solid var(--border-subtle)",
-          boxShadow: "0 2px 12px rgba(42,171,238,0.08), var(--shadow-sm)",
-        }}
+        className="flex items-center justify-center w-16 h-16 rounded-2xl mb-2 soft-ui"
+        style={{ background: "linear-gradient(135deg, var(--accent-subtle) 0%, var(--bg-elevated) 100%)" }}
       >
         <Icon size={28} strokeWidth={1.5} style={{ color: "var(--accent)" }} />
       </div>

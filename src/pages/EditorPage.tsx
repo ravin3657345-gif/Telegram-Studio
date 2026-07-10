@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
-import { CheckCircle2, AlertCircle, Loader2, LayoutTemplate, ChevronRight } from "lucide-react";
+import { CheckCircle2, AlertCircle, Loader2, LayoutTemplate, PenLine, Eye, Send } from "lucide-react";
 import { TopBar } from "@/components/layout/TopBar";
 import { PostEditor } from "@/components/editor/PostEditor";
 import { PublishPanel } from "@/components/editor/PublishPanel";
@@ -8,10 +8,15 @@ import { TelegramPreview } from "@/components/preview/TelegramPreview";
 import { SaveTemplateDialog } from "@/components/editor/SaveTemplateDialog";
 import { useEditorStore } from "@/store/editorStore";
 import { saveTemplate } from "@/lib/tauriApi";
+import { collectInlineAttachments } from "@/lib/attachmentRestore";
 import { toast } from "@/store/uiStore";
 import { t, ti } from "@/lib/i18n";
 import { useSettingsStore } from "@/store/settingsStore";
+import { useIsMobileLayout } from "@/hooks/useIsMobileLayout";
 import type { TemplateCategory } from "@/types/template";
+import type { LucideIcon } from "lucide-react";
+
+type MobileTab = "editor" | "preview" | "publish";
 
 // ── EditorPage ────────────────────────────────────────────────────────────────
 
@@ -22,20 +27,23 @@ export function EditorPage() {
   const isCreateTemplate = !!(location.state as { _createTemplate?: boolean } | null)?._createTemplate;
   useSettingsStore((s) => s.language);
   const showPreview = useSettingsStore((s) => s.showTelegramPreview);
+  const isMobile = useIsMobileLayout();
 
-  const { draftTitle, postTitle, contentJson, saveStatus, lastSavedAt, draftId: storeDraftId } =
+  const { draftTitle, postTitle, contentJson, saveStatus, lastSavedAt, draftId: storeDraftId, templateName } =
     useEditorStore();
 
   const effectiveDraftId = draftId ?? storeDraftId ?? undefined;
   const displayTitle     = postTitle || draftTitle || t("editor.untitled");
 
   const [showTemplateDialog, setShowTemplateDialog] = useState(false);
+  const [mobileTab, setMobileTab] = useState<MobileTab>("editor");
 
   async function handleSaveAsTemplate(category: TemplateCategory) {
     setShowTemplateDialog(false);
     const name = draftTitle.trim() || t("editor.untitled");
     try {
-      await saveTemplate({ name, contentJson, category });
+      const attachments = await collectInlineAttachments(contentJson);
+      await saveTemplate({ name, contentJson, category, attachments });
       toast.success(ti("editor.templateSaved", { name }));
       if (isCreateTemplate) navigate("/templates");
     } catch {
@@ -48,18 +56,20 @@ export function EditorPage() {
       {/* ── TopBar with breadcrumbs ─────────────────────────────────────── */}
       <TopBar
         title={
-          <div className="flex items-center gap-1.5" style={{ color: "var(--text-secondary)", fontSize: 13 }}>
-            <button
-              onClick={() => navigate(isCreateTemplate ? "/templates" : "/drafts")}
-              className="transition-colors hover:text-[var(--text-primary)]"
-              style={{ color: "var(--text-secondary)" }}
-            >
-              {isCreateTemplate ? t("nav.templates") : t("nav.drafts")}
-            </button>
-            <ChevronRight size={13} style={{ color: "var(--text-muted)" }} />
-            <span style={{ color: "var(--text-primary)", fontWeight: 500 }}>
+          <div className="flex items-center gap-2 min-w-0">
+            <span style={{ color: "var(--text-primary)", fontWeight: 500, fontSize: 13 }}>
               {isCreateTemplate ? t("templates.createTemplate") : displayTitle}
             </span>
+            {!isCreateTemplate && templateName && (
+              <span
+                className="flex items-center gap-1 truncate"
+                style={{ color: "var(--text-muted)", fontSize: 11 }}
+                title={ti("editor.fromTemplate", { name: templateName })}
+              >
+                <LayoutTemplate size={11} />
+                {ti("editor.fromTemplate", { name: templateName })}
+              </span>
+            )}
           </div>
         }
         actions={
@@ -91,53 +101,70 @@ export function EditorPage() {
       />
 
       {/* ── Body ─────────────────────────────────────────────────────────── */}
-      <div className="flex flex-1 overflow-hidden">
+      {isMobile ? (
+        <MobileEditorBody
+          draftId={draftId}
+          effectiveDraftId={effectiveDraftId}
+          showPreview={showPreview}
+          activeTab={mobileTab}
+          onTabChange={setMobileTab}
+        />
+      ) : (
+        <div className="flex flex-1 overflow-hidden">
 
-        {/* ── Editor column ───────────────────────────────────────────── */}
-        <div className="flex flex-col flex-1 overflow-hidden">
-          <PostEditor draftId={draftId} />
+          {/* ── Editor column ───────────────────────────────────────────── */}
+          <div className="flex flex-col flex-1 overflow-hidden">
+            <PostEditor draftId={draftId} />
 
-        </div>
-
-        {/* ── Right panel ─────────────────────────────────────────────── */}
-        {showPreview && (
-          <div
-            className="flex flex-col flex-shrink-0 border-l overflow-hidden"
-            style={{
-              width: 300,
-              borderColor: "var(--border-subtle)",
-              backgroundColor: "var(--bg-surface)",
-            }}
-          >
-            {/* Preview label */}
-            <div
-              className="px-4 py-2.5 text-xs font-semibold uppercase tracking-wide border-b flex-shrink-0"
-              style={{
-                borderColor: "var(--border-subtle)",
-                color: "var(--text-muted)",
-              }}
-            >
-              {t("editor.preview")}
-            </div>
-
-            {/* Telegram preview */}
-            <div className="flex-1 overflow-y-auto" style={{ minHeight: 0 }}>
-              <TelegramPreview />
-            </div>
-
-            {/* Publish panel */}
-            <div
-              className="border-t flex-shrink-0 overflow-y-auto"
-              style={{
-                borderColor: "var(--border-subtle)",
-                maxHeight: "60%",
-              }}
-            >
-              <PublishPanel draftId={effectiveDraftId} />
-            </div>
           </div>
-        )}
-      </div>
+
+          {/* ── Right panel ─────────────────────────────────────────────── */}
+          {showPreview && (
+            <div
+              className="flex flex-col flex-shrink-0 border-l overflow-hidden"
+              style={{
+                width: 300,
+                borderColor: "var(--border-subtle)",
+                backgroundColor: "var(--bg-surface)",
+              }}
+            >
+              {/* Preview label */}
+              <div
+                className="px-4 py-2.5 text-xs font-semibold uppercase tracking-wide border-b flex-shrink-0"
+                style={{
+                  borderColor: "var(--border-subtle)",
+                  color: "var(--text-muted)",
+                }}
+              >
+                {t("editor.preview")}
+              </div>
+
+              {/* Telegram preview */}
+              <div className="flex-1 overflow-y-auto" style={{ minHeight: 0 }}>
+                <TelegramPreview />
+              </div>
+
+              {/* Publish panel — buttons stay pinned inside it; only its own
+                  content area scrolls, so "Опубликовать"/"Запланировать" can
+                  never be pushed out of view regardless of how tall the
+                  channel list or warnings above them get. */}
+              <div
+                data-tour="publish-panel"
+                className="border-t flex-shrink-0"
+                style={{
+                  borderColor: "var(--border-subtle)",
+                  maxHeight: "60%",
+                  display: "flex",
+                  flexDirection: "column",
+                  overflow: "hidden",
+                }}
+              >
+                <PublishPanel draftId={effectiveDraftId} />
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {showTemplateDialog && (
         <SaveTemplateDialog
@@ -181,4 +208,87 @@ function SaveStatus({
 
 function formatTime(date: Date): string {
   return date.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+}
+
+// ── MobileEditorBody sub-component ────────────────────────────────────────────
+// Editor / Preview / Publish rendered as tabs instead of side-by-side columns.
+// All three panels stay mounted (only `display` toggles) so the TipTap editor
+// keeps its state and focus when the user switches tabs.
+
+function MobileEditorBody({
+  draftId,
+  effectiveDraftId,
+  showPreview,
+  activeTab,
+  onTabChange,
+}: {
+  draftId?: string;
+  effectiveDraftId?: string;
+  showPreview: boolean;
+  activeTab: MobileTab;
+  onTabChange: (tab: MobileTab) => void;
+}) {
+  const tabs: { id: MobileTab; label: string; icon: LucideIcon }[] = [
+    { id: "editor", label: t("editor.tabEditor"), icon: PenLine },
+    ...(showPreview ? [{ id: "preview" as MobileTab, label: t("editor.preview"), icon: Eye }] : []),
+    { id: "publish", label: t("editor.tabPublish"), icon: Send },
+  ];
+
+  return (
+    <div className="flex flex-col flex-1 overflow-hidden">
+      {/* Tab switcher */}
+      <div
+        className="flex flex-shrink-0 border-b"
+        style={{ borderColor: "var(--border-subtle)", backgroundColor: "var(--bg-surface)" }}
+      >
+        {tabs.map((tab) => {
+          const isActive = activeTab === tab.id;
+          const Icon = tab.icon;
+          return (
+            <button
+              key={tab.id}
+              onClick={() => onTabChange(tab.id)}
+              className="flex-1 flex items-center justify-center gap-1.5 py-2.5 text-xs font-medium transition-colors"
+              style={{
+                color: isActive ? "var(--accent)" : "var(--text-muted)",
+                borderBottom: isActive ? "2px solid var(--accent)" : "2px solid transparent",
+              }}
+            >
+              <Icon size={14} />
+              {tab.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Editor panel */}
+      <div
+        className="flex-col flex-1 overflow-hidden"
+        style={{ display: activeTab === "editor" ? "flex" : "none" }}
+      >
+        <PostEditor draftId={draftId} />
+      </div>
+
+      {/* Preview panel */}
+      {showPreview && (
+        <div
+          className="flex-1 overflow-y-auto"
+          style={{ display: activeTab === "preview" ? "block" : "none", minHeight: 0 }}
+        >
+          <TelegramPreview />
+        </div>
+      )}
+
+      {/* Publish panel — full height on mobile, reachable regardless of the
+          desktop "show preview" setting (unlike the desktop layout, where
+          hiding the preview column also hides Publish). */}
+      <div
+        data-tour="publish-panel"
+        className="flex-col flex-1 overflow-hidden"
+        style={{ display: activeTab === "publish" ? "flex" : "none" }}
+      >
+        <PublishPanel draftId={effectiveDraftId} />
+      </div>
+    </div>
+  );
 }

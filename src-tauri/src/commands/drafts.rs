@@ -2,15 +2,14 @@ use base64::Engine;
 use chrono::Utc;
 use uuid::Uuid;
 
+use crate::commands::attachments;
 use crate::db::{
     models::{Draft, DraftPayload, DraftSummary},
     queries::drafts as q,
     AppState,
 };
 
-const MAX_ATTACHMENTS: usize = 20;
-const MAX_ATTACHMENT_BYTES: usize = 52_428_800; // 50 MB per file
-const MAX_TOTAL_BYTES: usize = 209_715_200;     // 200 MB total per draft
+const DRAFT_MAX_COUNT: i64 = 100;
 
 #[tauri::command]
 pub async fn get_drafts(
@@ -55,29 +54,8 @@ pub async fn upsert_draft(
     state: tauri::State<'_, AppState>,
 ) -> Result<Draft, String> {
     // Validate attachments before acquiring DB lock
-    if let Some(attachments) = &payload.attachments {
-        if attachments.len() > MAX_ATTACHMENTS {
-            return Err(format!(
-                "Слишком много вложений (максимум {})",
-                MAX_ATTACHMENTS
-            ));
-        }
-
-        let mut total = 0usize;
-        for att in attachments {
-            // base64 → raw size ≈ len * 3/4
-            let approx = att.data_base64.len() * 3 / 4;
-            if approx > MAX_ATTACHMENT_BYTES {
-                return Err(format!(
-                    "Файл «{}» превышает лимит 50 МБ",
-                    att.file_name
-                ));
-            }
-            total += approx;
-            if total > MAX_TOTAL_BYTES {
-                return Err("Суммарный размер вложений превышает 200 МБ".to_string());
-            }
-        }
+    if let Some(atts) = &payload.attachments {
+        attachments::validate(atts)?;
     }
 
     let db = state.db.lock().map_err(|e| e.to_string())?;
@@ -94,6 +72,14 @@ pub async fn upsert_draft(
             .map(|d| d.created_at.clone())
             .unwrap_or_else(|| now.clone());
 
+        // template_id is only ever sent by the frontend when a draft is first
+        // created from a template — every later autosave omits it, so fall
+        // back to whatever the existing row already has instead of clearing it.
+        let template_id = payload
+            .template_id
+            .clone()
+            .or_else(|| existing.as_ref().and_then(|d| d.template_id.clone()));
+
         let draft = Draft {
             id: id.clone(),
             title: payload.title,
@@ -102,6 +88,8 @@ pub async fn upsert_draft(
             content_text: payload.content_text,
             parse_mode: payload.parse_mode.unwrap_or_else(|| "HTML".to_string()),
             status: "draft".to_string(),
+            template_id,
+            template_name: None,
             media: vec![],
             buttons: vec![],
             attachments: vec![],
@@ -112,62 +100,21 @@ pub async fn upsert_draft(
         q::upsert(&db, &draft).map_err(|e| e.to_string())?;
 
         // Save attachments to disk
-        if let Some(attachments) = &payload.attachments {
-            let media_dir = state.app_dir.join("draft_media").join(&id);
-            std::fs::create_dir_all(&media_dir)
-                .map_err(|e| format!("Не удалось создать директорию: {}", e))?;
-
-            for att in attachments {
-                let raw = base64::engine::general_purpose::STANDARD
-                    .decode(&att.data_base64)
-                    .map_err(|_| format!("Ошибка декодирования файла «{}»", att.file_name))?;
-
-                if raw.is_empty() { continue; }
-
-                // Sanitize extension: allow only alphanumeric
-                let ext = att.file_name
-                    .rsplit('.')
-                    .next()
-                    .unwrap_or("bin")
-                    .chars()
-                    .filter(|c| c.is_alphanumeric())
-                    .take(10)
-                    .collect::<String>();
-                let ext = if ext.is_empty() { "bin".to_string() } else { ext };
-
-                let file_path = media_dir.join(format!("{}.{}", att.file_id, ext));
-                std::fs::write(&file_path, &raw)
-                    .map_err(|e| format!("Ошибка сохранения файла: {}", e))?;
-
-                let path_str = file_path.to_string_lossy().into_owned();
-                let now2 = Utc::now().to_rfc3339();
-                db.execute(
-                    "INSERT INTO draft_media (id, draft_id, file_path, file_name, mime_type,
-                                             file_size, sort_order, created_at)
-                     VALUES (?1,?2,?3,?4,?5,?6,?7,?8)
-                     ON CONFLICT(id) DO UPDATE SET
-                       file_path=excluded.file_path,
-                       file_name=excluded.file_name,
-                       mime_type=excluded.mime_type,
-                       file_size=excluded.file_size",
-                    rusqlite::params![
-                        att.file_id, id, path_str, att.file_name, att.mime_type,
-                        raw.len() as i64, 0i64, now2
-                    ],
-                ).map_err(|e| e.to_string())?;
-            }
+        if let Some(atts) = &payload.attachments {
+            attachments::persist(&db, &state.app_dir, &id, atts)?;
         }
 
-        // Keep max 20 drafts
+        // Keep max DRAFT_MAX_COUNT drafts — templates (kind='template') don't
+        // count against this cap and are never evicted by it.
         let count: i64 = db
-            .query_row("SELECT COUNT(*) FROM drafts", [], |row| row.get(0))
+            .query_row("SELECT COUNT(*) FROM drafts WHERE kind = 'draft'", [], |row| row.get(0))
             .unwrap_or(0);
-        if count > 20 {
+        if count > DRAFT_MAX_COUNT {
             db.execute(
-                "DELETE FROM drafts WHERE id NOT IN (
-                    SELECT id FROM drafts ORDER BY updated_at DESC LIMIT 20
+                "DELETE FROM drafts WHERE kind = 'draft' AND id NOT IN (
+                    SELECT id FROM drafts WHERE kind = 'draft' ORDER BY updated_at DESC LIMIT ?1
                 )",
-                [],
+                rusqlite::params![DRAFT_MAX_COUNT],
             ).ok();
         }
 

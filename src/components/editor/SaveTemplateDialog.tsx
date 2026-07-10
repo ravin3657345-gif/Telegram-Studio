@@ -30,6 +30,7 @@ export function SaveTemplateDialog({ onConfirm, onClose }: Props) {
       <div
         style={{
           width: 320,
+          maxWidth: "calc(100vw - 32px)",
           borderRadius: 16,
           backgroundColor: "var(--bg-surface)",
           border: "1px solid var(--border-default)",

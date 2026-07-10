@@ -12,6 +12,9 @@ pub struct HistoryItem {
     pub id: String,
     pub channel_id: String,
     pub channel_title: String,
+    /// The post's own title (drafts.post_title), not the channel name — this
+    /// is what should be shown as the item's primary label.
+    pub post_title: String,
     pub bot_id: String,
     pub telegram_msg_id: Option<i64>,
     pub telegram_chat_id: Option<String>,
@@ -22,7 +25,7 @@ pub struct HistoryItem {
     pub content_preview: Option<String>,
 }
 
-fn strip_html_preview(html: &str, max_len: usize) -> Option<String> {
+pub(crate) fn strip_html_preview(html: &str, max_len: usize) -> Option<String> {
     let mut result = String::new();
     let mut in_tag = false;
     for c in html.chars() {
@@ -59,9 +62,11 @@ pub async fn get_history(
             "SELECT h.id, h.channel_id, c.title, h.bot_id,
                     h.telegram_msg_id, c.telegram_id,
                     h.status, h.error_message, h.published_at, h.delete_at,
-                    COALESCE(h.content_json, '') as raw_html
+                    COALESCE(h.content_json, '') as raw_html,
+                    COALESCE(d.post_title, '') as post_title
              FROM publication_history h
              LEFT JOIN channels c ON c.id = h.channel_id
+             LEFT JOIN drafts d ON d.id = h.draft_id
              ORDER BY h.published_at DESC
              LIMIT 100",
         )
@@ -75,6 +80,7 @@ pub async fn get_history(
                 id:               row.get(0)?,
                 channel_id:       row.get(1)?,
                 channel_title:    row.get::<_, Option<String>>(2)?.unwrap_or_default(),
+                post_title:       row.get(11)?,
                 bot_id:           row.get(3)?,
                 telegram_msg_id:  row.get(4)?,
                 telegram_chat_id: row.get(5)?,

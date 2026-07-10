@@ -1,16 +1,17 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { LayoutTemplate, Trash2, Plus, Megaphone, List, Users, Tag, Layers, type LucideIcon } from "lucide-react";
+import { LayoutTemplate, Trash2, Plus, Megaphone, List, Users, Tag, Layers, Sparkles, type LucideIcon } from "lucide-react";
 import { TopBar } from "@/components/layout/TopBar";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Spinner } from "@/components/ui/Spinner";
 import { Button } from "@/components/ui/Button";
-import { toast } from "@/store/uiStore";
-import { getTemplates, deleteTemplate } from "@/lib/tauriApi";
+import { toast, TOAST_DURATIONS } from "@/store/uiStore";
+import { getTemplates, getTemplate, deleteTemplate, upsertDraft, recordTemplateUse } from "@/lib/tauriApi";
 import { useEditorStore } from "@/store/editorStore";
 import { t, ti, type TranslationKey } from "@/lib/i18n";
 import { useSettingsStore } from "@/store/settingsStore";
 import type { Template, TemplateCategory } from "@/types/template";
+import { EXAMPLE_TEMPLATES, type ExampleTemplate } from "@/lib/exampleTemplates";
 
 // ── Category metadata ─────────────────────────────────────────────────────────
 
@@ -34,6 +35,9 @@ export function TemplatesPage() {
   const setContentJson = useEditorStore((s) => s.setContentJson);
   useSettingsStore((s) => s.language);
 
+  // Pending optimistic deletes, keyed by template id — cleared by Undo.
+  const pendingDeletesRef = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+
   useEffect(() => {
     getTemplates()
       .then(setTemplates)
@@ -41,21 +45,67 @@ export function TemplatesPage() {
       .finally(() => setLoading(false));
   }, []);
 
-  function handleUse(tmpl: Template) {
-    setContentJson(tmpl.contentJson);
-    navigate("/editor");
-    toast.success(ti("templates.opened", { name: tmpl.name }));
+  // Creates a real draft right away (rather than only populating the open
+  // editor) so the template link (templateId) and usage counter attach
+  // immediately, regardless of whether the user ever edits further. Also
+  // re-fetches the template's own media (the list view's Template objects
+  // never carry attachments) and carries it over to the new draft's own
+  // files — the editor we navigate to next re-derives fresh blob URLs from
+  // these same attachments itself (see PostEditor's draft-load effect), so
+  // there's no need to patch blob src's into contentJson here too.
+  async function handleUse(tmpl: Template) {
+    try {
+      const full = await getTemplate(tmpl.id);
+      const draft = await upsertDraft({
+        contentJson: tmpl.contentJson,
+        templateId: tmpl.id,
+        attachments: full.attachments,
+      });
+      await recordTemplateUse(tmpl.id);
+      navigate(`/editor/${draft.id}`);
+      toast.success(ti("templates.opened", { name: tmpl.name }));
+    } catch {
+      toast.error(t("templates.useError"));
+    }
   }
 
-  async function handleDelete(e: React.MouseEvent, id: string, name: string) {
+  function handleUseExample(example: ExampleTemplate) {
+    setContentJson(example.contentJson);
+    navigate("/editor");
+    toast.success(ti("templates.examples.opened", { name: example.name }));
+  }
+
+  function handleDelete(e: React.MouseEvent, id: string, name: string) {
     e.stopPropagation();
-    try {
-      await deleteTemplate(id);
-      setTemplates((prev) => prev.filter((t) => t.id !== id));
-      toast.success(ti("templates.deletedMsg", { name }));
-    } catch {
-      toast.error(t("templates.deleteError"));
-    }
+    const removed = templates.find((tpl) => tpl.id === id);
+    if (!removed) return;
+
+    // Optimistic remove — the actual backend delete is deferred to the end of
+    // the undo window, so clicking "Undo" only ever cancels a pending delete.
+    setTemplates((prev) => prev.filter((tpl) => tpl.id !== id));
+
+    const timer = setTimeout(async () => {
+      pendingDeletesRef.current.delete(id);
+      try {
+        await deleteTemplate(id);
+      } catch {
+        setTemplates((prev) => (prev.some((tpl) => tpl.id === id) ? prev : [...prev, removed]));
+        toast.error(t("templates.deleteError"));
+      }
+    }, TOAST_DURATIONS.warning);
+    pendingDeletesRef.current.set(id, timer);
+
+    toast.warning(ti("templates.deletedMsg", { name }), undefined, {
+      label: t("templates.undo"),
+      onClick: () => {
+        const pending = pendingDeletesRef.current.get(id);
+        if (pending) {
+          clearTimeout(pending);
+          pendingDeletesRef.current.delete(id);
+        }
+        setTemplates((prev) => (prev.some((tpl) => tpl.id === id) ? prev : [...prev, removed]));
+      },
+    });
   }
 
   // Categories that actually have templates
@@ -95,6 +145,39 @@ export function TemplatesPage() {
                 🧩 {t("nav.templates")}
               </h1>
             </div>
+
+            {/* Ready-made examples — always visible, undeletable, not stored in the DB */}
+            <div className="px-6 pb-8">
+              <div className="flex items-center gap-2 mb-1">
+                <Sparkles size={15} style={{ color: "var(--accent)" }} />
+                <h2 className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
+                  {t("templates.examples.title")}
+                </h2>
+              </div>
+              <p className="mb-3" style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                {t("templates.examples.subtitle")}
+              </p>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 14 }}>
+                {EXAMPLE_TEMPLATES.map((ex) => (
+                  <ExampleCard
+                    key={ex.id}
+                    example={ex}
+                    gradient={CATEGORY_META[ex.category].gradient}
+                    Icon={CATEGORY_META[ex.category].Icon}
+                    onUse={() => handleUseExample(ex)}
+                  />
+                ))}
+              </div>
+            </div>
+
+            {/* My templates */}
+            {templates.length > 0 && (
+              <div className="px-6 pb-1">
+                <h2 className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
+                  {t("templates.myTemplates")}
+                </h2>
+              </div>
+            )}
 
             {/* Filter chips */}
             {templates.length > 0 && (
@@ -266,7 +349,17 @@ function TemplateCard({
         <p className="text-sm font-semibold truncate" style={{ color: "var(--text-primary)" }}>
           {template.name}
         </p>
-        <p className="mt-0.5" style={{ color: "var(--text-muted)", fontSize: 11 }}>{date}</p>
+        <div className="flex items-center gap-1.5 mt-0.5">
+          <p style={{ color: "var(--text-muted)", fontSize: 11 }}>{date}</p>
+          {template.usageCount > 0 && (
+            <>
+              <span style={{ color: "var(--text-muted)", fontSize: 11 }}>·</span>
+              <p style={{ color: "var(--text-muted)", fontSize: 11 }}>
+                {ti("templates.useCount", { count: template.usageCount })}
+              </p>
+            </>
+          )}
+        </div>
       </div>
 
       {/* Delete on hover */}
@@ -281,6 +374,67 @@ function TemplateCard({
         >
           <Trash2 size={13} />
         </button>
+      )}
+    </div>
+  );
+}
+
+// ── Example card (built-in, undeletable) ──────────────────────────────────────
+
+function ExampleCard({
+  example, gradient, Icon, onUse,
+}: {
+  example: ExampleTemplate;
+  gradient: string;
+  Icon: LucideIcon;
+  onUse: () => void;
+}) {
+  const [hovered, setHovered] = useState(false);
+  useSettingsStore((s) => s.language);
+
+  return (
+    <div
+      className="rounded-xl border overflow-hidden cursor-pointer relative"
+      style={{
+        backgroundColor: "var(--bg-surface)",
+        borderColor: hovered ? "var(--border-strong)" : "var(--border-subtle)",
+        boxShadow: hovered ? "0 4px 14px rgba(0,0,0,0.07)" : "none",
+        transition: "border-color 0.15s, box-shadow 0.15s",
+      }}
+      onClick={onUse}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      {/* Gradient preview */}
+      <div style={{ height: 72, background: gradient, display: "flex", alignItems: "center", justifyContent: "center", position: "relative" }}>
+        <Icon size={24} color="rgba(255,255,255,0.75)" strokeWidth={1.5} />
+        <span
+          className="absolute top-2 right-2 flex items-center justify-center rounded-full"
+          style={{ width: 20, height: 20, backgroundColor: "rgba(255,255,255,0.22)" }}
+          title={t("templates.examples.title")}
+        >
+          <Sparkles size={11} color="#fff" />
+        </span>
+      </div>
+
+      {/* Card body */}
+      <div className="px-3 py-2.5">
+        <p className="text-sm font-semibold truncate" style={{ color: "var(--text-primary)" }}>
+          {example.name}
+        </p>
+        <p className="mt-1" style={{ color: "var(--text-muted)", fontSize: 11, lineHeight: 1.4 }}>
+          {example.technique}
+        </p>
+      </div>
+
+      {/* "Use" hint on hover — no delete button, these aren't removable */}
+      {hovered && (
+        <div
+          className="absolute top-2 left-2 flex items-center gap-1 px-2 py-0.5 rounded-md"
+          style={{ backgroundColor: "rgba(0,0,0,0.4)", color: "#fff", fontSize: 10, fontWeight: 600 }}
+        >
+          {t("templates.use")}
+        </div>
       )}
     </div>
   );

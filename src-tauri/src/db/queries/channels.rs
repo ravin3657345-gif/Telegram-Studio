@@ -87,6 +87,26 @@ pub fn update_bot_id(conn: &Connection, channel_id: &str, bot_id: &str) -> Resul
     Ok(())
 }
 
+/// Refreshes the channel's cached metadata (title/username/description/member
+/// count) from a fresh Telegram getChat response — picks up renames without
+/// requiring the user to remove and re-add the channel.
+pub fn update_info(
+    conn: &Connection,
+    channel_id: &str,
+    title: &str,
+    username: Option<&str>,
+    description: Option<&str>,
+    member_count: Option<i64>,
+) -> Result<()> {
+    let now = chrono::Utc::now().to_rfc3339();
+    conn.execute(
+        "UPDATE channels SET title = ?1, username = ?2, description = ?3,
+                              member_count = ?4, updated_at = ?5 WHERE id = ?6",
+        params![title, username, description, member_count, now, channel_id],
+    )?;
+    Ok(())
+}
+
 pub fn delete(conn: &Connection, id: &str) -> Result<()> {
     conn.execute("DELETE FROM scheduled_posts WHERE channel_id = ?1", params![id])?;
     conn.execute("DELETE FROM publication_history WHERE channel_id = ?1", params![id])?;
