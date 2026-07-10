@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { SidebarItem } from "./SidebarItem";
+import { Tooltip } from "@/components/ui/Tooltip";
 import { useDraftsStore } from "@/store/draftsStore";
 import { useChannelsStore } from "@/store/channelsStore";
 import { useSettingsStore, SIDEBAR_WIDGET_IDS } from "@/store/settingsStore";
@@ -185,38 +186,39 @@ function SidebarWidget() {
         {widget === "todayStats" && <TodayStatsWidget />}
       </div>
 
-      {/* Picker — icon-only toggle group; the tooltip still names each one
-          on hover, but no inline text label (it wrapped/overflowed the card). */}
+      {/* Picker — icon-only toggle group; no inline text label (it wrapped/
+          overflowed the card), so the app's own Tooltip names each one on
+          hover instead of the slow, inconsistently-styled native title. */}
       <div style={{ position: "relative", display: "flex", justifyContent: "center", gap: 4, marginTop: 9 }}>
         {SIDEBAR_WIDGET_IDS.map((id) => {
           const Icon = widgetIcon(id);
           const active = id === widget;
           return (
-            <button
-              key={id}
-              onClick={() => setWidget(id)}
-              title={widgetLabel(id)}
-              aria-label={widgetLabel(id)}
-              aria-current={active}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                width: 22,
-                height: 22,
-                flexShrink: 0,
-                borderRadius: 11,
-                border: "none",
-                cursor: "pointer",
-                backgroundColor: active ? "var(--accent)" : "transparent",
-                color: active ? "#fff" : "var(--text-muted)",
-                transition: "background-color 0.15s ease, color 0.15s ease",
-              }}
-              onMouseEnter={(e) => { if (!active) (e.currentTarget as HTMLElement).style.color = "var(--text-secondary)"; }}
-              onMouseLeave={(e) => { if (!active) (e.currentTarget as HTMLElement).style.color = "var(--text-muted)"; }}
-            >
-              <Icon size={12} style={{ flexShrink: 0 }} />
-            </button>
+            <Tooltip key={id} content={widgetLabel(id)} delay={300}>
+              <button
+                onClick={() => setWidget(id)}
+                aria-label={widgetLabel(id)}
+                aria-current={active}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  width: 22,
+                  height: 22,
+                  flexShrink: 0,
+                  borderRadius: 11,
+                  border: "none",
+                  cursor: "pointer",
+                  backgroundColor: active ? "var(--accent)" : "transparent",
+                  color: active ? "#fff" : "var(--text-muted)",
+                  transition: "background-color 0.15s ease, color 0.15s ease",
+                }}
+                onMouseEnter={(e) => { if (!active) (e.currentTarget as HTMLElement).style.color = "var(--text-secondary)"; }}
+                onMouseLeave={(e) => { if (!active) (e.currentTarget as HTMLElement).style.color = "var(--text-muted)"; }}
+              >
+                <Icon size={12} style={{ flexShrink: 0 }} />
+              </button>
+            </Tooltip>
           );
         })}
       </div>
