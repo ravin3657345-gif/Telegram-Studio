@@ -5,19 +5,47 @@ import {
   Heading1, Heading2, Heading3, Code2, Minus,
   Undo2, Redo2, Code, FileUp, Scissors,
   Subscript as SubscriptIcon, Superscript as SuperscriptIcon,
-  Highlighter, ChevronsDownUp,
+  Highlighter, ChevronsDownUp, ArrowUpToLine, Music,
 } from "lucide-react";
 import { ToolbarButton, ToolbarSeparator } from "./ToolbarButton";
 import { t } from "@/lib/i18n";
 import { useSettingsStore } from "@/store/settingsStore";
 import { useEditorStore } from "@/store/editorStore";
 import { useUiStore } from "@/store/uiStore";
+import { ANCHOR_TOP_NAME } from "@/extensions/BlockAnchor";
+
+// Inserts (once) an invisible anchor marker at the very start of the post,
+// then drops a jump-back link at the current cursor position — text is
+// whatever the user set in Settings (settings.anchorLinkText), defaulting to
+// the translated "👆 Лифт". Rich-message-only — Telegram's regular/Telegraph
+// HTML don't support in-document anchors (Bot API 10.1, June 2026).
+function insertJumpToTopLink(editor: Editor, linkText: string) {
+  const { state, view } = editor;
+  const { schema } = state;
+
+  let hasAnchor = false;
+  state.doc.descendants((node) => {
+    if (node.type.name === "anchorPoint") hasAnchor = true;
+  });
+
+  const tr = state.tr;
+  if (!hasAnchor) {
+    tr.insert(0, schema.nodes.anchorPoint.create());
+  }
+
+  const insertPos = tr.mapping.map(state.selection.to);
+  const linkMark = schema.marks.link.create({ href: `#${ANCHOR_TOP_NAME}` });
+  tr.insert(insertPos, schema.text(linkText, [linkMark]));
+
+  view.dispatch(tr);
+  editor.commands.focus();
+}
 
 interface EditorToolbarProps {
   editor: Editor;
   onLinkClick: () => void;
   onEmojiClick: () => void;
-  onMediaClick: (type: "image" | "video" | "file") => void;
+  onMediaClick: (type: "image" | "video" | "file" | "audio") => void;
   onHtmlView: () => void;
   showHtmlView: boolean;
   onSplitClick?: () => void;
@@ -36,7 +64,15 @@ export function EditorToolbar({
 }: EditorToolbarProps) {
   useSettingsStore((s) => s.language);
   const publishMode = useEditorStore((s) => s.publishMode);
+  const anchorLinkText = useSettingsStore((s) => s.anchorLinkText);
   const toast = useUiStore((s) => s.toast);
+
+  // Appends a short "— note" to a tooltip when this button's output looks/
+  // behaves differently (or vanishes) in the current publish mode — purely
+  // informational, unlike `disabled` which blocks the action outright.
+  function withHint(base: string, hint: string | null): string {
+    return hint ? `${base} — ${hint}` : base;
+  }
 
   // Translate vertical wheel scroll into horizontal so the toolbar can be
   // scrolled with a normal mouse wheel when its buttons overflow (compact mode).
@@ -79,19 +115,19 @@ export function EditorToolbar({
       <ToolbarSeparator />
 
       <ToolbarButton
-        title={t("toolbar.h1")}
+        title={withHint(t("toolbar.h1"), publishMode === "normal" ? t("toolbar.headingDegrades") : null)}
         icon={Heading1}
         isActive={editor.isActive("heading", { level: 1 })}
         onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
       />
       <ToolbarButton
-        title={t("toolbar.h2")}
+        title={withHint(t("toolbar.h2"), publishMode === "normal" ? t("toolbar.headingDegrades") : null)}
         icon={Heading2}
         isActive={editor.isActive("heading", { level: 2 })}
         onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
       />
       <ToolbarButton
-        title={t("toolbar.h3")}
+        title={withHint(t("toolbar.h3"), publishMode === "normal" ? t("toolbar.heading3Degrades") : null)}
         icon={Heading3}
         isActive={editor.isActive("heading", { level: 3 })}
         onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}
@@ -119,17 +155,25 @@ export function EditorToolbar({
         isActive={editor.isActive("code")} onClick={() => editor.chain().focus().toggleCode().run()}
         disabled={!editor.can().toggleCode()}
       />
-      <ToolbarButton title={t("toolbar.spoiler")} icon={EyeOff}
+      <ToolbarButton
+        title={withHint(t("toolbar.spoiler"), publishMode === "telegraph" ? t("toolbar.spoilerUnavailTelegraph") : null)}
+        icon={EyeOff}
         isActive={editor.isActive("spoiler")} onClick={() => editor.chain().focus().toggleSpoiler().run()}
         disabled={!editor.can().toggleMark("spoiler")}
       />
-      <ToolbarButton title={t("toolbar.subscript")} icon={SubscriptIcon}
+      <ToolbarButton
+        title={withHint(t("toolbar.subscript"), publishMode !== "rich" ? t("toolbar.richOnlyFormat") : null)}
+        icon={SubscriptIcon}
         isActive={editor.isActive("subscript")} onClick={() => editor.chain().focus().toggleSubscript().run()}
       />
-      <ToolbarButton title={t("toolbar.superscript")} icon={SuperscriptIcon}
+      <ToolbarButton
+        title={withHint(t("toolbar.superscript"), publishMode !== "rich" ? t("toolbar.richOnlyFormat") : null)}
+        icon={SuperscriptIcon}
         isActive={editor.isActive("superscript")} onClick={() => editor.chain().focus().toggleSuperscript().run()}
       />
-      <ToolbarButton title={t("toolbar.highlight")} icon={Highlighter}
+      <ToolbarButton
+        title={withHint(t("toolbar.highlight"), publishMode !== "rich" ? t("toolbar.richOnlyFormat") : null)}
+        icon={Highlighter}
         isActive={editor.isActive("highlight")} onClick={() => editor.chain().focus().toggleHighlight().run()}
       />
 
@@ -142,9 +186,9 @@ export function EditorToolbar({
       {editor.isActive("blockquote") && (
         <ToolbarButton
           title={
-            // Telegraph articles drop the `expandable` attribute entirely
-            // (telegraphConverter.ts never reads it) — Rich mode supports it fine.
-            publishMode === "telegraph"
+            // Neither Telegraph articles nor Rich messages support the `expandable`
+            // attribute — only the normal publish mode does.
+            publishMode !== "normal"
               ? t("toolbar.collapsibleUnavail")
               : editor.getAttributes("blockquote").expandable
                 ? t("toolbar.makeNormal")
@@ -152,9 +196,9 @@ export function EditorToolbar({
           }
           icon={ChevronsDownUp}
           isActive={!!editor.getAttributes("blockquote").expandable}
-          disabled={publishMode === "telegraph"}
+          disabled={publishMode !== "normal"}
           onClick={() => {
-            if (publishMode === "telegraph") {
+            if (publishMode !== "normal") {
               toast("warning", t("toolbar.collapsibleUnavail"), t("toolbar.collapsibleUnavailHint"));
               return;
             }
@@ -166,15 +210,21 @@ export function EditorToolbar({
         isActive={editor.isActive("codeBlock")} onClick={() => editor.chain().focus().toggleCodeBlock().run()}
         disabled={!editor.can().toggleCodeBlock()}
       />
-      <ToolbarButton title={t("toolbar.list")} icon={List}
+      <ToolbarButton
+        title={withHint(t("toolbar.list"), publishMode === "normal" ? t("toolbar.listDegrades") : null)}
+        icon={List}
         isActive={editor.isActive("bulletList")} onClick={() => editor.chain().focus().toggleBulletList().run()}
         disabled={!editor.can().toggleBulletList()}
       />
-      <ToolbarButton title={t("toolbar.orderedList")} icon={ListOrdered}
+      <ToolbarButton
+        title={withHint(t("toolbar.orderedList"), publishMode === "normal" ? t("toolbar.listDegrades") : null)}
+        icon={ListOrdered}
         isActive={editor.isActive("orderedList")} onClick={() => editor.chain().focus().toggleOrderedList().run()}
         disabled={!editor.can().toggleOrderedList()}
       />
-      <ToolbarButton title={t("toolbar.divider")} icon={Minus}
+      <ToolbarButton
+        title={withHint(t("toolbar.divider"), publishMode === "normal" ? t("toolbar.dividerDegrades") : null)}
+        icon={Minus}
         isActive={false} onClick={() => editor.chain().focus().setHorizontalRule().run()}
       />
 
@@ -184,12 +234,78 @@ export function EditorToolbar({
         isActive={editor.isActive("link")} onClick={onLinkClick}
       />
       <ToolbarButton title={t("toolbar.emoji")} icon={Smile} isActive={false} onClick={onEmojiClick} />
+      <ToolbarButton
+        title={
+          publishMode !== "rich"
+            ? `${t("anchor.insert")} — ${t("anchor.unavail")}`
+            : t("anchor.insert")
+        }
+        icon={ArrowUpToLine}
+        isActive={false}
+        disabled={publishMode !== "rich"}
+        onClick={() => {
+          if (publishMode !== "rich") {
+            toast("warning", t("anchor.unavail"), t("anchor.unavailHint"));
+            return;
+          }
+          insertJumpToTopLink(editor, anchorLinkText.trim() || t("anchor.linkText"));
+        }}
+      />
 
       <ToolbarSeparator />
 
       <ToolbarButton title={t("toolbar.image")} icon={Image} isActive={false} onClick={() => onMediaClick("image")} />
-      <ToolbarButton title={t("toolbar.video")} icon={Film} isActive={false} onClick={() => onMediaClick("video")} />
-      <ToolbarButton title={t("toolbar.file")} icon={FileUp} isActive={false} onClick={() => onMediaClick("file")} />
+      <ToolbarButton
+        title={
+          publishMode === "telegraph"
+            ? `${t("toolbar.video")} — ${t("toolbar.videoWarning")}`
+            : t("toolbar.video")
+        }
+        icon={Film}
+        isActive={false}
+        disabled={publishMode === "telegraph"}
+        onClick={() => {
+          if (publishMode === "telegraph") {
+            toast("warning", t("toolbar.videoWarning"), t("toolbar.videoHint"));
+            return;
+          }
+          onMediaClick("video");
+        }}
+      />
+      <ToolbarButton
+        title={
+          publishMode !== "normal"
+            ? `${t("toolbar.file")} — ${t("toolbar.fileWarning")}`
+            : t("toolbar.file")
+        }
+        icon={FileUp}
+        isActive={false}
+        disabled={publishMode !== "normal"}
+        onClick={() => {
+          if (publishMode !== "normal") {
+            toast("warning", t("toolbar.fileWarning"), t("toolbar.fileHint"));
+            return;
+          }
+          onMediaClick("file");
+        }}
+      />
+      <ToolbarButton
+        title={
+          publishMode !== "rich"
+            ? `${t("toolbar.audio")} — ${t("slash.audioWarning")}`
+            : t("toolbar.audio")
+        }
+        icon={Music}
+        isActive={false}
+        disabled={publishMode !== "rich"}
+        onClick={() => {
+          if (publishMode !== "rich") {
+            toast("warning", t("slash.audioWarning"), t("slash.audioHint"));
+            return;
+          }
+          onMediaClick("audio");
+        }}
+      />
 
       <ToolbarSeparator />
 

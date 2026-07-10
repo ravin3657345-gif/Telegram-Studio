@@ -73,8 +73,17 @@ export function ToolbarButton({
     </button>
   );
 
-  if (disabled) return btn;
-  return <Tooltip content={title}>{btn}</Tooltip>;
+  // Wrapped in a plain (never-disabled) span so the tooltip still shows on a
+  // disabled button — native <button disabled> elements don't reliably fire
+  // mouseenter/mouseleave in Chromium/WebView2, but a span around it always
+  // does, since the pointer still enters ITS box regardless of the child's
+  // disabled state. This is what lets a disabled button explain *why* it's
+  // disabled instead of going silent (e.g. "only available in Rich mode").
+  return (
+    <Tooltip content={title}>
+      <span className="inline-flex">{btn}</span>
+    </Tooltip>
+  );
 }
 
 export function ToolbarSeparator() {

@@ -8,7 +8,6 @@ function PollView({ node, updateAttributes, deleteNode, selected }: any) {
   const {
     question = "",
     options = ["", ""],
-    isAnonymous = true,
     allowsMultipleAnswers = false,
   } = node.attrs as {
     question: string;
@@ -135,34 +134,6 @@ function PollView({ node, updateAttributes, deleteNode, selected }: any) {
               <Plus size={12} /> {t("poll.addOption")}
             </button>
           )}
-        </div>
-
-        {/* Settings */}
-        <div
-          style={{
-            padding: "6px 12px",
-            borderTop: "1px solid var(--border-subtle)",
-            display: "flex", gap: 14,
-          }}
-        >
-          <label style={{ display: "flex", alignItems: "center", gap: 5, cursor: "pointer", fontSize: 11, color: "var(--text-muted)", userSelect: "none" }}>
-            <input
-              type="checkbox"
-              checked={isAnonymous}
-              onChange={e => updateAttributes({ isAnonymous: e.target.checked })}
-              style={{ accentColor: "var(--accent)", width: 12, height: 12 }}
-            />
-            {t("poll.anonymous")}
-          </label>
-          <label style={{ display: "flex", alignItems: "center", gap: 5, cursor: "pointer", fontSize: 11, color: "var(--text-muted)", userSelect: "none" }}>
-            <input
-              type="checkbox"
-              checked={allowsMultipleAnswers}
-              onChange={e => updateAttributes({ allowsMultipleAnswers: e.target.checked })}
-              style={{ accentColor: "var(--accent)", width: 12, height: 12 }}
-            />
-            {t("poll.multiple")}
-          </label>
         </div>
       </div>
     </NodeViewWrapper>

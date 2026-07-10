@@ -34,6 +34,7 @@ export function HtmlViewPanel({ onClose }: HtmlViewPanelProps) {
       className="flex flex-col border-l flex-shrink-0"
       style={{
         width: 340,
+        maxWidth: "calc(100vw - 32px)",
         backgroundColor: "var(--bg-surface)",
         borderColor: "var(--border-subtle)",
       }}

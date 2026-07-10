@@ -1,22 +1,19 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import type { Editor } from "@tiptap/react";
 import Picker from "@emoji-mart/react";
 import data from "@emoji-mart/data";
 import { GripHorizontal, X } from "lucide-react";
 
 interface EmojiPickerProps {
-  editor: Editor;
+  onSelect: (native: string) => void;
   onClose: () => void;
   anchorRect?: DOMRect;
-  savedPos?: { from: number; to: number } | null;
 }
 
 const PICKER_W = 352;
 const PICKER_H = 400;
 
-export function EmojiPicker({ editor, onClose, anchorRect, savedPos }: EmojiPickerProps) {
+export function EmojiPicker({ onSelect, onClose, anchorRect }: EmojiPickerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const posRef = useRef(savedPos ?? null);
 
   function calcInitial() {
     if (!anchorRect) {
@@ -88,11 +85,7 @@ export function EmojiPicker({ editor, onClose, anchorRect, savedPos }: EmojiPick
   }, [onClose]);
 
   function handleEmojiSelect(emoji: { native: string }) {
-    let chain = editor.chain().focus();
-    if (posRef.current) chain = chain.setTextSelection(posRef.current);
-    chain.insertContent(emoji.native).run();
-    const nextFrom = editor.state.selection.from;
-    posRef.current = { from: nextFrom, to: nextFrom };
+    onSelect(emoji.native);
   }
 
   const resolvedTheme = document.documentElement.getAttribute("data-theme") === "light" ? "light" : "dark";
@@ -150,7 +143,12 @@ export function EmojiPicker({ editor, onClose, anchorRect, savedPos }: EmojiPick
         data={data}
         onEmojiSelect={handleEmojiSelect}
         theme={resolvedTheme}
-        locale="ru"
+        // "native" renders emojis with the OS font instead of fetching PNG
+        // sprites from cdn.jsdelivr.net — the app's CSP blocks that (fully
+        // local, no network), which was leaving the whole picker blank.
+        set="native"
+        // Any locale other than "en" also pulls its strings from the same
+        // CDN at runtime; "en" is the only one bundled locally.
         previewPosition="none"
         skinTonePosition="none"
       />

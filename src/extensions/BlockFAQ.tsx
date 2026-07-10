@@ -3,17 +3,31 @@ import { ReactNodeViewRenderer, NodeViewWrapper } from "@tiptap/react";
 import { useState, useRef } from "react";
 import { ChevronDown, X } from "lucide-react";
 import { t } from "@/lib/i18n";
+import DOMPurify from "dompurify";
+
+// Whitelist mirrors what lib/miniHtml.ts knows how to convert to Telegram
+// HTML / RichText — keep the two in sync if this ever changes.
+const PURIFY_CONFIG = { ALLOWED_TAGS: ["b", "i", "u", "s", "br", "p", "span", "strong", "em"] };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function FAQView({ node, updateAttributes, deleteNode, selected }: any) {
   const [open, setOpen] = useState(false);
-  const answerRef = useRef<HTMLTextAreaElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
   const { question = "", answer = "" } = node.attrs as { question: string; answer: string };
 
   function toggleOpen() {
     const next = !open;
     setOpen(next);
-    if (next) setTimeout(() => answerRef.current?.focus(), 50);
+    if (next) setTimeout(() => contentRef.current?.focus(), 50);
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
+    e.stopPropagation();
+    if ((e.ctrlKey || e.metaKey) && !e.shiftKey) {
+      if (e.key === "b") { e.preventDefault(); document.execCommand("bold"); }
+      if (e.key === "i") { e.preventDefault(); document.execCommand("italic"); }
+      if (e.key === "u") { e.preventDefault(); document.execCommand("underline"); }
+    }
   }
 
   return (
@@ -50,7 +64,7 @@ function FAQView({ node, updateAttributes, deleteNode, selected }: any) {
               if (e.key === "Enter") {
                 e.preventDefault();
                 if (!open) setOpen(true);
-                setTimeout(() => answerRef.current?.focus(), 50);
+                setTimeout(() => contentRef.current?.focus(), 50);
               }
               e.stopPropagation();
             }}
@@ -102,7 +116,7 @@ function FAQView({ node, updateAttributes, deleteNode, selected }: any) {
           </button>
         </div>
 
-        {/* Answer body — shown when expanded */}
+        {/* Answer body — rich-text contentEditable, shown when expanded */}
         {open && (
           <div
             style={{
@@ -111,25 +125,19 @@ function FAQView({ node, updateAttributes, deleteNode, selected }: any) {
               backgroundColor: "var(--bg-surface)",
             }}
           >
-            <textarea
-              ref={answerRef}
-              value={answer}
-              onChange={(e) => updateAttributes({ answer: e.target.value })}
-              placeholder={t("block.spoilerAnswer")}
-              onKeyDown={(e) => e.stopPropagation()}
-              rows={3}
-              style={{
-                width: "100%",
-                border: "none",
-                background: "transparent",
-                color: "var(--text-secondary)",
-                fontSize: 13,
-                lineHeight: "1.6",
-                outline: "none",
-                resize: "vertical",
-                fontFamily: "inherit",
-              }}
+            <div
+              ref={contentRef}
+              contentEditable
+              suppressContentEditableWarning
+              // eslint-disable-next-line react/no-danger
+              dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(answer, PURIFY_CONFIG) }}
+              onInput={() => { if (contentRef.current) updateAttributes({ answer: contentRef.current.innerHTML }); }}
+              onKeyDown={handleKeyDown}
+              style={{ outline: "none", color: "var(--text-secondary)", fontSize: 13, lineHeight: "1.6", minHeight: "2em", fontFamily: "inherit" }}
             />
+            <div style={{ marginTop: 4, fontSize: 10, color: "var(--text-muted)", opacity: 0.6 }}>
+              {t("block.editingHint")}
+            </div>
           </div>
         )}
       </div>

@@ -3,11 +3,17 @@ import { ReactNodeViewRenderer, NodeViewWrapper } from "@tiptap/react";
 import { X, Play } from "lucide-react";
 import { useState, useRef } from "react";
 import { fileRegistry } from "@/lib/fileRegistry";
+import { useEditorStore } from "@/store/editorStore";
+import { isInMediaGroup, toggleMediaGroupLayout } from "./mediaGroupLayout";
+import { MediaGroupLayoutToggle } from "./MediaGroupLayoutToggle";
 
-function VideoNodeView({ node, deleteNode, selected }: any) {
-  const { src } = node.attrs;
+function VideoNodeView({ node, deleteNode, selected, editor, getPos }: any) {
+  const { src, groupLayout } = node.attrs;
   const ref = useRef<HTMLVideoElement>(null);
   const [playing, setPlaying] = useState(false);
+  const publishMode = useEditorStore((s) => s.publishMode);
+  const pos = typeof getPos === "function" ? getPos() : null;
+  const inGroup = publishMode === "rich" && pos !== null && isInMediaGroup(editor, pos);
 
   function toggle() {
     const v = ref.current;
@@ -63,6 +69,13 @@ function VideoNodeView({ node, deleteNode, selected }: any) {
           </div>
         )}
 
+        {inGroup && (
+          <MediaGroupLayoutToggle
+            layout={groupLayout || "collage"}
+            onClick={() => pos !== null && toggleMediaGroupLayout(editor, pos)}
+          />
+        )}
+
         <button
           onClick={(e) => {
             e.stopPropagation();
@@ -99,6 +112,7 @@ export const BlockVideo = Node.create({
       fileName: { default: "video.mp4" },
       mimeType: { default: "video/mp4" },
       fileSize: { default: 0 },
+      groupLayout: { default: "collage" },
     };
   },
 

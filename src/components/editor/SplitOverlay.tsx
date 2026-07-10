@@ -3,11 +3,7 @@ import type { Editor } from "@tiptap/react";
 import { Scissors, X, GripHorizontal } from "lucide-react";
 import { ti, t } from "@/lib/i18n";
 import { useEditorStore } from "@/store/editorStore";
-import {
-  TELEGRAM_MAX_TEXT_LENGTH,
-  TELEGRAM_MAX_CAPTION_LENGTH,
-  TELEGRAM_MAX_RICH_LENGTH,
-} from "@/lib/constants";
+import { resolveMessageLimit } from "@/lib/constants";
 import { useSettingsStore } from "@/store/settingsStore";
 
 interface Props {
@@ -57,16 +53,45 @@ function segmentChars(
   return { above, below };
 }
 
-function getLimit(editor: Editor, publishMode: string): number {
+function getLimit(editor: Editor, publishMode: "normal" | "rich" | "telegraph"): number {
   let hasMedia = false;
   editor.state.doc.forEach((n) => {
     if (n.type.name === "blockImage" || n.type.name === "blockVideo") hasMedia = true;
   });
-  return hasMedia
-    ? TELEGRAM_MAX_CAPTION_LENGTH
-    : publishMode === "rich"
-    ? TELEGRAM_MAX_RICH_LENGTH
-    : TELEGRAM_MAX_TEXT_LENGTH;
+  return resolveMessageLimit(publishMode, hasMedia);
+}
+
+// Small at-a-glance fill indicator — greener/calmer than a raw "4058/4096" count.
+// The exact number still lives in the parent's tooltip for anyone who wants it.
+function CapacityBar({ value, limit }: { value: number; limit: number }) {
+  const ratio = limit > 0 ? value / limit : 0;
+  const pct   = Math.max(0, Math.min(ratio, 1)) * 100;
+  const color = ratio > 1 ? "var(--danger)" : ratio > 0.8 ? "var(--warning)" : "var(--success)";
+  return (
+    <span
+      style={{
+        position: "relative",
+        display: "inline-block",
+        width: 34,
+        height: 4,
+        borderRadius: 2,
+        backgroundColor: "var(--border-default)",
+        overflow: "hidden",
+        flexShrink: 0,
+      }}
+    >
+      <span
+        style={{
+          position: "absolute",
+          inset: 0,
+          width: `${pct}%`,
+          backgroundColor: color,
+          borderRadius: 2,
+          transition: "width 0.2s ease, background-color 0.2s ease",
+        }}
+      />
+    </span>
+  );
 }
 
 export function SplitOverlay({ editor, scrollEl, wrapperEl }: Props) {
@@ -93,9 +118,18 @@ export function SplitOverlay({ editor, scrollEl, wrapperEl }: Props) {
 
   const [positions, setPositions] = useState<Map<number, number>>(new Map());
   const [hoveredGap, setHoveredGap] = useState<number | null>(null);
+  const [draggingGap, setDraggingGap] = useState<number | null>(null);
 
-  const recompute = useCallback(() => {
+  // Whether the *next* positions-state render should animate `top` (a smooth
+  // settle after a drop/keyboard move) or snap instantly (scroll/resize/typing,
+  // which must track 1:1 with no lag). Set right before the render that should
+  // animate; read directly during render — a ref is enough since scroll/resize
+  // recomputes reset it back to false before any further animated render.
+  const animateNextRef = useRef(false);
+
+  const recompute = useCallback((animate = false) => {
     if (!editor || !wrapperEl) return;
+    animateNextRef.current = animate;
     setPositions((prev) => {
       const map = new Map<number, number>(prev);
       const gaps = splitGapsRef.current;
@@ -113,18 +147,21 @@ export function SplitOverlay({ editor, scrollEl, wrapperEl }: Props) {
 
   useEffect(() => {
     if (!editor || !scrollEl || !wrapperEl) return;
-    recompute();
-    editor.on("update", recompute);
-    scrollEl.addEventListener("scroll", recompute);
-    window.addEventListener("resize", recompute);
+    const instant = () => recompute(false);
+    instant();
+    editor.on("update", instant);
+    scrollEl.addEventListener("scroll", instant);
+    window.addEventListener("resize", instant);
     return () => {
-      editor.off("update", recompute);
-      scrollEl.removeEventListener("scroll", recompute);
-      window.removeEventListener("resize", recompute);
+      editor.off("update", instant);
+      scrollEl.removeEventListener("scroll", instant);
+      window.removeEventListener("resize", instant);
     };
   }, [editor, scrollEl, wrapperEl, recompute]);
 
-  useEffect(() => { recompute(); }, [splitGaps, recompute]);
+  // Dividers moving because the split points themselves changed (drag drop,
+  // keyboard nudge, delete) get a gentle spring-settle instead of a hard snap.
+  useEffect(() => { recompute(true); }, [splitGaps, recompute]);
 
   if (!editor || splitGaps.length === 0 || !wrapperEl) return null;
 
@@ -141,6 +178,8 @@ export function SplitOverlay({ editor, scrollEl, wrapperEl }: Props) {
     const startY     = e.clientY;
     let   dragging   = false;
 
+    setDraggingGap(gap);
+
     // Track last valid hit during drag for use in onUp
     let lastDocPos: number | null = null;
 
@@ -152,6 +191,9 @@ export function SplitOverlay({ editor, scrollEl, wrapperEl }: Props) {
       if (!dragging) {
         if (Math.abs(me.clientY - startY) < 6) return;
         dragging = true;
+        // Kill any leftover settle transition so the line tracks the mouse
+        // 1:1 with zero lag — the transition only belongs to the drop moment.
+        if (divEl) divEl.style.transition = "none";
       }
 
       const clampY = Math.max(editorRect.top + 2, Math.min(me.clientY, editorRect.bottom - 2));
@@ -179,6 +221,7 @@ export function SplitOverlay({ editor, scrollEl, wrapperEl }: Props) {
     function onUp() {
       document.removeEventListener("mousemove", onMove);
       document.removeEventListener("mouseup", onUp);
+      setDraggingGap(null);
 
       if (!dragging || lastDocPos === null) return;
 
@@ -309,14 +352,15 @@ export function SplitOverlay({ editor, scrollEl, wrapperEl }: Props) {
         if (y === undefined) return null;
 
         const { above, below } = segmentChars(editor, gap, splitGaps);
-        const overflow = above > limit || below > limit;
-        const msgNum   = idx + 2;
-        const accent   = overflow ? "#e05252" : "var(--accent)";
-        const hovered  = hoveredGap === gap;
+        const overflow  = above > limit || below > limit;
+        const msgNum    = idx + 2;
+        const accent    = overflow ? "var(--danger)" : "var(--accent)";
+        const hovered     = hoveredGap === gap;
+        const showDetails = hovered || draggingGap === gap;
 
         return (
           <div
-            key={gap}
+            key={idx}
             ref={(el) => {
               if (el) divRefs.current.set(gap, el as HTMLDivElement);
               else divRefs.current.delete(gap);
@@ -329,10 +373,12 @@ export function SplitOverlay({ editor, scrollEl, wrapperEl }: Props) {
               transform: "translateY(-50%)",
               pointerEvents: "none",
               padding: "14px 4px 0",
+              transition: animateNextRef.current ? "top 0.2s cubic-bezier(0.34, 1.56, 0.64, 1)" : "none",
             }}
           >
-            {/* ── Char counts ───────────────────────────────────────── */}
+            {/* ── Char counts — hidden until you hover/drag this divider ── */}
             <div
+              aria-hidden={!showDetails}
               style={{
                 position: "absolute",
                 top: -2,
@@ -344,37 +390,47 @@ export function SplitOverlay({ editor, scrollEl, wrapperEl }: Props) {
                 fontWeight: 700,
                 fontVariantNumeric: "tabular-nums",
                 lineHeight: 1.2,
+                opacity: showDetails ? 1 : 0,
+                transform: showDetails ? "translateY(0)" : "translateY(2px)",
+                pointerEvents: showDetails ? "auto" : "none",
+                transition: "opacity 0.15s ease, transform 0.15s ease",
               }}
             >
               <span
+                title={ti("split.charCountAboveHint", { n: msgNum - 1 }) + `: ${above.toLocaleString("ru")} / ${limit.toLocaleString("ru")}`}
                 style={{
                   display: "inline-flex",
                   alignItems: "center",
-                  gap: 3,
+                  gap: 5,
                   padding: "2px 8px",
                   borderRadius: 6,
-                  backgroundColor: above > limit ? "rgba(224,82,82,0.14)" : "var(--bg-surface)",
-                  border: `1px solid ${above > limit ? "#e05252" : "var(--border-default)"}`,
-                  color: above > limit ? "#e05252" : "var(--text-secondary)",
+                  backgroundColor: above > limit ? "var(--danger-subtle)" : "var(--bg-surface)",
+                  border: `1px solid ${above > limit ? "var(--danger)" : "var(--border-default)"}`,
+                  color: above > limit ? "var(--danger)" : "var(--text-secondary)",
                   boxShadow: "0 1px 3px rgba(0,0,0,0.12)",
                 }}
               >
-                ↑ {above.toLocaleString("ru")} / {limit.toLocaleString("ru")}
+                <span aria-hidden="true" style={{ opacity: 0.55 }}>↑</span>
+                {ti("split.msgLabel", { n: msgNum - 1 })}
+                <CapacityBar value={above} limit={limit} />
               </span>
               <span
+                title={ti("split.charCountBelowHint", { n: msgNum }) + `: ${below.toLocaleString("ru")} / ${limit.toLocaleString("ru")}`}
                 style={{
                   display: "inline-flex",
                   alignItems: "center",
-                  gap: 3,
+                  gap: 5,
                   padding: "2px 8px",
                   borderRadius: 6,
-                  backgroundColor: below > limit ? "rgba(224,82,82,0.14)" : "var(--bg-surface)",
-                  border: `1px solid ${below > limit ? "#e05252" : "var(--border-default)"}`,
-                  color: below > limit ? "#e05252" : "var(--text-secondary)",
+                  backgroundColor: below > limit ? "var(--danger-subtle)" : "var(--bg-surface)",
+                  border: `1px solid ${below > limit ? "var(--danger)" : "var(--border-default)"}`,
+                  color: below > limit ? "var(--danger)" : "var(--text-secondary)",
                   boxShadow: "0 1px 3px rgba(0,0,0,0.12)",
                 }}
               >
-                {below.toLocaleString("ru")} / {limit.toLocaleString("ru")} ↓
+                {ti("split.msgLabel", { n: msgNum })}
+                <CapacityBar value={below} limit={limit} />
+                <span aria-hidden="true" style={{ opacity: 0.55 }}>↓</span>
               </span>
             </div>
 
@@ -388,8 +444,8 @@ export function SplitOverlay({ editor, scrollEl, wrapperEl }: Props) {
                 pointerEvents: "all",
                 cursor: "ns-resize",
                 userSelect: "none",
-                transition: "filter 0.12s ease",
-                filter: hovered ? "brightness(1.08)" : "none",
+                transition: "filter 0.15s ease",
+                filter: hovered ? "brightness(1.08) drop-shadow(0 1px 4px rgba(0,0,0,0.25))" : "none",
               }}
               onMouseDown={(e) => startDrag(e, gap)}
               onMouseEnter={() => setHoveredGap(gap)}
@@ -398,9 +454,9 @@ export function SplitOverlay({ editor, scrollEl, wrapperEl }: Props) {
               <div
                 style={{
                   flex: 1,
-                  borderTop: `2px dashed ${accent}`,
+                  borderTop: `${hovered ? 3 : 2}px dashed ${accent}`,
                   opacity: hovered ? 0.9 : 0.55,
-                  transition: "opacity 0.12s ease",
+                  transition: "opacity 0.15s ease, border-top-width 0.15s ease",
                 }}
               />
 
@@ -411,6 +467,7 @@ export function SplitOverlay({ editor, scrollEl, wrapperEl }: Props) {
                 onKeyDown={(e) => onChipKeyDown(e, gap)}
                 onFocus={() => setHoveredGap(gap)}
                 onBlur={() => setHoveredGap((g) => (g === gap ? null : g))}
+                className={overflow ? "split-overflow-pulse" : undefined}
                 style={{
                   display: "flex",
                   alignItems: "center",
@@ -420,14 +477,14 @@ export function SplitOverlay({ editor, scrollEl, wrapperEl }: Props) {
                   flexShrink: 0,
                   cursor: "ns-resize",
                   outline: "none",
-                  backgroundColor: overflow ? "rgba(224,82,82,0.12)" : "var(--accent-subtle)",
+                  backgroundColor: overflow ? "var(--danger-subtle)" : "var(--accent-subtle)",
                   border: `1.5px solid ${accent}`,
                   color: accent,
                   fontSize: 11,
                   fontWeight: 700,
                   whiteSpace: "nowrap",
                   boxShadow: hovered ? `0 0 0 3px var(--accent-subtle)` : "none",
-                  transition: "box-shadow 0.12s ease",
+                  transition: "box-shadow 0.15s ease",
                 }}
               >
                 {/* Grip appears on hover/focus to signal the chip is movable */}
@@ -439,13 +496,13 @@ export function SplitOverlay({ editor, scrollEl, wrapperEl }: Props) {
               <div
                 style={{
                   flex: 1,
-                  borderTop: `2px dashed ${accent}`,
+                  borderTop: `${hovered ? 3 : 2}px dashed ${accent}`,
                   opacity: hovered ? 0.9 : 0.55,
-                  transition: "opacity 0.12s ease",
+                  transition: "opacity 0.15s ease, border-top-width 0.15s ease",
                 }}
               />
 
-              {/* Delete button */}
+              {/* Delete button — tucked away until you hover, to keep the calm state calm */}
               <button
                 onMouseDown={(e) => e.stopPropagation()}
                 onClick={() => {
@@ -464,9 +521,11 @@ export function SplitOverlay({ editor, scrollEl, wrapperEl }: Props) {
                   padding: 2,
                   borderRadius: 4,
                   color: "var(--text-muted)",
+                  opacity: hovered ? 1 : 0,
+                  transition: "opacity 0.15s ease, color 0.15s ease",
                 }}
                 onMouseEnter={(e) =>
-                  ((e.currentTarget as HTMLElement).style.color = "#e05252")
+                  ((e.currentTarget as HTMLElement).style.color = "var(--danger)")
                 }
                 onMouseLeave={(e) =>
                   ((e.currentTarget as HTMLElement).style.color = "var(--text-muted)")

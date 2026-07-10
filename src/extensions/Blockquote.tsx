@@ -1,4 +1,4 @@
-import { Node, mergeAttributes } from "@tiptap/core";
+import { Node, mergeAttributes, wrappingInputRule } from "@tiptap/core";
 import { NodeSelection, Plugin } from "@tiptap/pm/state";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import { t } from "@/lib/i18n";
@@ -23,10 +23,13 @@ function quoteContainsMedia(doc: PMNode): boolean {
 }
 import { ReactNodeViewRenderer, NodeViewWrapper, NodeViewContent } from "@tiptap/react";
 import { ChevronsDownUp } from "lucide-react";
+import { useEditorStore } from "@/store/editorStore";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function BlockquoteView({ node, updateAttributes }: any) {
   const expandable: boolean = node.attrs.expandable ?? false;
+  // Neither Rich messages nor Telegraph articles support expandable quotes — only normal mode does.
+  const canToggleExpandable = useEditorStore((s) => s.publishMode) === "normal";
 
   return (
     <NodeViewWrapper
@@ -47,34 +50,37 @@ function BlockquoteView({ node, updateAttributes }: any) {
       {/* Editable content first — required by TipTap */}
       <NodeViewContent as="span" />
 
-      {/* Toggle button — non-editable, floats in the corner */}
-      <button
-        contentEditable={false}
-        onClick={() => updateAttributes({ expandable: !expandable })}
-        title={expandable ? t("quote.makeNormal") : t("quote.makeCollapsible")}
-        style={{
-          position: "absolute",
-          top: 6,
-          right: 6,
-          display: "flex",
-          alignItems: "center",
-          gap: 3,
-          padding: "2px 6px",
-          fontSize: 10,
-          lineHeight: 1.5,
-          borderRadius: 4,
-          border: `1px solid ${expandable ? "#7ab0e0" : "var(--border-muted, #444)"}`,
-          background: expandable ? "rgba(122,176,224,0.18)" : "transparent",
-          color: expandable ? "#7ab0e0" : "var(--text-muted, #888)",
-          cursor: "pointer",
-          userSelect: "none",
-          fontStyle: "normal",
-          transition: "all 0.15s",
-        }}
-      >
-        <ChevronsDownUp size={10} />
-        {expandable ? t("quote.collapsed") : t("quote.collapse")}
-      </button>
+      {/* Toggle button — non-editable, floats in the corner. Hidden in Rich mode:
+          Rich messages don't support expandable quotes at all. */}
+      {canToggleExpandable && (
+        <button
+          contentEditable={false}
+          onClick={() => updateAttributes({ expandable: !expandable })}
+          title={expandable ? t("quote.makeNormal") : t("quote.makeCollapsible")}
+          style={{
+            position: "absolute",
+            top: 6,
+            right: 6,
+            display: "flex",
+            alignItems: "center",
+            gap: 3,
+            padding: "2px 6px",
+            fontSize: 10,
+            lineHeight: 1.5,
+            borderRadius: 4,
+            border: `1px solid ${expandable ? "#7ab0e0" : "var(--border-muted, #444)"}`,
+            background: expandable ? "rgba(122,176,224,0.18)" : "transparent",
+            color: expandable ? "#7ab0e0" : "var(--text-muted, #888)",
+            cursor: "pointer",
+            userSelect: "none",
+            fontStyle: "normal",
+            transition: "all 0.15s",
+          }}
+        >
+          <ChevronsDownUp size={10} />
+          {expandable ? t("quote.collapsed") : t("quote.collapse")}
+        </button>
+      )}
     </NodeViewWrapper>
   );
 }
@@ -143,6 +149,17 @@ export const Blockquote = Node.create({
     return {
       "Mod-Shift-b": () => this.editor.commands.toggleBlockquote(),
     };
+  },
+
+  // Typing "> " at the start of a line converts it to a quote — matches the
+  // markdown shortcut every other block editor (Notion included) supports.
+  addInputRules() {
+    return [
+      wrappingInputRule({
+        find: /^\s*>\s$/,
+        type: this.type,
+      }),
+    ];
   },
 
   addNodeView() {

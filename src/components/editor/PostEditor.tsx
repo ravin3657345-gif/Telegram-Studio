@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { useEditor, EditorContent } from "@tiptap/react";
+import { AnimatePresence } from "framer-motion";
 import { createTiptapExtensions } from "@/lib/tiptapConfig";
 import { useEditorStore } from "@/store/editorStore";
 import { useAutoSave } from "@/hooks/useAutoSave";
-import { useSettingsStore } from "@/store/settingsStore";
 import { getDraft, getHistoryForEdit } from "@/lib/tauriApi";
 import { fileRegistry } from "@/lib/fileRegistry";
+import { restoreAttachmentsIntoJson } from "@/lib/attachmentRestore";
 import { EditorToolbar } from "./EditorToolbar";
 import { PostTitleInput } from "./PostTitleInput";
 import { LinkDialog } from "./LinkDialog";
@@ -16,15 +17,19 @@ import { InlineBubbleMenu } from "./InlineBubbleMenu";
 import { HtmlViewPanel } from "./HtmlViewPanel";
 import { AttachmentZone } from "./AttachmentZone";
 import { EditorContextMenu } from "./EditorContextMenu";
+import { BlockHoverControls } from "./BlockHoverControls";
+import { BlockPalette } from "./BlockPalette";
 import { toast } from "@/store/uiStore";
 import { t, ti } from "@/lib/i18n";
 import { useAttachmentStore } from "@/store/attachmentStore";
 import { useAutoSplit } from "@/hooks/useAutoSplit";
+import { useIsMobileLayout } from "@/hooks/useIsMobileLayout";
 import { SplitOverlay } from "./SplitOverlay";
 import { Scissors, RefreshCw } from "lucide-react";
 import {
   TELEGRAM_MAX_PHOTO_SIZE,
   TELEGRAM_MAX_VIDEO_SIZE,
+  TELEGRAM_MAX_AUDIO_SIZE,
 } from "@/lib/constants";
 
 interface HistoryNavState {
@@ -33,6 +38,12 @@ interface HistoryNavState {
 
 const ALLOWED_IMAGE = ["image/jpeg", "image/png", "image/webp", "image/gif"];
 const ALLOWED_VIDEO = ["video/mp4", "video/mpeg"];
+const ALLOWED_AUDIO = ["audio/mpeg", "audio/ogg", "audio/mp4", "audio/wav"];
+// Same `accept` on all three media inputs — each picked file is routed to the
+// right block type by its own MIME type in `insertMedia` regardless of which
+// button opened the dialog, so there's no reason the OS file picker should
+// stop the user mixing photos/videos/audio into one selection.
+const ALLOWED_MEDIA = [...ALLOWED_IMAGE, ...ALLOWED_VIDEO, ...ALLOWED_AUDIO].join(",");
 
 interface PostEditorProps {
   draftId?: string | null;
@@ -41,6 +52,7 @@ interface PostEditorProps {
 export function PostEditor({ draftId: initialDraftId }: PostEditorProps) {
   const containerRef  = useRef<HTMLDivElement>(null);
   const draftLoadedRef = useRef(false);
+  const isMobile = useIsMobileLayout();
 
   // Separate state refs for SplitOverlay — must be state (not useRef) so React
   // re-renders when the DOM nodes mount, passing non-null values to SplitOverlay.
@@ -48,6 +60,7 @@ export function PostEditor({ draftId: initialDraftId }: PostEditorProps) {
   const [wrapperEl, setWrapperEl] = useState<HTMLDivElement | null>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
+  const audioInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef  = useRef<HTMLInputElement>(null);
 
   const [showLinkDialog, setShowLinkDialog]   = useState(false);
@@ -55,16 +68,16 @@ export function PostEditor({ draftId: initialDraftId }: PostEditorProps) {
   const [showHtmlView, setShowHtmlView]       = useState(false);
   const [emojiAnchor, setEmojiAnchor]         = useState<DOMRect | undefined>();
   const [isDraggingOver, setIsDraggingOver]   = useState(false);
-  const [contextMenu, setContextMenu]         = useState<{ x: number; y: number } | null>(null);
+  const [contextMenu, setContextMenu]         = useState<{ x: number; y: number; blockPos: number | null } | null>(null);
   const tauriDropHandledRef = useRef(false);
 
   const { contentJson, setContentJson, setPostTitle, setDraftTitle, resetEditor, setDraftId } =
     useEditorStore();
   const setEditingHistoryId = useEditorStore((s) => s.setEditingHistoryId);
+  const setTemplateName     = useEditorStore((s) => s.setTemplateName);
   const setPublishMode      = useEditorStore((s) => s.setPublishMode);
   const addRegistered       = useAttachmentStore((s) => s.addRegistered);
   const historyLoadedRef    = useRef(false);
-  const autosaveEnabled = useSettingsStore((s) => s.autosaveInterval > 0);
 
   // Router state set by HistoryPage when opening a post for editing
   const location   = useLocation();
@@ -89,35 +102,74 @@ export function PostEditor({ draftId: initialDraftId }: PostEditorProps) {
   });
 
   // ── Auto-split hook ───────────────────────────────────────────────────────
-  const { splitCount, recalculate } = useAutoSplit(editor);
+  const { splitCount, recalculate, forceSplitAtCursor } = useAutoSplit(editor);
   const publishMode = useEditorStore((s) => s.publishMode);
 
   // ── Insert media block helper ──────────────────────────────────────────────
-  const insertMedia = useCallback((file: File) => {
-    if (!editor) return;
+  // Takes an explicit insertion position and returns where the NEXT insert
+  // should go (current position + however much the doc just grew). Inserting
+  // several files in a row via the ambient current selection (plain
+  // `editor.commands.insertContent`, no position) is broken for atom nodes:
+  // after inserting one image, TipTap leaves the selection as a NodeSelection
+  // wrapping that same image (there's no adjacent text position to place a
+  // cursor), so the *next* insertContent call reads that NodeSelection as its
+  // target range and REPLACES the image just inserted instead of adding a new
+  // one after it — picking 3 files this way silently keeps only the last one.
+  const insertMedia = useCallback((file: File, atPos: number): number => {
+    if (!editor) return atPos;
 
-    const allowed = [...ALLOWED_IMAGE, ...ALLOWED_VIDEO];
+    const isAudio = ALLOWED_AUDIO.includes(file.type);
+    const allowed = [...ALLOWED_IMAGE, ...ALLOWED_VIDEO, ...ALLOWED_AUDIO];
     if (!allowed.includes(file.type)) {
       toast.error(ti("editor.unsupportedType", { type: file.type }));
-      return;
+      return atPos;
+    }
+    // Audio blocks only convert to anything in Rich mode (real <audio> tag —
+    // Bot API 10.1) — silently accepting the drop/paste elsewhere would just
+    // create a block that vanishes on publish with no explanation.
+    if (isAudio && publishMode !== "rich") {
+      toast.warning(t("slash.audioWarning"), t("slash.audioHint"));
+      return atPos;
     }
 
     const isVideo = ALLOWED_VIDEO.includes(file.type);
-    const sizeLimit = isVideo ? TELEGRAM_MAX_VIDEO_SIZE : TELEGRAM_MAX_PHOTO_SIZE;
+    const sizeLimit = isAudio ? TELEGRAM_MAX_AUDIO_SIZE : isVideo ? TELEGRAM_MAX_VIDEO_SIZE : TELEGRAM_MAX_PHOTO_SIZE;
     if (file.size > sizeLimit) {
       const mb = (sizeLimit / (1024 * 1024)).toFixed(0);
       toast.error(ti("editor.fileTooBig", { mb }));
-      return;
+      return atPos;
     }
 
     const { id, src } = fileRegistry.add(file);
-    const nodeType = isVideo ? "blockVideo" : "blockImage";
+    const nodeType = isAudio ? "blockAudio" : isVideo ? "blockVideo" : "blockImage";
 
-    editor.commands.insertContent({
+    const sizeBefore = editor.state.doc.content.size;
+    editor.commands.insertContentAt(atPos, {
       type: nodeType,
       attrs: { src, fileId: id, fileName: file.name, mimeType: file.type, fileSize: file.size },
     });
-  }, [editor]);
+    return atPos + (editor.state.doc.content.size - sizeBefore);
+  }, [editor, publishMode]);
+
+  // Neither Rich nor Telegraph support expandable (collapsible) quotes — force any
+  // already-expandable blockquotes back to normal the moment either is selected,
+  // so stale data from a mode switch can't silently break on publish.
+  useEffect(() => {
+    if (!editor || publishMode === "normal") return;
+    const { doc } = editor.state;
+    let hasExpandable = false;
+    doc.descendants((node) => {
+      if (node.type.name === "blockquote" && node.attrs.expandable) hasExpandable = true;
+    });
+    if (!hasExpandable) return;
+    const tr = editor.state.tr;
+    doc.descendants((node, pos) => {
+      if (node.type.name === "blockquote" && node.attrs.expandable) {
+        tr.setNodeAttribute(pos, "expandable", false);
+      }
+    });
+    editor.view.dispatch(tr);
+  }, [editor, publishMode]);
 
   // ── Load history post (mirrors draft loading pattern) ─────────────────────
   // histState._histId is set by HistoryPage via navigate("/editor", { state: {...} }).
@@ -199,41 +251,10 @@ export function PostEditor({ draftId: initialDraftId }: PostEditorProps) {
     getDraft(initialDraftId).then((draft) => {
       setPostTitle(draft.postTitle ?? "");
       if (draft.title) setDraftTitle(draft.title);
+      setTemplateName(draft.templateName ?? null);
 
       // Восстанавливаем вложения в fileRegistry и патчим blob-URL в contentJson
-      let json = draft.contentJson;
-      if (draft.attachments?.length) {
-        const urlMap: Record<string, string> = {};
-        for (const att of draft.attachments) {
-          try {
-            const byteStr = atob(att.dataBase64);
-            const bytes = new Uint8Array(byteStr.length);
-            for (let i = 0; i < byteStr.length; i++) bytes[i] = byteStr.charCodeAt(i);
-            const file = new File([bytes], att.fileName, { type: att.mimeType });
-            const newSrc = fileRegistry.addWithId(att.fileId, file);
-            urlMap[att.fileId] = newSrc;
-          } catch { /* skip broken attachment */ }
-        }
-        // Patch all blob URLs in the JSON using the fileId
-        if (Object.keys(urlMap).length) {
-          try {
-            const doc = JSON.parse(json);
-            const patchNode = (node: Record<string, unknown>) => {
-              if (node.attrs && typeof node.attrs === "object") {
-                const attrs = node.attrs as Record<string, unknown>;
-                if (typeof attrs.fileId === "string" && urlMap[attrs.fileId]) {
-                  attrs.src = urlMap[attrs.fileId];
-                }
-              }
-              if (Array.isArray(node.content)) {
-                (node.content as Record<string, unknown>[]).forEach(patchNode);
-              }
-            };
-            patchNode(doc);
-            json = JSON.stringify(doc);
-          } catch { /* ignore */ }
-        }
-      }
+      const json = restoreAttachmentsIntoJson(draft.contentJson, draft.attachments ?? []);
 
       if (json && json !== "{}" && json !== "") {
         try {
@@ -258,7 +279,7 @@ export function PostEditor({ draftId: initialDraftId }: PostEditorProps) {
   }, [initialDraftId]);
 
   // ── Auto-save ──────────────────────────────────────────────────────────────
-  useAutoSave(autosaveEnabled);
+  useAutoSave();
 
   // ── Keyboard shortcuts ─────────────────────────────────────────────────────
   useEffect(() => {
@@ -299,44 +320,24 @@ export function PostEditor({ draftId: initialDraftId }: PostEditorProps) {
   }
 
   // ── Toolbar media buttons ──────────────────────────────────────────────────
-  function handleMediaClick(type: "image" | "video" | "file") {
+  function handleMediaClick(type: "image" | "video" | "file" | "audio") {
     if (type === "image") imageInputRef.current?.click();
     else if (type === "video") videoInputRef.current?.click();
+    else if (type === "audio") audioInputRef.current?.click();
     else fileInputRef.current?.click();
   }
 
+  // Shares insertMedia's validation/mode-check/size-limit logic (including
+  // audio) rather than re-implementing it here. Each file's insert position
+  // is tracked explicitly and advanced by the previous one's real size (see
+  // insertMedia's doc comment) so picking several files inserts all of them
+  // in order, instead of each one replacing the last.
   function handleFileInputChange(e: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files ?? []);
     e.target.value = "";
-    if (!editor || files.length === 0) return;
-
-    const allowed = [...ALLOWED_IMAGE, ...ALLOWED_VIDEO];
-    const nodes: object[] = [];
-
-    for (const file of files) {
-      if (!allowed.includes(file.type)) {
-        toast.error(ti("editor.unsupportedType", { type: file.type }));
-        continue;
-      }
-      const isVideo = ALLOWED_VIDEO.includes(file.type);
-      const sizeLimit = isVideo ? TELEGRAM_MAX_VIDEO_SIZE : TELEGRAM_MAX_PHOTO_SIZE;
-      if (file.size > sizeLimit) {
-        const mb = (sizeLimit / (1024 * 1024)).toFixed(0);
-        toast.error(ti("editor.fileTooBig", { mb }));
-        continue;
-      }
-      const { id, src } = fileRegistry.add(file);
-      nodes.push({
-        type: isVideo ? "blockVideo" : "blockImage",
-        attrs: { src, fileId: id, fileName: file.name, mimeType: file.type, fileSize: file.size },
-      });
-    }
-
-    if (nodes.length === 1) {
-      editor.commands.insertContent(nodes[0]);
-    } else if (nodes.length > 1) {
-      editor.commands.insertContent(nodes);
-    }
+    if (!editor) return;
+    let pos = editor.state.selection.to;
+    for (const file of files) pos = insertMedia(file, pos);
   }
 
   // ── Container drag-over highlight ─────────────────────────────────────────
@@ -355,9 +356,10 @@ export function PostEditor({ draftId: initialDraftId }: PostEditorProps) {
     // If the Tauri native event already handled this drop, skip to avoid double insertion
     if (tauriDropHandledRef.current) { tauriDropHandledRef.current = false; return; }
     const files = Array.from(e.dataTransfer.files ?? []);
-    if (files.length > 0) {
+    if (files.length > 0 && editor) {
       e.preventDefault();
-      files.forEach(insertMedia);
+      let pos = editor.state.selection.to;
+      for (const file of files) pos = insertMedia(file, pos);
     }
   }
 
@@ -370,18 +372,19 @@ export function PostEditor({ draftId: initialDraftId }: PostEditorProps) {
       jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png",
       gif: "image/gif", webp: "image/webp",
       mp4: "video/mp4", mpeg: "video/mpeg",
+      mp3: "audio/mpeg", ogg: "audio/ogg", m4a: "audio/mp4", wav: "audio/wav",
     };
 
-    async function insertFromPath(filePath: string) {
+    async function insertFromPath(filePath: string, atPos: number): Promise<number> {
       const { convertFileSrc } = await import("@tauri-apps/api/core");
       const name = filePath.split(/[\\/]/).pop() ?? "file";
       const ext  = name.split(".").pop()?.toLowerCase() ?? "";
       const type = MIME[ext] ?? "application/octet-stream";
       const url  = convertFileSrc(filePath);
       const res  = await fetch(url);
-      if (!res.ok) return;
+      if (!res.ok) return atPos;
       const blob = await res.blob();
-      insertMedia(new File([blob], name, { type: blob.type || type }));
+      return insertMedia(new File([blob], name, { type: blob.type || type }), atPos);
     }
 
     import("@tauri-apps/api/event").then(({ listen }) => {
@@ -401,8 +404,9 @@ export function PostEditor({ draftId: initialDraftId }: PostEditorProps) {
         tauriDropHandledRef.current = true;
         const payload = event.payload as { paths?: string[] } | string[];
         const paths = Array.isArray(payload) ? payload : (payload.paths ?? []);
+        let pos = editor.state.selection.to;
         for (const p of paths) {
-          try { await insertFromPath(p); } catch { /* skip unreadable */ }
+          try { pos = await insertFromPath(p, pos); } catch { /* skip unreadable */ }
         }
         setTimeout(() => { tauriDropHandledRef.current = false; }, 200);
       }).then(fn => unlisteners.push(fn)).catch(() => {});
@@ -413,8 +417,9 @@ export function PostEditor({ draftId: initialDraftId }: PostEditorProps) {
         setIsDraggingOver(false);
         tauriDropHandledRef.current = true;
         const paths = Array.isArray(event.payload) ? event.payload as string[] : [];
+        let pos = editor.state.selection.to;
         for (const p of paths) {
-          try { await insertFromPath(p); } catch { /* skip unreadable */ }
+          try { pos = await insertFromPath(p, pos); } catch { /* skip unreadable */ }
         }
         setTimeout(() => { tauriDropHandledRef.current = false; }, 200);
       }).then(fn => unlisteners.push(fn)).catch(() => {});
@@ -440,6 +445,15 @@ export function PostEditor({ draftId: initialDraftId }: PostEditorProps) {
     setShowEmojiPicker((prev) => !prev);
   }
 
+  function handleEmojiInsert(native: string) {
+    if (!editor) return;
+    let chain = editor.chain().focus();
+    if (savedEmojiPos.current) chain = chain.setTextSelection(savedEmojiPos.current);
+    chain.insertContent(native).run();
+    const nextFrom = editor.state.selection.from;
+    savedEmojiPos.current = { from: nextFrom, to: nextFrom };
+  }
+
   if (!editor) return null;
 
   return (
@@ -461,7 +475,7 @@ export function PostEditor({ draftId: initialDraftId }: PostEditorProps) {
         onMediaClick={handleMediaClick}
         onHtmlView={() => setShowHtmlView((v) => !v)}
         showHtmlView={showHtmlView}
-        onSplitClick={recalculate}
+        onSplitClick={forceSplitAtCursor}
         splitActive={splitCount > 0}
       />
 
@@ -529,26 +543,38 @@ export function PostEditor({ draftId: initialDraftId }: PostEditorProps) {
 
             <div
               ref={(el) => setScrollEl(el)}
+              data-tour="editor-content"
               className="h-full overflow-y-auto"
               style={{ backgroundColor: "var(--bg-app)", padding: "16px 20px" }}
             >
               <InlineBubbleMenu editor={editor} onLinkClick={() => setShowLinkDialog(true)} />
-              {contextMenu && (
-                <EditorContextMenu
-                  editor={editor}
-                  x={contextMenu.x}
-                  y={contextMenu.y}
-                  onClose={() => setContextMenu(null)}
-                />
-              )}
+              <BlockHoverControls
+                editor={editor}
+                onOpenMenu={(blockPos, x, y) => {
+                  const node = editor.state.doc.nodeAt(blockPos);
+                  if (node) {
+                    if (node.isAtom) editor.commands.setNodeSelection(blockPos);
+                    else editor.commands.setTextSelection(blockPos + 1);
+                  }
+                  setContextMenu({ x, y, blockPos: node ? blockPos : null });
+                }}
+              />
+              <AnimatePresence>
+                {contextMenu && (
+                  <EditorContextMenu
+                    key="editor-context-menu"
+                    editor={editor}
+                    x={contextMenu.x}
+                    y={contextMenu.y}
+                    blockPos={contextMenu.blockPos}
+                    onClose={() => setContextMenu(null)}
+                  />
+                )}
+              </AnimatePresence>
               <div
                 style={{
                   minHeight: "100%",
                   backgroundColor: "var(--bg-surface)",
-                }}
-                onContextMenu={(e) => {
-                  e.preventDefault();
-                  setContextMenu({ x: e.clientX, y: e.clientY });
                 }}
               >
                 <EditorContent editor={editor} className="tiptap-editor-root" />
@@ -560,6 +586,7 @@ export function PostEditor({ draftId: initialDraftId }: PostEditorProps) {
         </div>
 
         {showHtmlView && <HtmlViewPanel onClose={() => setShowHtmlView(false)} />}
+        {!isMobile && <BlockPalette editor={editor} />}
       </div>
 
       {/* Drop overlay */}
@@ -583,12 +610,13 @@ export function PostEditor({ draftId: initialDraftId }: PostEditorProps) {
       )}
 
       {/* Hidden file inputs — IDs used by slash command */}
-      <input id="editor-image-input" ref={imageInputRef} type="file" multiple accept="image/jpeg,image/png,image/webp,image/gif" className="hidden" onChange={handleFileInputChange} />
-      <input id="editor-video-input" ref={videoInputRef} type="file" multiple accept="video/mp4,video/mpeg"                       className="hidden" onChange={handleFileInputChange} />
+      <input id="editor-image-input" ref={imageInputRef} type="file" multiple accept={ALLOWED_MEDIA} className="hidden" onChange={handleFileInputChange} />
+      <input id="editor-video-input" ref={videoInputRef} type="file" multiple accept={ALLOWED_MEDIA} className="hidden" onChange={handleFileInputChange} />
+      <input id="editor-audio-input" ref={audioInputRef} type="file" multiple accept={ALLOWED_MEDIA} className="hidden" onChange={handleFileInputChange} />
       <input id="editor-file-input"  ref={fileInputRef}  type="file" multiple                                                      className="hidden" onChange={handleDocumentInputChange} />
 
       {showLinkDialog   && <LinkDialog editor={editor} onClose={() => setShowLinkDialog(false)} />}
-      {showEmojiPicker  && <EmojiPicker editor={editor} onClose={() => setShowEmojiPicker(false)} anchorRect={emojiAnchor} savedPos={savedEmojiPos.current} />}
+      {showEmojiPicker  && <EmojiPicker onSelect={handleEmojiInsert} onClose={() => setShowEmojiPicker(false)} anchorRect={emojiAnchor} />}
     </div>
   );
 }

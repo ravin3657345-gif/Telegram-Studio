@@ -209,6 +209,32 @@
   margin: 20px 0 !important;
 }
 
+/* ─── Table (Rich mode only) ───────────────────────────────────────────────────── */
+
+/* .tiptap-table-wrapper is the outer div NodeViewContent renders — the real
+   <table> ProseMirror manages is nested one level inside it (see
+   BlockTable.tsx's contentDOMElementTag), so reach through with a descendant
+   selector rather than styling a class directly on the table itself. */
+.tiptap-editor-root .tiptap-table-wrapper table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0;
+  table-layout: fixed;
+}
+.tiptap-editor-root .tiptap-table-cell {
+  border: 1px solid var(--border-default);
+  padding: 6px 10px;
+  min-width: 60px;
+  vertical-align: top;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+.tiptap-editor-root th.tiptap-table-cell {
+  background: var(--bg-elevated);
+  font-weight: 600;
+  text-align: left;
+}
+
 /* ─── Spoiler ──────────────────────────────────────────────────────────────────── */
 
 .tiptap-editor-root [data-tg-spoiler] {
@@ -304,23 +330,17 @@
 
 /* ─── Media blocks ─────────────────────────────────────────────────────────────── */
 
-.tiptap-editor-root [data-node-view-wrapper] {
+/* `[data-node-view-wrapper]` is NOT a safe descendant selector — TipTap's
+   ReactNodeView internals stamp that same attribute on the hidden content-DOM
+   div it creates *inside* any non-atom NodeView (see checkItem/blockquote/
+   callout), not just on the top-level wrapper. An unscoped descendant match
+   here was leaking a 10px vertical margin onto that internal div, which —
+   being a block-level element nested in an inline-block span — pushed a
+   checkItem's text onto its own line below the checkbox. Restrict to actual
+   top-level blocks (direct children of the ProseMirror root) only. */
+.tiptap-editor-root > .tiptap > [data-node-view-wrapper],
+.tiptap-editor-root > .ProseMirror > [data-node-view-wrapper] {
   margin: 10px 0;
-}
-
-/* ─── Block drag handle (floating) ───────────────────────────────────────────── */
-
-.editor-drag-handle {
-  opacity: 0;
-  transition: opacity 0.12s;
-}
-.editor-drag-handle:hover {
-  opacity: 1 !important;
-}
-
-/* Show handle when nearby */
-.tiptap-editor-root:hover ~ .editor-drag-handle {
-  opacity: 0.4;
 }
 
 /* ─── Media block drag handles (inside NodeView) ───────────────────────────────── */
@@ -446,13 +466,17 @@
 }
 
 /* ── Media block entrance (React NodeViews) — slight spring ─────────────── */
+/* Same scoping caveat as the margin rule above — must not reach the hidden
+   internal content-DOM div TipTap nests inside non-atom NodeViews. */
 
-.tiptap-editor-root [data-node-view-wrapper] {
+.tiptap-editor-root > .tiptap > [data-node-view-wrapper],
+.tiptap-editor-root > .ProseMirror > [data-node-view-wrapper] {
   transition: opacity 0.22s ease-out, transform 0.22s cubic-bezier(0.34, 1.4, 0.64, 1);
 }
 
 @starting-style {
-  .tiptap-editor-root [data-node-view-wrapper] {
+  .tiptap-editor-root > .tiptap > [data-node-view-wrapper],
+  .tiptap-editor-root > .ProseMirror > [data-node-view-wrapper] {
     opacity: 0;
     transform: translateY(14px) scale(0.95);
   }
@@ -518,4 +542,15 @@
 .block-drag-handle:active {
   transform: scale(0.9) !important;
   opacity: 1 !important;
+}
+
+/* ── Multi-block selection — Notion-style full-width highlight when a drag
+   or Shift+click selection spans more than one top-level block ──────────── */
+
+.tiptap-editor-root .ProseMirror .block-multi-selected {
+  background-color: var(--accent-subtle, rgba(42,171,238,0.12));
+  border-radius: 6px;
+  outline: 1px solid transparent;
+  box-shadow: 0 0 0 2px transparent;
+  transition: background-color 0.1s ease;
 }

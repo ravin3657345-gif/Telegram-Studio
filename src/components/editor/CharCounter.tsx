@@ -1,10 +1,10 @@
 import type { Editor } from "@tiptap/react";
 import {
-  TELEGRAM_MAX_TEXT_LENGTH,
   TELEGRAM_MAX_RICH_LENGTH,
   TELEGRAM_MAX_CAPTION_LENGTH,
   CHAR_COUNTER_WARNING_THRESHOLD,
   CHAR_COUNTER_DANGER_THRESHOLD,
+  resolveMessageLimit,
 } from "@/lib/constants";
 import { useEditorStore } from "@/store/editorStore";
 import { t, ti, pluralWords } from "@/lib/i18n";
@@ -28,18 +28,25 @@ export function CharCounter({ editor }: CharCounterProps) {
     }
   });
 
-  const limit = hasMedia
-    ? TELEGRAM_MAX_CAPTION_LENGTH
-    : publishMode === "rich"
-    ? TELEGRAM_MAX_RICH_LENGTH
-    : TELEGRAM_MAX_TEXT_LENGTH;
+  const limit = resolveMessageLimit(publishMode, hasMedia);
 
-  const warningAt = hasMedia ? Math.floor(TELEGRAM_MAX_CAPTION_LENGTH * 0.85) : CHAR_COUNTER_WARNING_THRESHOLD;
-  const dangerAt  = hasMedia ? Math.floor(TELEGRAM_MAX_CAPTION_LENGTH * 0.97) : CHAR_COUNTER_DANGER_THRESHOLD;
+  const warningAt =
+    publishMode === "rich" ? Math.floor(TELEGRAM_MAX_RICH_LENGTH * 0.85) :
+    hasMedia ? Math.floor(TELEGRAM_MAX_CAPTION_LENGTH * 0.85) :
+    CHAR_COUNTER_WARNING_THRESHOLD;
+  const dangerAt =
+    publishMode === "rich" ? Math.floor(TELEGRAM_MAX_RICH_LENGTH * 0.97) :
+    hasMedia ? Math.floor(TELEGRAM_MAX_CAPTION_LENGTH * 0.97) :
+    CHAR_COUNTER_DANGER_THRESHOLD;
 
   const splitGaps = useEditorStore((s) => s.splitGaps);
   const msgCount  = splitGaps.length + 1;
-  const isSplit   = splitGaps.length > 0 && !hasMedia && publishMode !== "rich";
+  // Rich mode splits into multiple sendRichMessage calls exactly like normal
+  // mode splits into multiple sendMessage calls (see PublishPanel.tsx's
+  // publishViaRichMessage, which already iterates splitJsonAtGaps chunks) —
+  // excluding it here just made the counter show a misleading "N over" danger
+  // state on a post that Telegram will actually accept just fine, split.
+  const isSplit   = splitGaps.length > 0 && !hasMedia;
 
   const pct       = isSplit ? 1 : Math.min(count / limit, 1);
   const isWarning = !isSplit && count >= warningAt;
@@ -73,7 +80,7 @@ export function CharCounter({ editor }: CharCounterProps) {
         backgroundColor: "var(--bg-surface)",
       }}
     >
-      {hasMedia && (
+      {hasMedia && publishMode !== "rich" && (
         <span className="text-2xs flex-shrink-0" style={{ color: "var(--text-muted)" }}>
           {t("counter.caption")}
         </span>

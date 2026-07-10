@@ -1,9 +1,10 @@
 import { useEffect, useRef } from "react";
 import { useEditorStore } from "@/store/editorStore";
 import { useAttachmentStore } from "@/store/attachmentStore";
+import { useSettingsStore } from "@/store/settingsStore";
 import { fileRegistry } from "@/lib/fileRegistry";
 import { upsertDraft } from "@/lib/tauriApi";
-import { AUTOSAVE_DEBOUNCE_MS } from "@/lib/constants";
+import { collectInlineAttachments } from "@/lib/attachmentRestore";
 import type { DraftAttachment } from "@/types/draft";
 
 function extractPlainText(json: string): string {
@@ -23,15 +24,16 @@ function extractPlainText(json: string): string {
   }
 }
 
-export function useAutoSave(enabled = true) {
+export function useAutoSave() {
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Subscribe only to trigger changes — actual values read from store at fire time
   const contentJson = useEditorStore((s) => s.contentJson);
   const postTitle   = useEditorStore((s) => s.postTitle);
+  const autosaveInterval = useSettingsStore((s) => s.autosaveInterval);
 
   useEffect(() => {
-    if (!enabled) return;
+    if (autosaveInterval <= 0) return;
     if (!contentJson && !postTitle) return;
 
     if (timerRef.current) clearTimeout(timerRef.current);
@@ -51,38 +53,15 @@ export function useAutoSave(enabled = true) {
         // Collect file attachments from the editor JSON
         let attachments: DraftAttachment[] = [];
         try {
-          const doc = JSON.parse(latestContentJson || "{}");
-          const promises: Promise<DraftAttachment>[] = [];
-          const collectNodes = (node: Record<string, unknown>) => {
-            if (node.attrs && typeof node.attrs === "object") {
-              const attrs = node.attrs as Record<string, unknown>;
-              if (typeof attrs.fileId === "string") {
-                const fileId = attrs.fileId as string;
-                const file = fileRegistry.getFile(fileId);
-                if (file) {
-                  promises.push(new Promise<DraftAttachment>((resolve) => {
-                    const reader = new FileReader();
-                    reader.onload = () => {
-                      const b64 = (reader.result as string).split(",")[1] ?? "";
-                      resolve({ fileId, dataBase64: b64, mimeType: file.type, fileName: file.name });
-                    };
-                    reader.readAsDataURL(file);
-                  }));
-                }
-              }
-            }
-            if (Array.isArray(node.content)) {
-              (node.content as Record<string, unknown>[]).forEach(collectNodes);
-            }
-          };
-          collectNodes(doc);
+          attachments = await collectInlineAttachments(latestContentJson || "{}");
 
           // Also save bottom-panel attachmentStore files to draft_media
           const { files: bottomFiles } = useAttachmentStore.getState();
+          const bottomPromises: Promise<DraftAttachment>[] = [];
           for (const af of bottomFiles) {
             const file = fileRegistry.getFile(af.id);
             if (file) {
-              promises.push(new Promise<DraftAttachment>((resolve) => {
+              bottomPromises.push(new Promise<DraftAttachment>((resolve) => {
                 const reader = new FileReader();
                 reader.onload = () => {
                   const b64 = (reader.result as string).split(",")[1] ?? "";
@@ -92,8 +71,7 @@ export function useAutoSave(enabled = true) {
               }));
             }
           }
-
-          attachments = await Promise.all(promises);
+          attachments = attachments.concat(await Promise.all(bottomPromises));
         } catch { /* skip */ }
 
         const draft = await upsertDraft({
@@ -110,10 +88,10 @@ export function useAutoSave(enabled = true) {
       } catch {
         setSaveStatus("error");
       }
-    }, AUTOSAVE_DEBOUNCE_MS);
+    }, autosaveInterval);
 
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
     };
-  }, [contentJson, postTitle, enabled]);
+  }, [contentJson, postTitle, autosaveInterval]);
 }

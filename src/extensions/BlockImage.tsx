@@ -2,9 +2,15 @@ import { Node, mergeAttributes } from "@tiptap/core";
 import { ReactNodeViewRenderer, NodeViewWrapper } from "@tiptap/react";
 import { X } from "lucide-react";
 import { fileRegistry } from "@/lib/fileRegistry";
+import { useEditorStore } from "@/store/editorStore";
+import { isInMediaGroup, toggleMediaGroupLayout } from "./mediaGroupLayout";
+import { MediaGroupLayoutToggle } from "./MediaGroupLayoutToggle";
 
-function ImageNodeView({ node, deleteNode, selected }: any) {
-  const { src, alt } = node.attrs;
+function ImageNodeView({ node, deleteNode, selected, editor, getPos }: any) {
+  const { src, alt, groupLayout } = node.attrs;
+  const publishMode = useEditorStore((s) => s.publishMode);
+  const pos = typeof getPos === "function" ? getPos() : null;
+  const inGroup = publishMode === "rich" && pos !== null && isInMediaGroup(editor, pos);
 
   return (
     <NodeViewWrapper
@@ -33,6 +39,13 @@ function ImageNodeView({ node, deleteNode, selected }: any) {
             display: "block",
           }}
         />
+
+        {inGroup && (
+          <MediaGroupLayoutToggle
+            layout={groupLayout || "collage"}
+            onClick={() => pos !== null && toggleMediaGroupLayout(editor, pos)}
+          />
+        )}
 
         <button
           onClick={() => {
@@ -78,6 +91,10 @@ export const BlockImage = Node.create({
       fileName: { default: "image.jpg" },
       mimeType: { default: "image/jpeg" },
       fileSize: { default: 0 },
+      // "collage" (grid) or "slideshow" (carousel) — only matters in Rich
+      // mode, and only once this block is part of a run of 2+ adjacent
+      // images/videos (see mediaGroupLayout.ts).
+      groupLayout: { default: "collage" },
     };
   },
 

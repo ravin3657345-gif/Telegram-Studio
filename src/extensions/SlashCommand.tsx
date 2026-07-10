@@ -4,83 +4,132 @@ import { ReactRenderer } from "@tiptap/react";
 import {
   Heading1, Heading2, Heading3, Pilcrow, Quote, Code2,
   List, ListOrdered, Minus, Image, Film, HelpCircle, BarChart2,
+  CheckSquare, Lightbulb, Table2, Music,
 } from "lucide-react";
 import tippy, { type Instance as TippyInstance } from "tippy.js";
 import "tippy.js/dist/tippy.css";
+import "tippy.js/animations/scale-subtle.css";
 import { useEditorStore } from "@/store/editorStore";
 import { useUiStore } from "@/store/uiStore";
 import { t } from "@/lib/i18n";
+import { buildTableNode } from "@/extensions/BlockTable";
 
 // ─── Menu items ───────────────────────────────────────────────────────────────
+
+// Language-independent identifier for what the block looks like once it's
+// actually in the document — used by BlockPalette to render a drag-ghost
+// that matches the editor's own typography (label text alone isn't enough,
+// it doesn't say "this becomes a heading" vs "this becomes a quote").
+export type BlockPreviewType =
+  | "paragraph" | "h1" | "h2" | "h3" | "quote" | "code"
+  | "list" | "orderedList" | "checklist" | "callout" | "divider"
+  | "image" | "video" | "audio" | "faq" | "poll" | "table";
 
 export interface SlashItem {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   icon: React.ComponentType<any>;
   label: string;
   description: string;
+  previewType: BlockPreviewType;
   command: (editor: import("@tiptap/core").Editor) => void;
+  // True when the current app state (e.g. publish mode) means `command` will
+  // just show a warning toast and bail instead of inserting anything. The
+  // palette's drag/select-to-insert path checks this *before* touching the
+  // document — without it, that path always creates a placeholder paragraph
+  // first to give the command something to act on, and a bailed-out command
+  // never cleans that placeholder up, leaving a permanent blank line behind.
+  isBlocked?: () => boolean;
 }
 
-function getSlashItems(): SlashItem[] {
+export function getSlashItems(): SlashItem[] {
   return [
     {
       icon: Pilcrow,
       label: t("slash.paragraph"),
       description: t("slash.paragraph.desc"),
+      previewType: "paragraph",
       command: (e) => e.chain().focus().setParagraph().run(),
     },
     {
       icon: Heading1,
       label: t("slash.h1"),
       description: t("slash.h1.desc"),
+      previewType: "h1",
       command: (e) => e.chain().focus().setHeading({ level: 1 }).run(),
     },
     {
       icon: Heading2,
       label: t("slash.h2"),
       description: t("slash.h2.desc"),
+      previewType: "h2",
       command: (e) => e.chain().focus().setHeading({ level: 2 }).run(),
     },
     {
       icon: Heading3,
       label: t("slash.h3"),
       description: t("slash.h3.desc"),
+      previewType: "h3",
       command: (e) => e.chain().focus().setHeading({ level: 3 }).run(),
     },
     {
       icon: Quote,
       label: t("slash.quote"),
       description: t("slash.quote.desc"),
+      previewType: "quote",
       command: (e) => e.chain().focus().toggleBlockquote().run(),
     },
     {
       icon: Code2,
       label: t("slash.code"),
       description: t("slash.code.desc"),
+      previewType: "code",
       command: (e) => e.chain().focus().toggleCodeBlock().run(),
     },
     {
       icon: List,
       label: t("slash.list"),
       description: t("slash.list.desc"),
+      previewType: "list",
       command: (e) => e.chain().focus().toggleBulletList().run(),
     },
     {
       icon: ListOrdered,
       label: t("slash.orderedList"),
       description: t("slash.orderedList.desc"),
+      previewType: "orderedList",
       command: (e) => e.chain().focus().toggleOrderedList().run(),
+    },
+    {
+      icon: CheckSquare,
+      label: t("slash.checklist"),
+      description: t("slash.checklist.desc"),
+      previewType: "checklist",
+      command: (e) => e.chain().focus().insertContent({ type: "checkItem", attrs: { checked: false } }).run(),
+    },
+    {
+      icon: Lightbulb,
+      label: t("slash.callout"),
+      description: t("slash.callout.desc"),
+      previewType: "callout",
+      command: (e) =>
+        e.chain().focus().insertContent({
+          type: "callout",
+          attrs: { emoji: "💡" },
+          content: [{ type: "paragraph" }],
+        }).run(),
     },
     {
       icon: Minus,
       label: t("slash.divider"),
       description: t("slash.divider.desc"),
+      previewType: "divider",
       command: (e) => e.chain().focus().setHorizontalRule().run(),
     },
     {
       icon: Image,
       label: t("slash.image"),
       description: t("slash.image.desc"),
+      previewType: "image",
       command: () => {
         document.getElementById("editor-image-input")?.click();
       },
@@ -89,22 +138,43 @@ function getSlashItems(): SlashItem[] {
       icon: Film,
       label: t("slash.video"),
       description: t("slash.video.desc"),
+      previewType: "video",
       command: () => {
         document.getElementById("editor-video-input")?.click();
+      },
+    },
+    {
+      icon: Music,
+      label: t("slash.audio"),
+      description: t("slash.audio.desc"),
+      previewType: "audio",
+      isBlocked: () => useEditorStore.getState().publishMode !== "rich",
+      command: () => {
+        const mode = useEditorStore.getState().publishMode;
+        if (mode !== "rich") {
+          useUiStore.getState().toast("warning", t("slash.audioWarning"), t("slash.audioHint"));
+          return;
+        }
+        document.getElementById("editor-audio-input")?.click();
       },
     },
     {
       icon: HelpCircle,
       label: t("slash.faq"),
       description: t("slash.faq.desc"),
+      previewType: "faq",
       command: (e) =>
         e.commands.insertContent({ type: "blockFaq", attrs: { question: "", answer: "" } }),
     },
-
     {
       icon: BarChart2,
       label: t("slash.poll"),
       description: t("slash.poll.desc"),
+      previewType: "poll",
+      isBlocked: () => {
+        const mode = useEditorStore.getState().publishMode;
+        return mode === "rich" || mode === "telegraph";
+      },
       command: (e) => {
         const mode = useEditorStore.getState().publishMode;
         if (mode === "rich" || mode === "telegraph") {
@@ -115,6 +185,22 @@ function getSlashItems(): SlashItem[] {
           type: "blockPoll",
           attrs: { question: "", options: ["", ""], isAnonymous: true, allowsMultipleAnswers: false },
         });
+      },
+    },
+    {
+      icon: Table2,
+      label: t("slash.table"),
+      description: t("slash.table.desc"),
+      previewType: "table",
+      isBlocked: () => useEditorStore.getState().publishMode !== "rich",
+      command: (e) => {
+        const mode = useEditorStore.getState().publishMode;
+        if (mode !== "rich") {
+          useUiStore.getState().toast("warning", t("slash.tableWarning"), t("slash.tableHint"));
+          return;
+        }
+        const table = buildTableNode(e.schema, 2, 2);
+        e.chain().focus().insertContent(table.toJSON()).run();
       },
     },
   ];
@@ -269,6 +355,8 @@ export const SlashCommand = Extension.create({
                 placement: "bottom-start",
                 arrow: false,
                 offset: [0, 6],
+                animation: "scale-subtle",
+                duration: [140, 100],
                 onMount(instance) {
                   const box = instance.popper.querySelector<HTMLElement>(".tippy-box");
                   if (box) box.style.cssText = "background:none;border:none;box-shadow:none;padding:0;max-width:none;border-radius:0;";

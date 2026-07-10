@@ -36,8 +36,8 @@
   --status-draft-bg:        rgba(199, 125, 51, 0.16);
   --status-sched-color:     #2c87c9;
   --status-sched-bg:        rgba(44, 135, 201, 0.14);
-  --status-ready-color:     #3f9d5f;
-  --status-ready-bg:        rgba(63, 157, 95, 0.14);
+  --status-published-color: #3f9d5f;
+  --status-published-bg:    rgba(63, 157, 95, 0.14);
 
   --tg-bubble-bg:   #1e3a5f;
   --tg-preview-bg:  #0f1923;
@@ -50,6 +50,12 @@
   --scrollbar-track:        #202020;
   --scrollbar-thumb:        #333333;
   --scrollbar-thumb-hover:  #444444;
+
+  /* Soft-UI (neumorphic) shadow pair — used sparingly, see .soft-ui in globals.css.
+     Dark theme needs a lighter touch than light: a pure-white highlight would be
+     jarring, so it's a faint light-grey instead. */
+  --soft-shadow-dark:  rgba(0, 0, 0, 0.55);
+  --soft-shadow-light: rgba(255, 255, 255, 0.045);
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -89,8 +95,8 @@
   --status-draft-bg:        #fdf0e6;
   --status-sched-color:     #2c87c9;
   --status-sched-bg:        #e8f1fb;
-  --status-ready-color:     #3f9d5f;
-  --status-ready-bg:        #eaf6ee;
+  --status-published-color: #3f9d5f;
+  --status-published-bg:    #eaf6ee;
 
   --tg-bubble-bg:   #effdde;
   --tg-preview-bg:  #e5ddd5;
@@ -103,4 +109,8 @@
   --scrollbar-track:        #f7f7f5;
   --scrollbar-thumb:        #d0cecc;
   --scrollbar-thumb-hover:  #b8b6b3;
+
+  /* Soft-UI (neumorphic) shadow pair — used sparingly, see .soft-ui in globals.css. */
+  --soft-shadow-dark:  rgba(13, 39, 80, 0.14);
+  --soft-shadow-light: rgba(255, 255, 255, 0.85);
 }
