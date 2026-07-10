@@ -8,8 +8,34 @@ dist-ssr/
 src-tauri/target/
 src-tauri/gen/
 
-# Compiled dev tool (source: keygen.js / src-tauri/src/bin/keygen.rs)
+# Android release signing key — never commit, needed for every future update
+src-tauri/android-release.jks
+src-tauri/android-release.properties
+
+# Compiled dev tool (source: src-tauri/src/bin/keygen.rs)
 /keygen.exe
+
+# for-testers/ — built installers, test keys and archives for manual
+# distribution to testers. Real releases go to D:\Релиз, not the repo.
+for-testers/*.msi
+for-testers/*.rar
+for-testers/*.zip
+for-testers/keygen.exe
+for-testers/KEY.txt
+
+# Android debug APK — huge, rebuilt on demand
+for-testers-android/*.apk
+
+# Claude Code local settings/lock files — machine-specific
+.claude/
+
+# Sales bot — token.txt holds a real bot secret, the launcher exe is a
+# compiled artifact (source: src-tauri/src/bin/sales_bot_launcher.rs)
+sales-bot/token.txt
+sales-bot/*.exe
+sales-bot/*.lnk
+sales-bot/control-panel/panel-icon-badged.*
+sales-bot/control-panel/src-tauri/target/
 
 # OS
 .DS_Store
