@@ -16,15 +16,17 @@ crate-type = ["lib", "cdylib", "staticlib"]
 name = "keygen"
 path = "src/bin/keygen.rs"
 
+[[bin]]
+name = "sales-bot-launcher"
+path = "src/bin/sales_bot_launcher.rs"
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
 tstudio-core = { path = "core" }
 tauri = { version = "2", features = ["protocol-asset", "tray-icon"] }
-tauri-plugin-updater = "2"
 tauri-plugin-dialog = "2"
-tauri-plugin-process = "2"
 tauri-plugin-notification = "2"
 tauri-plugin-log = "2"
 log = "0.4"
@@ -35,7 +37,11 @@ rusqlite = { version = "0.31", features = ["bundled"] }
 uuid = { version = "1", features = ["v4"] }
 chrono = { version = "0.4", features = ["serde"] }
 thiserror = "1"
-reqwest = { version = "0.12", features = ["json", "multipart"] }
+# rustls instead of the default OpenSSL-backed TLS: openssl-sys needs a real
+# OpenSSL cross-compiled for each target (Android NDK has none available),
+# and pure-Rust TLS works identically on Windows, so there's no reason to
+# keep two backends around.
+reqwest = { version = "0.12", default-features = false, features = ["json", "multipart", "rustls-tls", "charset", "http2"] }
 base64 = "0.22"
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "gif", "webp", "bmp", "tiff"] }
 url = "2"

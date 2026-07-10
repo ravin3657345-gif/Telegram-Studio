@@ -12,11 +12,14 @@ pub mod telegraph;
 
 use db::AppState;
 use rate_limit::RateLimiter;
+// The system tray is a desktop-only concept — `tauri::menu`/`tauri::tray` don't
+// exist at all on mobile targets (gated `#[cfg(desktop)]` inside tauri itself).
+#[cfg(desktop)]
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    Manager,
 };
+use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -68,46 +71,49 @@ pub fn run() {
             // Запускаем планировщик отложенных публикаций
             scheduler::start(app.handle().clone());
 
-            // ── Системный трей ────────────────────────────────────────────────
-            let show_item = MenuItem::with_id(app, "show", "Открыть", true, None::<&str>)?;
-            let quit_item = MenuItem::with_id(app, "quit", "Выйти", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&show_item, &quit_item])?;
+            // ── Системный трей (только десктоп — на мобильных трея нет) ────────
+            #[cfg(desktop)]
+            {
+                let show_item = MenuItem::with_id(app, "show", "Открыть", true, None::<&str>)?;
+                let quit_item = MenuItem::with_id(app, "quit", "Выйти", true, None::<&str>)?;
+                let menu = Menu::with_items(app, &[&show_item, &quit_item])?;
 
-            let mut tray_builder = TrayIconBuilder::new();
-            // Icon is optional — a missing icon must not crash startup.
-            if let Some(icon) = app.default_window_icon() {
-                tray_builder = tray_builder.icon(icon.clone());
+                let mut tray_builder = TrayIconBuilder::new();
+                // Icon is optional — a missing icon must not crash startup.
+                if let Some(icon) = app.default_window_icon() {
+                    tray_builder = tray_builder.icon(icon.clone());
+                }
+                tray_builder
+                    .tooltip("Telegram Studio")
+                    .menu(&menu)
+                    .show_menu_on_left_click(false)
+                    .on_menu_event(|app, event| match event.id.as_ref() {
+                        "show" => {
+                            if let Some(win) = app.get_webview_window("main") {
+                                let _ = win.show();
+                                let _ = win.set_focus();
+                            }
+                        }
+                        "quit" => app.exit(0),
+                        _ => {}
+                    })
+                    .on_tray_icon_event(|tray, event| {
+                        // Левый клик по иконке — показать окно
+                        if let TrayIconEvent::Click {
+                            button: MouseButton::Left,
+                            button_state: MouseButtonState::Up,
+                            ..
+                        } = event
+                        {
+                            let app = tray.app_handle();
+                            if let Some(win) = app.get_webview_window("main") {
+                                let _ = win.show();
+                                let _ = win.set_focus();
+                            }
+                        }
+                    })
+                    .build(app)?;
             }
-            tray_builder
-                .tooltip("Telegram Studio")
-                .menu(&menu)
-                .show_menu_on_left_click(false)
-                .on_menu_event(|app, event| match event.id.as_ref() {
-                    "show" => {
-                        if let Some(win) = app.get_webview_window("main") {
-                            let _ = win.show();
-                            let _ = win.set_focus();
-                        }
-                    }
-                    "quit" => app.exit(0),
-                    _ => {}
-                })
-                .on_tray_icon_event(|tray, event| {
-                    // Левый клик по иконке — показать окно
-                    if let TrayIconEvent::Click {
-                        button: MouseButton::Left,
-                        button_state: MouseButtonState::Up,
-                        ..
-                    } = event
-                    {
-                        let app = tray.app_handle();
-                        if let Some(win) = app.get_webview_window("main") {
-                            let _ = win.show();
-                            let _ = win.set_focus();
-                        }
-                    }
-                })
-                .build(app)?;
 
             Ok(())
         })
@@ -146,13 +152,16 @@ pub fn run() {
             commands::telegraph::telegraph_webview_result,
             commands::telegraph::telegraph_open_login,
             commands::templates::get_templates,
+            commands::templates::get_template,
             commands::templates::save_template,
             commands::templates::delete_template,
+            commands::templates::record_template_use,
             commands::history::get_history,
             commands::history::schedule_post_delete,
             commands::history::edit_published_post,
             commands::history::get_history_for_edit,
             commands::dashboard::get_channel_dashboard,
+            commands::dashboard::get_today_stats,
             commands::fs_utils::read_file_as_base64,
             commands::license::get_license_status,
             commands::license::activate_license,
