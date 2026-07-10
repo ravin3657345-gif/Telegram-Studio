@@ -32,6 +32,11 @@ export interface BotConfig {
   supportContact: string;
 }
 
+export interface StarBalance {
+  amount: number;
+  nanostarAmount: number;
+}
+
 export const api = {
   getBotStatus: () => invoke<BotStatus>("get_bot_status"),
   startBot: () => invoke<void>("start_bot"),
@@ -43,4 +48,5 @@ export const api = {
   getConfig: () => invoke<BotConfig>("get_config"),
   setConfig: (config: BotConfig) => invoke<void>("set_config", { config }),
   generateTestKey: () => invoke<string>("generate_test_key"),
+  getStarBalance: () => invoke<StarBalance>("get_star_balance"),
 };

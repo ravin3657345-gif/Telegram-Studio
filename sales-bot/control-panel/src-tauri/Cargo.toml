@@ -16,6 +16,11 @@ tauri = { version = "2", features = [] }
 tauri-plugin-notification = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# rustls, not the OpenSSL backend — same reasoning as the main app
+# (src-tauri/Cargo.toml): no OpenSSL to link against, and this panel only
+# ever talks to api.telegram.org, so there's no need for the extra backend.
+# Runs inside Tauri's own async runtime, so no separate tokio dependency.
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 
 [profile.release]
 panic = "abort"

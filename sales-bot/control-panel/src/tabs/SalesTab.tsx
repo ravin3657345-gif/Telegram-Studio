@@ -6,6 +6,8 @@ export default function SalesTab() {
   const [config, setConfig] = useState<BotConfig | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [starBalance, setStarBalance] = useState<number | null>(null);
+  const [balanceError, setBalanceError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -18,6 +20,17 @@ export default function SalesTab() {
       setError(String(err));
     } finally {
       setLoading(false);
+    }
+
+    // Отдельный try — реальный баланс требует сети и токена бота, и не должен
+    // блокировать показ уже посчитанной локальной статистики продаж, если
+    // Telegram недоступен или token.txt ещё не создан.
+    try {
+      const balance = await api.getStarBalance();
+      setStarBalance(balance.amount);
+      setBalanceError(null);
+    } catch (err) {
+      setBalanceError(String(err));
     }
   }, []);
 
@@ -45,6 +58,14 @@ export default function SalesTab() {
         <div className="stat-card">
           <div className="stat-value">≈{totalRub.toLocaleString("ru-RU")} ₽</div>
           <div className="stat-label">по курсу {rubPerStar} ₽/Star</div>
+        </div>
+        <div className="stat-card" title={balanceError ?? undefined}>
+          <div className="stat-value">
+            {balanceError ? "—" : starBalance === null ? "…" : starBalance.toLocaleString("ru-RU")}
+          </div>
+          <div className="stat-label">
+            {balanceError ? "баланс недоступен" : "на балансе бота"}
+          </div>
         </div>
       </div>
 

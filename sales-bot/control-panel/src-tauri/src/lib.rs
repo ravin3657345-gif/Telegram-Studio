@@ -13,6 +13,7 @@ const LEDGER_PATH: &str = "D:/tstudio-sales-ledger.csv";
 const LOG_PATH: &str = "D:/tstudio-sales-bot.log";
 const RELEASE_DIR: &str = "D:/Релиз";
 const KEYGEN_PATH: &str = "D:/cargo-tgt/release/keygen.exe";
+const TOKEN_PATH: &str = "D:/TElega POST/sales-bot/token.txt";
 
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
@@ -263,6 +264,60 @@ fn generate_test_key() -> Result<String, String> {
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
 }
 
+// ── Баланс Stars бота (getMyStarBalance, Bot API 9.1+) ──────────────────
+// Показывает реальный баланс на счету бота в Telegram — в отличие от суммы
+// колонки stars в LEDGER_PATH, это не локальный подсчёт, а то, что Telegram
+// реально готов выплатить (учитывает возвраты и комиссию площадки).
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct StarBalance {
+    amount: i64,
+    nanostar_amount: i64,
+}
+
+#[derive(Deserialize)]
+struct TelegramApiResponse<T> {
+    ok: bool,
+    result: Option<T>,
+    description: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct StarAmount {
+    amount: i64,
+    #[serde(default)]
+    nanostar_amount: i64,
+}
+
+#[tauri::command]
+async fn get_star_balance() -> Result<StarBalance, String> {
+    let token = fs::read_to_string(TOKEN_PATH)
+        .map_err(|_| format!("Не найден {TOKEN_PATH} — создайте файл с токеном бота"))?
+        .trim()
+        .to_string();
+    if token.is_empty() {
+        return Err(format!("{TOKEN_PATH} пустой"));
+    }
+
+    let url = format!("https://api.telegram.org/bot{token}/getMyStarBalance");
+    let resp = reqwest::get(&url)
+        .await
+        .map_err(|e| format!("Не удалось связаться с Telegram: {e}"))?
+        .json::<TelegramApiResponse<StarAmount>>()
+        .await
+        .map_err(|e| format!("Не удалось разобрать ответ Telegram: {e}"))?;
+
+    if !resp.ok {
+        return Err(resp.description.unwrap_or_else(|| "Telegram API вернул ошибку".to_string()));
+    }
+    let star_amount = resp.result.ok_or("Telegram не вернул баланс")?;
+    Ok(StarBalance {
+        amount: star_amount.amount,
+        nanostar_amount: star_amount.nanostar_amount,
+    })
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -278,6 +333,7 @@ pub fn run() {
             get_config,
             set_config,
             generate_test_key,
+            get_star_balance,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
