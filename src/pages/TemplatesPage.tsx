@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { LayoutTemplate, Trash2, Pencil, Plus, Megaphone, List, Users, Tag, Layers, Sparkles, type LucideIcon } from "lucide-react";
 import { TopBar } from "@/components/layout/TopBar";
@@ -13,18 +13,53 @@ import { t, ti, type TranslationKey } from "@/lib/i18n";
 import { useSettingsStore } from "@/store/settingsStore";
 import type { Template, TemplateCategory } from "@/types/template";
 import { EXAMPLE_TEMPLATES, type ExampleTemplate } from "@/lib/exampleTemplates";
+import { accentGradient, accentGrayGradient } from "@/lib/color";
 
 // ── Category metadata ─────────────────────────────────────────────────────────
+// Gradients are hue-rotated from the user's own accent color (Settings →
+// Appearance) instead of a fixed independent palette — offsets are tuned so
+// the DEFAULT accent (#2c87c9) reproduces the original blue/purple/green/
+// orange/gray look exactly; picking a different accent shifts all five
+// together instead of leaving them stuck on the old default hue.
 
-const CATEGORY_META: Record<TemplateCategory, { labelKey: TranslationKey; Icon: LucideIcon; gradient: string }> = {
-  announcements: { labelKey: "templates.cat.announce",    Icon: Megaphone, gradient: "linear-gradient(135deg,#3b82f6,#2563eb)" },
-  collections:   { labelKey: "templates.cat.collection",  Icon: List,      gradient: "linear-gradient(135deg,#8b5cf6,#6366f1)" },
-  engagement:    { labelKey: "templates.cat.engagement",  Icon: Users,     gradient: "linear-gradient(135deg,#10b981,#059669)" },
-  promo:         { labelKey: "templates.cat.promo",       Icon: Tag,       gradient: "linear-gradient(135deg,#f59e0b,#ef4444)" },
-  other:         { labelKey: "templates.cat.other",       Icon: Layers,    gradient: "linear-gradient(135deg,#64748b,#475569)" },
+const CATEGORY_ICONS: Record<TemplateCategory, LucideIcon> = {
+  announcements: Megaphone,
+  collections:   List,
+  engagement:    Users,
+  promo:         Tag,
+  other:         Layers,
+};
+
+const CATEGORY_LABEL_KEYS: Record<TemplateCategory, TranslationKey> = {
+  announcements: "templates.cat.announce",
+  collections:   "templates.cat.collection",
+  engagement:    "templates.cat.engagement",
+  promo:         "templates.cat.promo",
+  other:         "templates.cat.other",
+};
+
+const CATEGORY_HUE_OFFSET: Record<Exclude<TemplateCategory, "other">, number> = {
+  announcements: 15,
+  collections:   57,
+  engagement:    -40,
+  promo:         -160,
 };
 
 const CATEGORY_ORDER: TemplateCategory[] = ["announcements", "collections", "engagement", "promo", "other"];
+
+function buildCategoryMeta(
+  accentColor: string,
+): Record<TemplateCategory, { labelKey: TranslationKey; Icon: LucideIcon; gradient: string }> {
+  const meta = {} as Record<TemplateCategory, { labelKey: TranslationKey; Icon: LucideIcon; gradient: string }>;
+  for (const cat of CATEGORY_ORDER) {
+    meta[cat] = {
+      labelKey: CATEGORY_LABEL_KEYS[cat],
+      Icon: CATEGORY_ICONS[cat],
+      gradient: cat === "other" ? accentGrayGradient(accentColor) : accentGradient(accentColor, CATEGORY_HUE_OFFSET[cat]),
+    };
+  }
+  return meta;
+}
 
 // ── Main component ────────────────────────────────────────────────────────────
 
@@ -36,6 +71,8 @@ export function TemplatesPage() {
   const [editingTemplate, setEditingTemplate] = useState<Template | null>(null);
   const setContentJson = useEditorStore((s) => s.setContentJson);
   useSettingsStore((s) => s.language);
+  const accentColor = useSettingsStore((s) => s.accentColor);
+  const CATEGORY_META = useMemo(() => buildCategoryMeta(accentColor), [accentColor]);
 
   // Pending optimistic deletes, keyed by template id — cleared by Undo.
   const pendingDeletesRef = useRef(new Map<string, ReturnType<typeof setTimeout>>());

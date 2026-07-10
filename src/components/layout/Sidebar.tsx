@@ -121,6 +121,10 @@ const widgetLabelStyle: React.CSSProperties = {
 };
 const widgetBigStyle: React.CSSProperties = {
   fontSize: 30, fontWeight: 700, letterSpacing: "-1px", color: "var(--text-primary)", lineHeight: 1,
+  // Tabular figures so the ticking clock's digits don't jitter in width
+  // second to second — also benefits the other widgets' plain counts.
+  fontFamily: '"Geist Mono Variable", "Segoe UI Variable", monospace',
+  fontVariantNumeric: "tabular-nums",
 };
 const widgetSecondaryStyle: React.CSSProperties = {
   fontSize: 12, color: "var(--text-primary)", fontWeight: 500,
@@ -249,7 +253,13 @@ function ClockWidget() {
       <p style={widgetLabelStyle}>{day}</p>
       <div style={{ display: "flex", alignItems: "baseline", gap: 3, marginBottom: 3 }}>
         <span style={widgetBigStyle}>{time}</span>
-        <span style={{ fontSize: 14, fontWeight: 600, color: "var(--text-secondary)", lineHeight: 1, minWidth: 18 }}>
+        <span
+          style={{
+            fontSize: 14, fontWeight: 600, color: "var(--text-secondary)", lineHeight: 1, minWidth: 18,
+            fontFamily: '"Geist Mono Variable", "Segoe UI Variable", monospace',
+            fontVariantNumeric: "tabular-nums",
+          }}
+        >
           {secs}
         </span>
       </div>

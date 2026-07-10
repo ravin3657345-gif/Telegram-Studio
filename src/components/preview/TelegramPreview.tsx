@@ -46,11 +46,11 @@ function previewStyles(tg: TGPalette): string { return `
   .tg-preview-text h2 { font-size: 16px; font-weight: 700; line-height: 1.25; margin: 2px 0 5px; color: ${tg.headingColor}; }
   .tg-preview-text h3 { font-size: 14.5px; font-weight: 600; line-height: 1.3; margin: 2px 0 4px; color: ${tg.headingColor}; }
   .tg-preview-text code {
-    font-family: 'JetBrains Mono', 'Fira Code', monospace; font-size: 0.83em;
+    font-family: 'Geist Mono Variable', 'JetBrains Mono', 'Fira Code', monospace; font-size: 0.83em;
     background: ${tg.codeBg}; padding: 1px 5px; border-radius: 4px;
   }
   .tg-preview-text pre {
-    font-family: 'JetBrains Mono', monospace; font-size: 0.82em;
+    font-family: 'Geist Mono Variable', 'JetBrains Mono', monospace; font-size: 0.82em;
     background: ${tg.codeBg}; padding: 8px 10px; border-radius: 6px;
     white-space: pre-wrap; word-break: break-all; margin: 4px 0;
   }

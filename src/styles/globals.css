@@ -1,3 +1,9 @@
+/* Self-hosted (bundled, not fetched from a CDN) — the previous Google Fonts
+   <link> in index.html silently never loaded in the packaged app, since the
+   CSP's font-src/style-src only allow 'self' (see project_csp_no_cdn memory:
+   same failure mode as the emoji-mart CDN bug). Both include Cyrillic. */
+@import "@fontsource-variable/geist";
+@import "@fontsource-variable/geist-mono";
 @import "./theme.css";
 @import "./tiptap.css";
 @tailwind base;
@@ -18,7 +24,7 @@ body,
 #root {
   height: 100%;
   overflow: hidden;
-  font-family: "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+  font-family: "Geist Variable", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
   font-size: 13px;
   line-height: 20px;
   -webkit-font-smoothing: antialiased;

@@ -119,7 +119,7 @@ function CodeView({ node, updateAttributes }: any) {
             margin: 0,
             padding: "14px 18px",
             overflowX: "auto",
-            fontFamily: '"JetBrains Mono", "Fira Code", monospace',
+            fontFamily: '"Geist Mono Variable", "JetBrains Mono", "Fira Code", monospace',
             fontSize: "12.5px",
             lineHeight: 1.7,
             whiteSpace: "pre",

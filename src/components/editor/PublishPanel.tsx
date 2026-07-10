@@ -770,7 +770,6 @@ export function PublishPanel({ draftId }: PublishPanelProps) {
         ) : (
           <>
             <Button variant="primary" size="sm" fullWidth disabled={!canPublish}
-              className="soft-ui-sm"
               leftIcon={status === "publishing" ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
               onClick={() => setShowPublishConfirm(true)}
             >

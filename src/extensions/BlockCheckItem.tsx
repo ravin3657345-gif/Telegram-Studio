@@ -30,7 +30,11 @@ function CheckItemView({ node, updateAttributes }: any) {
         style={{
           position: "absolute",
           left: 0,
-          top: 2,
+          // Centers on the *first* text line's box, not the block's overall
+          // (possibly wrapped/taller) height — line-height is a live CSS var
+          // (toggled by the "large editor font" setting, see settingsStore.ts),
+          // so a fixed top offset drifts out of alignment whenever it changes.
+          top: "calc((var(--editor-line-height, 26px) - 16px) / 2)",
           width: 16,
           height: 16,
           borderRadius: 4,

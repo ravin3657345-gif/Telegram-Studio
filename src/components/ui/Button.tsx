@@ -15,7 +15,10 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 const VARIANT_STYLES: Record<ButtonVariant, string> = {
-  primary:      "bg-[var(--accent)] hover:bg-[var(--accent-hover)] active:scale-[0.97] text-white shadow-sm",
+  // soft-ui-sm (theme-aware embossed shadow, see globals.css) instead of a
+  // flat shadow-sm — was previously only applied ad hoc to one button
+  // (PublishPanel's "Опубликовать"); now every primary CTA gets it.
+  primary:      "bg-[var(--accent)] hover:bg-[var(--accent-hover)] active:scale-[0.97] text-white soft-ui-sm",
   secondary:    "bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)] active:scale-[0.97] text-[var(--text-primary)] border border-[var(--border-default)]",
   ghost:        "bg-transparent hover:bg-[var(--bg-hover)] active:scale-[0.97] text-[var(--text-secondary)] hover:text-[var(--text-primary)]",
   danger:       "bg-transparent hover:bg-[var(--danger-subtle)] active:scale-[0.97] text-[var(--danger)] border border-[var(--danger)]",
