@@ -104,15 +104,25 @@ pub async fn upsert_draft(
             attachments::persist(&db, &state.app_dir, &id, atts)?;
         }
 
-        // Keep max DRAFT_MAX_COUNT drafts — templates (kind='template') don't
-        // count against this cap and are never evicted by it.
+        // Keep max DRAFT_MAX_COUNT *active* drafts. Templates (kind='template')
+        // never counted against this cap; scheduled/published rows are also
+        // excluded now — once a post is scheduled or published it's no longer
+        // a freeform scratch draft, and silently deleting it here would orphan
+        // the corresponding scheduled_posts/History record while giving the
+        // user no warning (published posts have History as their real archive,
+        // see project_drafts_templates_model memory).
         let count: i64 = db
-            .query_row("SELECT COUNT(*) FROM drafts WHERE kind = 'draft'", [], |row| row.get(0))
+            .query_row(
+                "SELECT COUNT(*) FROM drafts WHERE kind = 'draft' AND status = 'draft'",
+                [],
+                |row| row.get(0),
+            )
             .unwrap_or(0);
         if count > DRAFT_MAX_COUNT {
             db.execute(
-                "DELETE FROM drafts WHERE kind = 'draft' AND id NOT IN (
-                    SELECT id FROM drafts WHERE kind = 'draft' ORDER BY updated_at DESC LIMIT ?1
+                "DELETE FROM drafts WHERE kind = 'draft' AND status = 'draft' AND id NOT IN (
+                    SELECT id FROM drafts WHERE kind = 'draft' AND status = 'draft'
+                    ORDER BY updated_at DESC LIMIT ?1
                 )",
                 rusqlite::params![DRAFT_MAX_COUNT],
             ).ok();

@@ -52,3 +52,12 @@ export function filterAndSortDrafts<T extends FilterableDraft>(
 ): T[] {
   return sortDrafts(filterDrafts(drafts, allowedStatuses), sortBy);
 }
+
+// Matches on whichever title is actually shown in the list (postTitle first,
+// falling back to the secondary title) — same precedence used everywhere
+// else a draft's display name is derived.
+export function searchDrafts<T extends FilterableDraft>(drafts: T[], query: string): T[] {
+  const q = query.trim().toLowerCase();
+  if (!q) return drafts;
+  return drafts.filter((d) => (d.postTitle || d.title || "").toLowerCase().includes(q));
+}

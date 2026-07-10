@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { LayoutTemplate, Trash2, Plus, Megaphone, List, Users, Tag, Layers, Sparkles, type LucideIcon } from "lucide-react";
+import { LayoutTemplate, Trash2, Pencil, Plus, Megaphone, List, Users, Tag, Layers, Sparkles, type LucideIcon } from "lucide-react";
 import { TopBar } from "@/components/layout/TopBar";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Spinner } from "@/components/ui/Spinner";
 import { Button } from "@/components/ui/Button";
+import { SaveTemplateDialog } from "@/components/editor/SaveTemplateDialog";
 import { toast, TOAST_DURATIONS } from "@/store/uiStore";
-import { getTemplates, getTemplate, deleteTemplate, upsertDraft, recordTemplateUse } from "@/lib/tauriApi";
+import { getTemplates, getTemplate, saveTemplate, deleteTemplate, upsertDraft, recordTemplateUse } from "@/lib/tauriApi";
 import { useEditorStore } from "@/store/editorStore";
 import { t, ti, type TranslationKey } from "@/lib/i18n";
 import { useSettingsStore } from "@/store/settingsStore";
@@ -32,6 +33,7 @@ export function TemplatesPage() {
   const [templates, setTemplates] = useState<Template[]>([]);
   const [loading, setLoading]     = useState(true);
   const [activeFilter, setActiveFilter] = useState<TemplateCategory | "all">("all");
+  const [editingTemplate, setEditingTemplate] = useState<Template | null>(null);
   const setContentJson = useEditorStore((s) => s.setContentJson);
   useSettingsStore((s) => s.language);
 
@@ -64,6 +66,22 @@ export function TemplatesPage() {
       await recordTemplateUse(tmpl.id);
       navigate(`/editor/${draft.id}`);
       toast.success(ti("templates.opened", { name: tmpl.name }));
+    } catch {
+      toast.error(t("templates.useError"));
+    }
+  }
+
+  // Metadata-only update — omits `attachments` entirely so save_template's
+  // Rust side leaves the template's existing media untouched (it only
+  // persists attachments when the field is actually present in the payload).
+  async function handleEditConfirm(name: string, category: TemplateCategory) {
+    if (!editingTemplate) return;
+    const id = editingTemplate.id;
+    setEditingTemplate(null);
+    try {
+      const updated = await saveTemplate({ id, name, contentJson: editingTemplate.contentJson, category });
+      setTemplates((prev) => prev.map((tpl) => (tpl.id === id ? { ...tpl, ...updated, attachments: tpl.attachments } : tpl)));
+      toast.success(ti("templates.updated", { name }));
     } catch {
       toast.error(t("templates.useError"));
     }
@@ -248,6 +266,7 @@ export function TemplatesPage() {
                             gradient={meta.gradient}
                             Icon={meta.Icon}
                             onUse={() => handleUse(tmpl)}
+                            onEdit={(e) => { e.stopPropagation(); setEditingTemplate(tmpl); }}
                             onDelete={(e) => handleDelete(e, tmpl.id, tmpl.name)}
                           />
                         ))}
@@ -285,6 +304,15 @@ export function TemplatesPage() {
           </div>
         )}
       </div>
+
+      {editingTemplate && (
+        <SaveTemplateDialog
+          initialName={editingTemplate.name}
+          initialCategory={editingTemplate.category}
+          onConfirm={handleEditConfirm}
+          onClose={() => setEditingTemplate(null)}
+        />
+      )}
     </>
   );
 }
@@ -311,12 +339,13 @@ function FilterChip({ label, active, onClick }: { label: string; active: boolean
 // ── Template card ─────────────────────────────────────────────────────────────
 
 function TemplateCard({
-  template, gradient, Icon, onUse, onDelete,
+  template, gradient, Icon, onUse, onEdit, onDelete,
 }: {
   template: Template;
   gradient: string;
   Icon: LucideIcon;
   onUse: () => void;
+  onEdit: (e: React.MouseEvent) => void;
   onDelete: (e: React.MouseEvent) => void;
 }) {
   const [hovered, setHovered] = useState(false);
@@ -362,18 +391,30 @@ function TemplateCard({
         </div>
       </div>
 
-      {/* Delete on hover */}
+      {/* Edit + delete on hover */}
       {hovered && (
-        <button
-          onClick={onDelete}
-          className="absolute top-2 right-2 flex items-center justify-center w-7 h-7 rounded-md transition-colors"
-          style={{ backgroundColor: "rgba(0,0,0,0.35)", color: "rgba(255,255,255,0.8)" }}
-          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "rgba(220,38,38,0.7)")}
-          onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "rgba(0,0,0,0.35)")}
-          title={t("templates.delete")}
-        >
-          <Trash2 size={13} />
-        </button>
+        <div className="absolute top-2 right-2 flex items-center gap-1.5">
+          <button
+            onClick={onEdit}
+            className="flex items-center justify-center w-7 h-7 rounded-md transition-colors"
+            style={{ backgroundColor: "rgba(0,0,0,0.35)", color: "rgba(255,255,255,0.8)" }}
+            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "rgba(0,0,0,0.55)")}
+            onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "rgba(0,0,0,0.35)")}
+            title={t("templates.edit")}
+          >
+            <Pencil size={12} />
+          </button>
+          <button
+            onClick={onDelete}
+            className="flex items-center justify-center w-7 h-7 rounded-md transition-colors"
+            style={{ backgroundColor: "rgba(0,0,0,0.35)", color: "rgba(255,255,255,0.8)" }}
+            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "rgba(220,38,38,0.7)")}
+            onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "rgba(0,0,0,0.35)")}
+            title={t("templates.delete")}
+          >
+            <Trash2 size={13} />
+          </button>
+        </div>
       )}
     </div>
   );

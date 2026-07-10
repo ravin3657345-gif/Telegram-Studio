@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { filterDrafts, sortDrafts, filterAndSortDrafts } from "./draftsFilter";
+import { filterDrafts, sortDrafts, filterAndSortDrafts, searchDrafts } from "./draftsFilter";
 
 const now = Date.now();
 const iso = (msAgo: number) => new Date(now - msAgo).toISOString();
@@ -69,6 +69,32 @@ describe("sortDrafts", () => {
     const original = [...drafts];
     sortDrafts(drafts, "updated");
     expect(drafts).toEqual(original);
+  });
+});
+
+describe("searchDrafts", () => {
+  const drafts = [
+    { id: "1", postTitle: "Как перестать терять подписчиков", updatedAt: iso(0), status: "draft" as const },
+    { id: "2", title: "Скидка выходного дня", updatedAt: iso(0), status: "draft" as const },
+    { id: "3", postTitle: "Опрос про контент-план", updatedAt: iso(0), status: "draft" as const },
+  ];
+
+  it("matches postTitle case-insensitively", () => {
+    expect(searchDrafts(drafts, "подписчиков").map((d) => d.id)).toEqual(["1"]);
+    expect(searchDrafts(drafts, "ПОДПИСЧИКОВ").map((d) => d.id)).toEqual(["1"]);
+  });
+
+  it("falls back to title when postTitle is absent", () => {
+    expect(searchDrafts(drafts, "скидка").map((d) => d.id)).toEqual(["2"]);
+  });
+
+  it("returns everything for an empty/whitespace query", () => {
+    expect(searchDrafts(drafts, "")).toHaveLength(3);
+    expect(searchDrafts(drafts, "   ")).toHaveLength(3);
+  });
+
+  it("returns nothing when no title matches", () => {
+    expect(searchDrafts(drafts, "zzz")).toEqual([]);
   });
 });
 

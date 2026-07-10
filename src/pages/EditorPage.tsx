@@ -38,9 +38,8 @@ export function EditorPage() {
   const [showTemplateDialog, setShowTemplateDialog] = useState(false);
   const [mobileTab, setMobileTab] = useState<MobileTab>("editor");
 
-  async function handleSaveAsTemplate(category: TemplateCategory) {
+  async function handleSaveAsTemplate(name: string, category: TemplateCategory) {
     setShowTemplateDialog(false);
-    const name = draftTitle.trim() || t("editor.untitled");
     try {
       const attachments = await collectInlineAttachments(contentJson);
       await saveTemplate({ name, contentJson, category, attachments });
@@ -168,6 +167,7 @@ export function EditorPage() {
 
       {showTemplateDialog && (
         <SaveTemplateDialog
+          initialName={draftTitle}
           onConfirm={handleSaveAsTemplate}
           onClose={() => setShowTemplateDialog(false)}
         />

@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  Plus, Trash2, LayoutList, Kanban, Calendar, SlidersHorizontal, ArrowUpDown, FileText,
-  Check, ChevronLeft, ChevronRight,
+  Plus, Trash2, SlidersHorizontal, ArrowUpDown, FileText, Check, Search, X,
 } from "lucide-react";
 import { TopBar } from "@/components/layout/TopBar";
 import { Button } from "@/components/ui/Button";
@@ -15,14 +14,11 @@ import { t, ti, type TranslationKey } from "@/lib/i18n";
 import { useSettingsStore } from "@/store/settingsStore";
 import { Files } from "lucide-react";
 import {
-  type DraftStatus, type DraftSortKey, filterAndSortDrafts,
+  type DraftStatus, type DraftSortKey, filterAndSortDrafts, searchDrafts,
 } from "@/lib/draftsFilter";
-import { WEEKDAY_BASE_DATES, buildCalendarGrid, sameDay } from "@/lib/calendarGrid";
 import { DRAFT_MAX_COUNT } from "@/lib/constants";
 
 const DRAFT_LIMIT = DRAFT_MAX_COUNT;
-
-type ViewMode = "table" | "board" | "calendar";
 
 const ALL_STATUSES: DraftStatus[] = ["draft", "scheduled", "published"];
 
@@ -70,12 +66,12 @@ export function DraftsPage() {
   // Pending optimistic deletes, keyed by draft id — cleared by Undo.
   const pendingDeletesRef = useRef(new Map<string, ReturnType<typeof setTimeout>>());
 
-  const [view, setView] = useState<ViewMode>("table");
   const count = drafts.length;
   const nearLimit = count >= DRAFT_LIMIT - 2;
 
   const [statusFilter, setStatusFilter] = useState<Set<DraftStatus>>(new Set(ALL_STATUSES));
   const [sortBy, setSortBy] = useState<DraftSortKey>("updated");
+  const [search, setSearch] = useState("");
   const [openMenu, setOpenMenu] = useState<"filters" | "sort" | null>(null);
   const toolbarRef = useRef<HTMLDivElement>(null);
 
@@ -88,8 +84,8 @@ export function DraftsPage() {
   }, []);
 
   const visibleDrafts = useMemo(
-    () => filterAndSortDrafts(drafts, statusFilter, sortBy),
-    [drafts, statusFilter, sortBy],
+    () => searchDrafts(filterAndSortDrafts(drafts, statusFilter, sortBy), search),
+    [drafts, statusFilter, sortBy, search],
   );
 
   function toggleStatus(s: DraftStatus) {
@@ -173,31 +169,39 @@ export function DraftsPage() {
               </div>
             </div>
 
-            {/* ── Tabs + toolbar ─────────────────────────────────────────── */}
+            {/* ── Toolbar ────────────────────────────────────────────────── */}
             <div
               className="flex items-center justify-between px-6 border-b"
               style={{ borderColor: "var(--border-subtle)" }}
             >
-              {/* View tabs */}
-              <div className="flex items-center gap-0">
-                {([
-                  { mode: "table" as const, icon: <LayoutList size={13} />, label: t("drafts.table") },
-                  { mode: "board" as const, icon: <Kanban size={13} />,     label: t("drafts.board") },
-                  { mode: "calendar" as const, icon: <Calendar size={13} />, label: t("drafts.calendar") },
-                ] as const).map(({ mode, icon, label }) => (
+              {/* Search */}
+              <div className="relative flex items-center py-1.5" style={{ width: 220 }}>
+                <Search size={13} style={{ position: "absolute", left: 9, color: "var(--text-muted)", pointerEvents: "none" }} />
+                <input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder={t("drafts.search")}
+                  className="w-full text-xs"
+                  style={{
+                    height: 28,
+                    paddingLeft: 28,
+                    paddingRight: search ? 24 : 8,
+                    borderRadius: 6,
+                    border: "1px solid transparent",
+                    backgroundColor: "var(--bg-hover)",
+                    color: "var(--text-primary)",
+                  }}
+                />
+                {search && (
                   <button
-                    key={mode}
-                    onClick={() => setView(mode)}
-                    className="flex items-center gap-1.5 px-3 h-9 text-xs font-medium transition-colors"
-                    style={{
-                      color: view === mode ? "var(--text-primary)" : "var(--text-muted)",
-                      borderBottom: view === mode ? "2px solid var(--accent)" : "2px solid transparent",
-                    }}
+                    onClick={() => setSearch("")}
+                    className="flex items-center justify-center rounded"
+                    style={{ position: "absolute", right: 6, width: 16, height: 16, color: "var(--text-muted)" }}
+                    title={t("drafts.searchClear")}
                   >
-                    {icon}
-                    {label}
+                    <X size={12} />
                   </button>
-                ))}
+                )}
               </div>
 
               {/* Toolbar */}
@@ -318,15 +322,14 @@ export function DraftsPage() {
                   icon={SlidersHorizontal}
                   title={t("drafts.filters.emptyTitle")}
                   description=""
-                  action={{ label: t("drafts.filters.emptyReset"), onClick: () => setStatusFilter(new Set(ALL_STATUSES)) }}
+                  action={{
+                    label: t("drafts.filters.emptyReset"),
+                    onClick: () => { setStatusFilter(new Set(ALL_STATUSES)); setSearch(""); },
+                  }}
                 />
               </div>
-            ) : view === "table" ? (
-              <DraftsTable drafts={visibleDrafts} onOpen={(id) => navigate(`/editor/${id}`)} onDelete={handleDelete} />
-            ) : view === "board" ? (
-              <DraftsBoard drafts={visibleDrafts} onOpen={(id) => navigate(`/editor/${id}`)} onDelete={handleDelete} />
             ) : (
-              <DraftsCalendar drafts={visibleDrafts} onOpen={(id) => navigate(`/editor/${id}`)} />
+              <DraftsTable drafts={visibleDrafts} onOpen={(id) => navigate(`/editor/${id}`)} onDelete={handleDelete} />
             )}
           </div>
         )}
@@ -481,241 +484,6 @@ function DraftTableRow({
           <Trash2 size={12} />
         </button>
       )}
-    </div>
-  );
-}
-
-// ── Board view (kanban columns) ───────────────────────────────────────────────
-
-function DraftsBoard({
-  drafts,
-  onOpen,
-  onDelete,
-}: {
-  drafts: DraftRow[];
-  onOpen: (id: string) => void;
-  onDelete: (e: React.MouseEvent, id: string) => void;
-}) {
-  useSettingsStore((s) => s.language);
-
-  const grouped = {
-    draft:     drafts.filter((d) => d.status === "draft"),
-    scheduled: drafts.filter((d) => d.status === "scheduled"),
-    published: drafts.filter((d) => d.status === "published"),
-  };
-
-  const columns: Array<{ key: DraftStatus }> = [
-    { key: "draft" },
-    { key: "scheduled" },
-    { key: "published" },
-  ];
-
-  return (
-    <div className="flex gap-4 px-6 pt-4 pb-6 overflow-x-auto" style={{ minHeight: 300 }}>
-      {columns.map(({ key }) => (
-        <div key={key} style={{ minWidth: 240, flex: "0 0 240px" }}>
-          <div className="flex items-center gap-2 mb-3">
-            <StatusPill status={key} />
-            <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{grouped[key].length}</span>
-          </div>
-          <div className="flex flex-col gap-2">
-            {grouped[key].map((d) => {
-              const title = d.postTitle || d.title || t("drafts.untitled");
-              return (
-                <div
-                  key={d.id}
-                  className="rounded-lg border px-3 py-2.5 cursor-pointer relative group"
-                  style={{
-                    backgroundColor: "var(--bg-surface)",
-                    borderColor: "var(--border-subtle)",
-                  }}
-                  onClick={() => onOpen(d.id)}
-                  onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.borderColor = "var(--border-default)")}
-                  onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.borderColor = "var(--border-subtle)")}
-                >
-                  <p className="text-sm truncate" style={{ color: "var(--text-primary)" }}>{title}</p>
-                  <button
-                    onClick={(e) => onDelete(e, d.id)}
-                    className="absolute top-2 right-2 hidden group-hover:flex items-center justify-center w-5 h-5 rounded"
-                    style={{ backgroundColor: "var(--bg-elevated)", color: "var(--text-muted)" }}
-                    onMouseEnter={(ev) => (ev.currentTarget.style.color = "var(--danger)")}
-                    onMouseLeave={(ev) => (ev.currentTarget.style.color = "var(--text-muted)")}
-                  >
-                    <Trash2 size={11} />
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-// ── Calendar view ──────────────────────────────────────────────────────────────
-// Places each visible draft on the day it's scheduled for, or (if unscheduled)
-// the day it was last updated — so every draft shows up somewhere, unlike
-// SchedulePage's calendar which only ever shows actually-scheduled posts.
-
-function draftCalendarDate(d: DraftRow): Date {
-  return new Date(d.scheduledAt || d.updatedAt);
-}
-
-function DraftsCalendar({
-  drafts,
-  onOpen,
-}: {
-  drafts: DraftRow[];
-  onOpen: (id: string) => void;
-}) {
-  const language = useSettingsStore((s) => s.language) ?? "ru";
-  const today = new Date();
-  const [viewYear, setViewYear] = useState(today.getFullYear());
-  const [viewMonth, setViewMonth] = useState(today.getMonth());
-
-  const grid = buildCalendarGrid(viewYear, viewMonth);
-
-  function prevMonth() {
-    if (viewMonth === 0) { setViewYear((y) => y - 1); setViewMonth(11); }
-    else setViewMonth((m) => m - 1);
-  }
-  function nextMonth() {
-    if (viewMonth === 11) { setViewYear((y) => y + 1); setViewMonth(0); }
-    else setViewMonth((m) => m + 1);
-  }
-  function goToday() {
-    setViewYear(today.getFullYear());
-    setViewMonth(today.getMonth());
-  }
-
-  function draftsForDay(day: Date): DraftRow[] {
-    return drafts.filter((d) => sameDay(draftCalendarDate(d), day));
-  }
-
-  return (
-    <div className="px-6 pt-4 pb-6">
-      {/* Month header */}
-      <div className="flex items-center gap-3 mb-4">
-        <h2 className="text-base font-semibold" style={{ color: "var(--text-primary)" }}>
-          {new Date(viewYear, viewMonth, 1)
-            .toLocaleDateString(language, { month: "long", year: "numeric" })
-            .replace(/^./, (c) => c.toUpperCase())}
-        </h2>
-        <div className="flex items-center gap-1">
-          <button
-            onClick={prevMonth}
-            title={t("drafts.calendar.prevMonth")}
-            className="w-7 h-7 flex items-center justify-center rounded-md transition-colors"
-            style={{ color: "var(--text-secondary)" }}
-            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "var(--bg-hover)")}
-            onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
-          >
-            <ChevronLeft size={16} />
-          </button>
-          <button
-            onClick={nextMonth}
-            title={t("drafts.calendar.nextMonth")}
-            className="w-7 h-7 flex items-center justify-center rounded-md transition-colors"
-            style={{ color: "var(--text-secondary)" }}
-            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "var(--bg-hover)")}
-            onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
-          >
-            <ChevronRight size={16} />
-          </button>
-        </div>
-        <button
-          onClick={goToday}
-          className="px-2.5 h-7 rounded-md text-xs font-medium transition-colors border"
-          style={{ color: "var(--text-secondary)", backgroundColor: "var(--bg-surface)", borderColor: "var(--border-default)" }}
-          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "var(--bg-hover)")}
-          onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "var(--bg-surface)")}
-        >
-          {t("drafts.calendar.today")}
-        </button>
-      </div>
-
-      {/* Grid */}
-      <div className="rounded-xl border overflow-hidden" style={{ borderColor: "var(--border-subtle)" }}>
-        <div
-          className="grid"
-          style={{ gridTemplateColumns: "repeat(7, 1fr)", borderBottom: "1px solid var(--border-subtle)", backgroundColor: "var(--bg-elevated)" }}
-        >
-          {WEEKDAY_BASE_DATES.map((d, i) => (
-            <div
-              key={i}
-              className="text-center py-2"
-              style={{ fontSize: 11, fontWeight: 600, color: i >= 5 ? "#b08a8a" : "var(--text-muted)", letterSpacing: "0.03em" }}
-            >
-              {d.toLocaleDateString(language, { weekday: "short" }).replace(/\.$/, "")}
-            </div>
-          ))}
-        </div>
-
-        <div className="grid" style={{ gridTemplateColumns: "repeat(7, 1fr)" }}>
-          {grid.map((day, idx) => {
-            const isToday = day ? sameDay(day, today) : false;
-            const dayDrafts = day ? draftsForDay(day) : [];
-            const colIndex = idx % 7;
-
-            return (
-              <div
-                key={idx}
-                style={{
-                  minHeight: 92,
-                  borderRight: colIndex < 6 ? "1px solid var(--border-subtle)" : "none",
-                  borderBottom: idx < grid.length - 7 ? "1px solid var(--border-subtle)" : "none",
-                  backgroundColor: day ? "var(--bg-surface)" : "var(--bg-elevated)",
-                  padding: "6px 6px 4px",
-                }}
-              >
-                {day && (
-                  <>
-                    <div className="flex justify-end mb-1">
-                      <span
-                        className="w-6 h-6 flex items-center justify-center rounded-full text-xs font-medium"
-                        style={{
-                          color: isToday ? "#fff" : colIndex >= 5 ? "#b08a8a" : "var(--text-secondary)",
-                          backgroundColor: isToday ? "var(--accent)" : "transparent",
-                        }}
-                      >
-                        {day.getDate()}
-                      </span>
-                    </div>
-                    <div className="flex flex-col gap-0.5">
-                      {dayDrafts.slice(0, 3).map((d) => {
-                        const status = d.status;
-                        const cfg = {
-                          draft:     { color: "var(--status-draft-color)",     bg: "var(--status-draft-bg)" },
-                          scheduled: { color: "var(--status-sched-color)",     bg: "var(--status-sched-bg)" },
-                          published: { color: "var(--status-published-color)", bg: "var(--status-published-bg)" },
-                        }[status];
-                        const title = d.postTitle || d.title || t("drafts.untitled");
-                        return (
-                          <div
-                            key={d.id}
-                            onClick={() => onOpen(d.id)}
-                            className="rounded px-1.5 cursor-pointer truncate"
-                            style={{ height: 18, lineHeight: "18px", fontSize: 10, backgroundColor: cfg.bg, color: cfg.color }}
-                            title={title}
-                          >
-                            {title}
-                          </div>
-                        );
-                      })}
-                      {dayDrafts.length > 3 && (
-                        <div style={{ fontSize: 10, color: "var(--text-muted)", paddingLeft: 2 }}>
-                          +{dayDrafts.length - 3}
-                        </div>
-                      )}
-                    </div>
-                  </>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      </div>
     </div>
   );
 }

@@ -1,11 +1,17 @@
+import { useState } from "react";
 import { X, Megaphone, List, Users, Tag, type LucideIcon } from "lucide-react";
 import type { TemplateCategory } from "@/types/template";
 import { t } from "@/lib/i18n";
 import { useSettingsStore } from "@/store/settingsStore";
 
 interface Props {
-  onConfirm: (category: TemplateCategory) => void;
+  onConfirm: (name: string, category: TemplateCategory) => void;
   onClose: () => void;
+  /** Pre-fills the name field — the post's/draft's title when creating,
+   *  the existing template's name when editing. */
+  initialName?: string;
+  /** Pre-selects a category — used when editing an existing template. */
+  initialCategory?: TemplateCategory;
 }
 
 function getCategories(): { id: TemplateCategory; label: string; description: string; Icon: LucideIcon }[] {
@@ -17,9 +23,10 @@ function getCategories(): { id: TemplateCategory; label: string; description: st
   ];
 }
 
-export function SaveTemplateDialog({ onConfirm, onClose }: Props) {
+export function SaveTemplateDialog({ onConfirm, onClose, initialName, initialCategory }: Props) {
   useSettingsStore((s) => s.language);
   const categories = getCategories();
+  const [name, setName] = useState(initialName ?? "");
 
   return (
     <div
@@ -51,24 +58,49 @@ export function SaveTemplateDialog({ onConfirm, onClose }: Props) {
           </button>
         </div>
 
+        <div style={{ padding: "0 16px 14px" }}>
+          <label style={{ display: "block", fontSize: 11, fontWeight: 600, color: "var(--text-muted)", marginBottom: 6, letterSpacing: "0.03em", textTransform: "uppercase" }}>
+            {t("template.nameLabel")}
+          </label>
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder={t("drafts.untitled")}
+            autoFocus
+            style={{
+              width: "100%", boxSizing: "border-box",
+              height: 36, borderRadius: 8, padding: "0 10px",
+              border: "1.5px solid var(--border-default)",
+              backgroundColor: "var(--bg-elevated)",
+              color: "var(--text-primary)",
+              fontSize: 13,
+              outline: "none",
+            }}
+            onFocus={(e) => { e.currentTarget.style.borderColor = "var(--accent)"; }}
+            onBlur={(e) => { e.currentTarget.style.borderColor = "var(--border-default)"; }}
+          />
+        </div>
+
         <p style={{ padding: "0 16px 12px", fontSize: 12, color: "var(--text-muted)" }}>
           {t("template.chooseCategory")}
         </p>
 
         {/* Category cards */}
         <div style={{ display: "flex", flexDirection: "column", gap: 6, padding: "0 12px 16px" }}>
-          {categories.map(({ id, label, description, Icon }) => (
+          {categories.map(({ id, label, description, Icon }) => {
+            const selected = id === initialCategory;
+            return (
             <button
               key={id}
-              onClick={() => onConfirm(id)}
+              onClick={() => onConfirm(name.trim() || t("drafts.untitled"), id)}
               style={{
                 display: "flex",
                 alignItems: "center",
                 gap: 12,
                 padding: "10px 14px",
                 borderRadius: 10,
-                border: "1.5px solid var(--border-default)",
-                backgroundColor: "var(--bg-elevated)",
+                border: `1.5px solid ${selected ? "var(--accent)" : "var(--border-default)"}`,
+                backgroundColor: selected ? "rgba(42,171,238,0.07)" : "var(--bg-elevated)",
                 cursor: "pointer",
                 textAlign: "left",
                 transition: "border-color 0.15s, background-color 0.15s",
@@ -78,8 +110,8 @@ export function SaveTemplateDialog({ onConfirm, onClose }: Props) {
                 e.currentTarget.style.backgroundColor = "rgba(42,171,238,0.07)";
               }}
               onMouseLeave={e => {
-                e.currentTarget.style.borderColor = "var(--border-default)";
-                e.currentTarget.style.backgroundColor = "var(--bg-elevated)";
+                e.currentTarget.style.borderColor = selected ? "var(--accent)" : "var(--border-default)";
+                e.currentTarget.style.backgroundColor = selected ? "rgba(42,171,238,0.07)" : "var(--bg-elevated)";
               }}
             >
               <div
@@ -100,7 +132,8 @@ export function SaveTemplateDialog({ onConfirm, onClose }: Props) {
                 </div>
               </div>
             </button>
-          ))}
+            );
+          })}
         </div>
       </div>
     </div>
