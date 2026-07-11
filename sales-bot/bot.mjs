@@ -128,14 +128,35 @@ async function api(method, body) {
   return data;
 }
 
+// После первой реальной загрузки Telegram отдаёт file_id, которым можно
+// переслать тот же файл в любой чат мгновенно — без повторной загрузки
+// байтов с диска. Установщик каждой новой версии лежит под новым именем
+// (номер версии в имени файла), так что кэш по filePath сам инвалидируется
+// при выходе новой версии — не нужно отдельно чистить его руками.
+const documentFileIdCache = new Map();
+
 async function sendDocument(chatId, filePath, caption) {
+  const cachedFileId = documentFileIdCache.get(filePath);
+  if (cachedFileId) {
+    const data = await api("sendDocument", { chat_id: chatId, document: cachedFileId, caption });
+    if (data.ok) return data;
+    // file_id теоретически может протухнуть (например, файл почистили на
+    // стороне Telegram) — не должно случаться на практике, но на всякий
+    // случай просто перезаливаем заново, а не проваливаем всю отправку.
+    logError("Кэшированный file_id не сработал, перезаливаю файл:", JSON.stringify(data));
+    documentFileIdCache.delete(filePath);
+  }
   const form = new FormData();
   form.append("chat_id", String(chatId));
   if (caption) form.append("caption", caption);
   form.append("document", new Blob([fs.readFileSync(filePath)]), path.basename(filePath));
   const res = await fetch(`${API}/sendDocument`, { method: "POST", body: form });
   const data = await res.json();
-  if (!data.ok) logError("sendDocument failed:", JSON.stringify(data));
+  if (!data.ok) {
+    logError("sendDocument failed:", JSON.stringify(data));
+  } else if (data.result?.document?.file_id) {
+    documentFileIdCache.set(filePath, data.result.document.file_id);
+  }
   return data;
 }
 
