@@ -167,7 +167,7 @@ async function uploadToUguu(filePath) {
   return url;
 }
 
-async function uploadPublicImage(filePath) {
+async function uploadPublicFile(filePath) {
   try {
     return await uploadToLitterbox(filePath);
   } catch (err) {
@@ -336,9 +336,12 @@ async function handleDemo(chatId) {
   log(`Демо Rich-режима для chat ${chatId}`);
   await api("sendMessage", { chat_id: chatId, text: "Собираю демо-пост… это займёт пару секунд." });
   try {
-    const [img1, img2] = await Promise.all([
-      uploadPublicImage(path.join(SCREENSHOTS_DIR, "01_editor.png")),
-      uploadPublicImage(path.join(SCREENSHOTS_DIR, "04_rich_mode.png")),
+    const [img1, img2, img3, img4, audioUrl] = await Promise.all([
+      uploadPublicFile(path.join(SCREENSHOTS_DIR, "01_editor.png")),
+      uploadPublicFile(path.join(SCREENSHOTS_DIR, "04_rich_mode.png")),
+      uploadPublicFile(path.join(SCREENSHOTS_DIR, "05_rich_publish.png")),
+      uploadPublicFile(path.join(SCREENSHOTS_DIR, "07_rich_with_image.png")),
+      uploadPublicFile(path.join(SCREENSHOTS_DIR, "demo_audio.mp3")),
     ]);
 
     const html =
@@ -351,7 +354,12 @@ async function handleDemo(chatId) {
       "<ol><li>Открыть редактор</li><li>Собрать пост из блоков</li><li>Нажать «Опубликовать»</li></ol>" +
       "<pre><code>console.log(\"Привет, Telegram!\");</code></pre>" +
       "<details><summary>Раскрывающийся текст — нажмите, чтобы посмотреть</summary>Удобно для пояснений, которые не нужно показывать сразу всем.</details>" +
+      "<p>Фото собираются в коллаж:</p>" +
       `<tg-collage><img src="${img1}"/><img src="${img2}"/></tg-collage>` +
+      "<p>Или в слайд-шоу, если снимков много и их удобнее пролистывать:</p>" +
+      `<tg-slideshow><img src="${img3}"/><img src="${img4}"/></tg-slideshow>` +
+      "<p>Аудио — отдельным плеером прямо в посте:</p>" +
+      `<audio src="${audioUrl}"></audio>` +
       "<table bordered><tr><th>Блок</th><th>Поддержка</th></tr><tr><td>Фото, видео, аудио, коллажи, слайд-шоу</td><td>Да</td></tr><tr><td>Таблицы, чек-листы, код, раскрывающийся текст</td><td>Да</td></tr><tr><td>Карты, формулы</td><td>Пока нет</td></tr></table>" +
       "<blockquote>💡 Всё это собирается визуально, перетаскиванием блоков — редактор сам превращает их в нужную разметку.</blockquote>" +
       '<p>Подробнее о формате — <a href="https://core.telegram.org/bots/api-changelog">в официальном changelog Bot API</a>.</p>';
