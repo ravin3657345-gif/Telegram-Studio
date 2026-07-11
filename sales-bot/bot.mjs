@@ -139,6 +139,43 @@ async function sendDocument(chatId, filePath, caption) {
   return data;
 }
 
+// Публичный хостинг для картинок Rich-сообщения — sendRichMessage не
+// принимает attach://, только настоящие HTTP(S) URL (Telegram сам
+// перехостит картинку на свой CDN сразу при отправке). Тот же сервис и те
+// же параметры запроса, что и в src-tauri/src/hosting.rs у самого
+// приложения — litterbox.catbox.moe первым, uguu.se как запасной вариант.
+async function uploadToLitterbox(filePath) {
+  const form = new FormData();
+  form.append("reqtype", "fileupload");
+  form.append("time", "1h");
+  form.append("fileToUpload", new Blob([fs.readFileSync(filePath)]), path.basename(filePath));
+  const res = await fetch("https://litterbox.catbox.moe/resources/internals/api.php", { method: "POST", body: form });
+  const url = (await res.text()).trim();
+  if (!res.ok || !/^https:\/\/([a-z0-9-]+\.)*catbox\.moe\//.test(url)) {
+    throw new Error(`litterbox вернул неожиданный ответ: ${url}`);
+  }
+  return url;
+}
+
+async function uploadToUguu(filePath) {
+  const form = new FormData();
+  form.append("files[]", new Blob([fs.readFileSync(filePath)]), path.basename(filePath));
+  const res = await fetch("https://uguu.se/upload", { method: "POST", body: form });
+  const data = await res.json();
+  const url = data?.files?.[0]?.url;
+  if (!res.ok || !url) throw new Error(`uguu.se вернул неожиданный ответ: ${JSON.stringify(data)}`);
+  return url;
+}
+
+async function uploadPublicImage(filePath) {
+  try {
+    return await uploadToLitterbox(filePath);
+  } catch (err) {
+    logError("litterbox не сработал, пробую uguu.se:", err.message);
+    return await uploadToUguu(filePath);
+  }
+}
+
 // Альбом (swipeable) из нескольких локальных фото — только первая подпись
 // становится подписью всего альбома, это ограничение самого Bot API.
 async function sendMediaGroup(chatId, items) {
@@ -202,6 +239,7 @@ const MAIN_KEYBOARD = {
   inline_keyboard: [
     [{ text: "📸 Скриншоты", callback_data: "screenshots" }, { text: "💳 Купить", callback_data: "buy" }],
     [{ text: "❓ Как это работает", callback_data: "help" }, { text: "🔑 Мой ключ", callback_data: "mykey" }],
+    [{ text: "🎬 Демо Rich-режима", callback_data: "demo" }],
   ],
 };
 
@@ -289,6 +327,43 @@ async function handleMyKey(chatId, userId) {
   await api("sendMessage", { chat_id: chatId, text });
 }
 
+// Живой пример Rich-сообщения (Bot API 10.1) прямо в чате — те же теги,
+// что генерирует src/lib/richMessageConverter.ts из блоков редактора,
+// собранные вручную под один демонстрационный пост. Карты и формулы в
+// список не входят: приложение пока не умеет такие блоки (см. Advanced —
+// табличка внутри демо сама об этом честно говорит).
+async function handleDemo(chatId) {
+  log(`Демо Rich-режима для chat ${chatId}`);
+  await api("sendMessage", { chat_id: chatId, text: "Собираю демо-пост… это займёт пару секунд." });
+  try {
+    const [img1, img2] = await Promise.all([
+      uploadPublicImage(path.join(SCREENSHOTS_DIR, "01_editor.png")),
+      uploadPublicImage(path.join(SCREENSHOTS_DIR, "04_rich_mode.png")),
+    ]);
+
+    const html =
+      "<h2>Демо Rich-режима</h2>" +
+      "<p>Так выглядит пост, собранный в Telegram Studio из блоков — без единой строчки HTML или Markdown.</p>" +
+      "<p><b>жирный</b> <i>курсив</i> <u>подчёркнутый</u> <s>зачёркнутый</s> <tg-spoiler>спойлер</tg-spoiler> <mark>маркер</mark> и <code>инлайн-код</code></p>" +
+      "<blockquote>Обычная цитата — для пояснений и врезок.</blockquote>" +
+      "<blockquote>Цитата с <b>форматированием</b> внутри<blockquote>а внутри неё — ещё одна, вложенная</blockquote></blockquote>" +
+      "<ul><li><input type=\"checkbox\" checked>Собрать пост в редакторе</li><li><input type=\"checkbox\">Опубликовать в канал</li></ul>" +
+      "<ol><li>Открыть редактор</li><li>Собрать пост из блоков</li><li>Нажать «Опубликовать»</li></ol>" +
+      "<pre><code>console.log(\"Привет, Telegram!\");</code></pre>" +
+      "<details><summary>Раскрывающийся текст — нажмите, чтобы посмотреть</summary>Удобно для пояснений, которые не нужно показывать сразу всем.</details>" +
+      `<tg-collage><img src="${img1}"/><img src="${img2}"/></tg-collage>` +
+      "<table bordered><tr><th>Блок</th><th>Поддержка</th></tr><tr><td>Фото, видео, аудио, коллажи, слайд-шоу</td><td>Да</td></tr><tr><td>Таблицы, чек-листы, код, раскрывающийся текст</td><td>Да</td></tr><tr><td>Карты, формулы</td><td>Пока нет</td></tr></table>" +
+      "<blockquote>💡 Всё это собирается визуально, перетаскиванием блоков — редактор сам превращает их в нужную разметку.</blockquote>" +
+      '<p>Подробнее о формате — <a href="https://core.telegram.org/bots/api-changelog">в официальном changelog Bot API</a>.</p>';
+
+    await api("sendRichMessage", { chat_id: chatId, rich_message: { html } });
+    await api("sendMessage", { chat_id: chatId, text: "Это был реальный Rich-пост. Хотите собрать свой?", reply_markup: BUY_KEYBOARD });
+  } catch (err) {
+    logError("Демо Rich-режима не удалось:", err?.stack || err);
+    await api("sendMessage", { chat_id: chatId, text: `Не получилось собрать демо — попробуйте ещё раз чуть позже, или напишите ${SUPPORT_CONTACT}.` });
+  }
+}
+
 async function handleHelp(chatId) {
   log(`/help от chat ${chatId}`);
   await api("sendMessage", {
@@ -301,8 +376,9 @@ async function handleHelp(chatId) {
       "Полезно знать:\n" +
       "• Ключ не привязан к конкретному устройству — при переустановке Windows просто введите его снова.\n" +
       "• Потеряли ключ? Пришлю его снова: /mykey или кнопка «🔑 Мой ключ».\n" +
+      "• Хотите увидеть Rich-режим в деле — не на скриншоте, а живым сообщением? /demo.\n" +
       `• Если что-то пошло не так — напишите ${SUPPORT_CONTACT} напрямую.\n\n` +
-      "Команды: /start — об приложении, /buy — купить лицензию, /mykey — прислать мой ключ ещё раз. Кнопка «📸 Скриншоты» в /start покажет интерфейс.",
+      "Команды: /start — об приложении, /buy — купить лицензию, /mykey — прислать мой ключ ещё раз, /demo — живой пример Rich-поста. Кнопка «📸 Скриншоты» в /start покажет интерфейс.",
   });
 }
 
@@ -395,6 +471,7 @@ async function handleCallbackQuery(query) {
   if (query.data === "screenshots") return handleScreenshots(chatId);
   if (query.data === "help") return handleHelp(chatId);
   if (query.data === "mykey") return handleMyKey(chatId, query.from.id);
+  if (query.data === "demo") return handleDemo(chatId);
 }
 
 function describeUpdate(update) {
@@ -411,6 +488,7 @@ async function handleUpdate(update) {
   if (update.message?.text === "/buy") return handleBuy(update.message.chat.id);
   if (update.message?.text === "/help") return handleHelp(update.message.chat.id);
   if (update.message?.text === "/mykey") return handleMyKey(update.message.chat.id, update.message.from.id);
+  if (update.message?.text === "/demo") return handleDemo(update.message.chat.id);
   if (update.callback_query) return handleCallbackQuery(update.callback_query);
   if (update.pre_checkout_query) return handlePreCheckout(update.pre_checkout_query);
   if (update.message?.successful_payment) return handleSuccessfulPayment(update.message);
@@ -456,6 +534,7 @@ async function setupBotProfile() {
       { command: "start", description: "О приложении" },
       { command: "buy", description: "Купить лицензию" },
       { command: "mykey", description: "Прислать мой ключ ещё раз" },
+      { command: "demo", description: "Живой пример Rich-поста" },
       { command: "help", description: "Как проходит покупка и активация" },
     ],
   });
