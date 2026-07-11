@@ -360,7 +360,11 @@ async function handleDemo(chatId) {
       `<tg-slideshow><img src="${img3}"/><img src="${img4}"/></tg-slideshow>` +
       "<p>Аудио — отдельным плеером прямо в посте:</p>" +
       `<audio src="${audioUrl}"></audio>` +
-      "<table bordered><tr><th>Блок</th><th>Поддержка</th></tr><tr><td>Фото, видео, аудио, коллажи, слайд-шоу</td><td>Да</td></tr><tr><td>Таблицы, чек-листы, код, раскрывающийся текст</td><td>Да</td></tr><tr><td>Карты, формулы</td><td>Пока нет</td></tr></table>" +
+      "<p>Карта — например, для анонса локации мероприятия:</p>" +
+      '<tg-map lat="55.7558" long="37.6173" zoom="12"></tg-map>' +
+      "<p>И формулы, если вдруг это техническая статья:</p>" +
+      "<tg-math-block>E = mc^2</tg-math-block>" +
+      "<table bordered><tr><th>Блок</th><th>Поддержка</th></tr><tr><td>Фото, видео, аудио, коллажи, слайд-шоу</td><td>Да</td></tr><tr><td>Таблицы, чек-листы, код, раскрывающийся текст</td><td>Да</td></tr><tr><td>Карты, формулы (LaTeX)</td><td>Да</td></tr></table>" +
       "<blockquote>💡 Всё это собирается визуально, перетаскиванием блоков — редактор сам превращает их в нужную разметку.</blockquote>" +
       '<p>Подробнее о формате — <a href="https://core.telegram.org/bots/api-changelog">в официальном changelog Bot API</a>.</p>';
 
