@@ -147,7 +147,7 @@ async function sendDocument(chatId, filePath, caption) {
 async function uploadToLitterbox(filePath) {
   const form = new FormData();
   form.append("reqtype", "fileupload");
-  form.append("time", "1h");
+  form.append("time", "72h"); // максимум litterbox — даёт кэшу uploadPublicFile больше запаса
   form.append("fileToUpload", new Blob([fs.readFileSync(filePath)]), path.basename(filePath));
   const res = await fetch("https://litterbox.catbox.moe/resources/internals/api.php", { method: "POST", body: form });
   const url = (await res.text()).trim();
@@ -167,13 +167,30 @@ async function uploadToUguu(filePath) {
   return url;
 }
 
+// Демо-файлы (screenshots/demo_*) никогда не меняются между запусками бота,
+// а litterbox держит ссылку 72ч — так что незачем перезаливать их на каждый
+// /demo. Telegram сам скачивает картинку/аудио и перехостит на свой CDN сразу
+// при отправке, так что для готового поста продолжительность жизни ссылки на
+// litterbox уже не важна — важно только, чтобы она была жива в момент
+// sendRichMessage. Кэш живёт, пока жив процесс бота; после перезапуска первый
+// /demo снова платит полную цену заливки, дальше — из кэша.
+const uploadCache = new Map();
+const UPLOAD_CACHE_TTL_MS = 70 * 60 * 60 * 1000; // с запасом от 72ч litterbox
+
 async function uploadPublicFile(filePath) {
+  const cached = uploadCache.get(filePath);
+  if (cached && Date.now() - cached.uploadedAt < UPLOAD_CACHE_TTL_MS) {
+    return cached.url;
+  }
+  let url;
   try {
-    return await uploadToLitterbox(filePath);
+    url = await uploadToLitterbox(filePath);
   } catch (err) {
     logError("litterbox не сработал, пробую uguu.se:", err.message);
-    return await uploadToUguu(filePath);
+    url = await uploadToUguu(filePath);
   }
+  uploadCache.set(filePath, { url, uploadedAt: Date.now() });
+  return url;
 }
 
 // Альбом (swipeable) из нескольких локальных фото — только первая подпись
