@@ -201,9 +201,24 @@ const BUY_KEYBOARD = { inline_keyboard: [[{ text: "💳 Купить", callback_
 const MAIN_KEYBOARD = {
   inline_keyboard: [
     [{ text: "📸 Скриншоты", callback_data: "screenshots" }, { text: "💳 Купить", callback_data: "buy" }],
-    [{ text: "❓ Как это работает", callback_data: "help" }],
+    [{ text: "❓ Как это работает", callback_data: "help" }, { text: "🔑 Мой ключ", callback_data: "mykey" }],
   ],
 };
+
+// Все продажи на этот Telegram user_id, новые первыми — самообслуживание
+// для "потерял ключ", без похода в поддержку. Тот же простой построчный
+// CSV-парсинг, что и в findExistingSale — first_name уже без запятых
+// (см. logSale), а username/key/chargeId запятых не содержат в принципе.
+function findSalesByUser(userId) {
+  if (!fs.existsSync(LEDGER_PATH)) return [];
+  const lines = fs.readFileSync(LEDGER_PATH, "utf8").split("\n").filter(Boolean);
+  const sales = [];
+  for (let i = lines.length - 1; i >= 1; i--) {
+    const cols = lines[i].split(",");
+    if (cols[1] === String(userId)) sales.push({ timestamp: cols[0], key: cols[5] });
+  }
+  return sales;
+}
 
 // Личное уведомление продавцу (не покупателю) — не должно уронить обработку
 // заказа, если само уведомление вдруг не отправится.
@@ -254,6 +269,26 @@ async function handleScreenshots(chatId) {
   await api("sendMessage", { chat_id: chatId, text: "Готовы попробовать?", reply_markup: BUY_KEYBOARD });
 }
 
+async function handleMyKey(chatId, userId) {
+  log(`Запрос ключа для user ${userId}`);
+  const sales = findSalesByUser(userId);
+  if (sales.length === 0) {
+    await api("sendMessage", {
+      chat_id: chatId,
+      text: `Не нашёл покупок на этот аккаунт. Если вы покупали лицензию под другим Telegram-аккаунтом — напишите ${SUPPORT_CONTACT}.`,
+      reply_markup: BUY_KEYBOARD,
+    });
+    return;
+  }
+  const formatDate = (iso) =>
+    new Date(iso).toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric" });
+  const text =
+    sales.length === 1
+      ? `Ваш ключ активации:\n\n${sales[0].key}\n\nКуплен ${formatDate(sales[0].timestamp)}. Вставьте его в поле активации при первом запуске приложения.`
+      : `Ваши ключи активации:\n\n${sales.map((s, i) => `${i + 1}. ${s.key} (куплен ${formatDate(s.timestamp)})`).join("\n")}\n\nВставьте нужный в поле активации при первом запуске приложения.`;
+  await api("sendMessage", { chat_id: chatId, text });
+}
+
 async function handleHelp(chatId) {
   log(`/help от chat ${chatId}`);
   await api("sendMessage", {
@@ -265,8 +300,9 @@ async function handleHelp(chatId) {
       "3. При первом запуске приложения вставляете ключ в окно активации — готово, дальше всё работает офлайн.\n\n" +
       "Полезно знать:\n" +
       "• Ключ не привязан к конкретному устройству — при переустановке Windows просто введите его снова.\n" +
+      "• Потеряли ключ? Пришлю его снова: /mykey или кнопка «🔑 Мой ключ».\n" +
       `• Если что-то пошло не так — напишите ${SUPPORT_CONTACT} напрямую.\n\n` +
-      "Команды: /start — об приложении, /buy — купить лицензию. Кнопка «📸 Скриншоты» в /start покажет интерфейс.",
+      "Команды: /start — об приложении, /buy — купить лицензию, /mykey — прислать мой ключ ещё раз. Кнопка «📸 Скриншоты» в /start покажет интерфейс.",
   });
 }
 
@@ -358,6 +394,7 @@ async function handleCallbackQuery(query) {
   if (query.data === "buy") return handleBuy(chatId);
   if (query.data === "screenshots") return handleScreenshots(chatId);
   if (query.data === "help") return handleHelp(chatId);
+  if (query.data === "mykey") return handleMyKey(chatId, query.from.id);
 }
 
 function describeUpdate(update) {
@@ -373,6 +410,7 @@ async function handleUpdate(update) {
   if (update.message?.text === "/start") return handleStart(update.message.chat.id);
   if (update.message?.text === "/buy") return handleBuy(update.message.chat.id);
   if (update.message?.text === "/help") return handleHelp(update.message.chat.id);
+  if (update.message?.text === "/mykey") return handleMyKey(update.message.chat.id, update.message.from.id);
   if (update.callback_query) return handleCallbackQuery(update.callback_query);
   if (update.pre_checkout_query) return handlePreCheckout(update.pre_checkout_query);
   if (update.message?.successful_payment) return handleSuccessfulPayment(update.message);
@@ -417,6 +455,7 @@ async function setupBotProfile() {
     commands: [
       { command: "start", description: "О приложении" },
       { command: "buy", description: "Купить лицензию" },
+      { command: "mykey", description: "Прислать мой ключ ещё раз" },
       { command: "help", description: "Как проходит покупка и активация" },
     ],
   });
