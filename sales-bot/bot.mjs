@@ -626,8 +626,28 @@ async function setupBotProfile() {
 }
 
 // ── Long polling ─────────────────────────────────────────────────────────
+// Прогревает documentFileIdCache для актуального установщика ДО того, как
+// его попросит первый реальный покупатель/`/update` — иначе именно этот
+// первый человек после каждого релиза платит ~3с настоящей загрузки, а все
+// остальные едут на кэше. Единственный способ получить file_id — реально
+// отправить файл в чат (Bot API не даёт "загрузить, не отправляя"), поэтому
+// шлём его самому продавцу (ADMIN_CHAT_ID) с пометкой, что это техническое
+// сообщение, а не что-то для клиентов.
+async function warmInstallerCache() {
+  if (!ADMIN_CHAT_ID) return; // некому слать — некуда греть кэш
+  const installer = findLatestInstaller();
+  // Единственный источник истины — сам кэш: если прогрев не удался (сетевая
+  // ошибка и т.п.), sendDocument не заполнит documentFileIdCache, и следующая
+  // итерация цикла (~30с) сама попробует снова — без отдельного флага,
+  // который мог бы навсегда застрять после единичного сбоя.
+  if (!installer || documentFileIdCache.has(installer)) return;
+  log(`Новая версия установщика обнаружена, прогреваю кэш: ${installer}`);
+  await sendDocument(ADMIN_CHAT_ID, installer, "🔄 Служебное сообщение: новая версия закэширована, раздача покупателям теперь мгновенная.");
+}
+
 async function main() {
   await setupBotProfile();
+  await warmInstallerCache();
 
   log(`Продающий бот запущен. Цена: ${STARS_PRICE} Stars. Жду сообщения...`);
   let offset = 0;
@@ -650,6 +670,7 @@ async function main() {
       offset = update.update_id + 1;
       handleUpdate(update).catch((err) => logError("handleUpdate failed:", err?.stack || err));
     }
+    warmInstallerCache().catch((err) => logError("warmInstallerCache failed:", err?.stack || err));
   }
 }
 
