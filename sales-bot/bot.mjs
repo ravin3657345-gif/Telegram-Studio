@@ -256,7 +256,7 @@ const MAIN_KEYBOARD = {
   inline_keyboard: [
     [{ text: "📸 Скриншоты", callback_data: "screenshots" }, { text: "💳 Купить", callback_data: "buy" }],
     [{ text: "❓ Как это работает", callback_data: "help" }, { text: "🔑 Мой ключ", callback_data: "mykey" }],
-    [{ text: "🎬 Демо Rich-режима", callback_data: "demo" }],
+    [{ text: "🎬 Демо Rich-режима", callback_data: "demo" }, { text: "📥 Обновление", callback_data: "update" }],
   ],
 };
 
@@ -344,6 +344,29 @@ async function handleMyKey(chatId, userId) {
   await api("sendMessage", { chat_id: chatId, text });
 }
 
+// Установщик доступен только покупателям — та же проверка по леджеру, что
+// у /mykey. Без ключа активации сам файл всё равно бесполезен, но раз
+// попросили ограничить именно так — ограничиваем именно так.
+async function handleGetUpdate(chatId, userId) {
+  log(`Запрос установщика для user ${userId}`);
+  const sales = findSalesByUser(userId);
+  if (sales.length === 0) {
+    await api("sendMessage", {
+      chat_id: chatId,
+      text: `Установщик доступен только покупателям — не нашёл покупок на этот аккаунт. Если вы покупали лицензию под другим Telegram-аккаунтом — напишите ${SUPPORT_CONTACT}.`,
+      reply_markup: BUY_KEYBOARD,
+    });
+    return;
+  }
+  const installer = findLatestInstaller();
+  if (!installer) {
+    await api("sendMessage", { chat_id: chatId, text: `Не нашёл установщик в ${RELEASE_DIR} — напишите ${SUPPORT_CONTACT} напрямую.` });
+    return;
+  }
+  log(`Отправляю установщик: ${installer}`);
+  await sendDocument(chatId, installer, "Установщик Telegram Studio (Windows)");
+}
+
 // Живой пример Rich-сообщения (Bot API 10.1) прямо в чате — те же теги,
 // что генерирует src/lib/richMessageConverter.ts из блоков редактора,
 // собранные вручную под один демонстрационный пост. Карты и формулы в
@@ -406,8 +429,9 @@ async function handleHelp(chatId) {
       "• Ключ не привязан к конкретному устройству — при переустановке Windows просто введите его снова.\n" +
       "• Потеряли ключ? Пришлю его снова: /mykey или кнопка «🔑 Мой ключ».\n" +
       "• Хотите увидеть Rich-режим в деле — не на скриншоте, а живым сообщением? /demo.\n" +
+      "• Вышло обновление, а установщик потеряли? /update пришлёт последнюю версию (только покупателям).\n" +
       `• Если что-то пошло не так — напишите ${SUPPORT_CONTACT} напрямую.\n\n` +
-      "Команды: /start — об приложении, /buy — купить лицензию, /mykey — прислать мой ключ ещё раз, /demo — живой пример Rich-поста. Кнопка «📸 Скриншоты» в /start покажет интерфейс.",
+      "Команды: /start — об приложении, /buy — купить лицензию, /mykey — прислать мой ключ ещё раз, /demo — живой пример Rich-поста, /update — прислать последний установщик. Кнопка «📸 Скриншоты» в /start покажет интерфейс.",
   });
 }
 
@@ -509,6 +533,7 @@ async function handleCallbackQuery(query) {
   if (query.data === "help") return handleHelp(chatId);
   if (query.data === "mykey") return handleMyKey(chatId, query.from.id);
   if (query.data === "demo") return handleDemo(chatId);
+  if (query.data === "update") return handleGetUpdate(chatId, query.from.id);
 }
 
 function describeUpdate(update) {
@@ -526,6 +551,7 @@ async function handleUpdate(update) {
   if (update.message?.text === "/help") return handleHelp(update.message.chat.id);
   if (update.message?.text === "/mykey") return handleMyKey(update.message.chat.id, update.message.from.id);
   if (update.message?.text === "/demo") return handleDemo(update.message.chat.id);
+  if (update.message?.text === "/update") return handleGetUpdate(update.message.chat.id, update.message.from.id);
   if (update.callback_query) return handleCallbackQuery(update.callback_query);
   if (update.pre_checkout_query) return handlePreCheckout(update.pre_checkout_query);
   if (update.message?.successful_payment) return handleSuccessfulPayment(update.message);
@@ -572,6 +598,7 @@ async function setupBotProfile() {
       { command: "buy", description: "Купить лицензию" },
       { command: "mykey", description: "Прислать мой ключ ещё раз" },
       { command: "demo", description: "Живой пример Rich-поста" },
+      { command: "update", description: "Прислать последний установщик" },
       { command: "help", description: "Как проходит покупка и активация" },
     ],
   });

@@ -391,7 +391,16 @@ async fn broadcast_update(message: String) -> Result<BroadcastResult, String> {
         // один не показатель, нужно смотреть именно на поле "ok" в теле ответа.
         let ok = match client
             .post(format!("https://api.telegram.org/bot{token}/sendMessage"))
-            .json(&serde_json::json!({ "chat_id": user_id, "text": message }))
+            .json(&serde_json::json!({
+                "chat_id": user_id,
+                "text": message,
+                // Тот же callback_data "update", что кнопка в главном меню
+                // bot.mjs — сразу присылает актуальный установщик по клику,
+                // без необходимости печатать /update руками. Рассылка и так
+                // идёт только покупателям, так что проверку в handleGetUpdate
+                // это не нарушает.
+                "reply_markup": { "inline_keyboard": [[{ "text": "📥 Скачать обновление", "callback_data": "update" }]] },
+            }))
             .send()
             .await
         {
