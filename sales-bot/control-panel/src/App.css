@@ -356,13 +356,19 @@ tr:last-child td {
   color: var(--text-dim);
 }
 
-.form-grid input {
+.form-grid input,
+.form-grid textarea {
   background: var(--panel-bg);
   border: 1px solid var(--border);
   color: var(--text);
   padding: 8px 10px;
   border-radius: 6px;
   font-size: 14px;
+}
+
+.form-grid textarea {
+  font-family: inherit;
+  resize: vertical;
 }
 
 .divider {

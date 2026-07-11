@@ -318,6 +318,105 @@ async fn get_star_balance() -> Result<StarBalance, String> {
     })
 }
 
+// ── Рассылка о новой версии всем покупателям ────────────────────────────
+// Список получателей — уникальные user_id из LEDGER_PATH (та же колонка,
+// что /mykey в bot.mjs использует для поиска ключей по покупателю), не
+// отдельная база подписчиков. Сама рассылка идёт отсюда, а не из bot.mjs —
+// панель уже независимо ходит в Bot API напрямую (см. get_star_balance),
+// не нужно городить IPC с отдельным процессом бота ради разовой ручной
+// команды продавца.
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct BroadcastResult {
+    total: usize,
+    sent: usize,
+    failed: usize,
+    failed_user_ids: Vec<String>,
+}
+
+fn unique_buyer_ids() -> Result<Vec<String>, String> {
+    if !std::path::Path::new(LEDGER_PATH).exists() {
+        return Ok(vec![]);
+    }
+    let content = fs::read_to_string(LEDGER_PATH).map_err(|e| e.to_string())?;
+    let mut seen = std::collections::HashSet::new();
+    let mut ids = vec![];
+    for line in content.lines().skip(1) {
+        if line.trim().is_empty() {
+            continue;
+        }
+        if let Some(user_id) = line.split(',').nth(1) {
+            if !user_id.is_empty() && seen.insert(user_id.to_string()) {
+                ids.push(user_id.to_string());
+            }
+        }
+    }
+    Ok(ids)
+}
+
+#[tauri::command]
+fn get_buyer_count() -> Result<usize, String> {
+    Ok(unique_buyer_ids()?.len())
+}
+
+#[tauri::command]
+async fn broadcast_update(message: String) -> Result<BroadcastResult, String> {
+    let token = fs::read_to_string(TOKEN_PATH)
+        .map_err(|_| format!("Не найден {TOKEN_PATH} — создайте файл с токеном бота"))?
+        .trim()
+        .to_string();
+    if token.is_empty() {
+        return Err(format!("{TOKEN_PATH} пустой"));
+    }
+    let message = message.trim();
+    if message.is_empty() {
+        return Err("Текст рассылки пустой".to_string());
+    }
+
+    let ids = unique_buyer_ids()?;
+    let client = reqwest::Client::new();
+    let mut sent = 0usize;
+    let mut failed_user_ids = vec![];
+
+    for (i, user_id) in ids.iter().enumerate() {
+        // Небольшая пауза между сообщениями — Telegram лимитирует примерно
+        // 30 сообщений в секунду глобально для бота, для рассылки нет
+        // смысла упираться в этот потолок.
+        if i > 0 {
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
+        // Telegram отвечает {"ok":false,...} на некоторые ошибки (например,
+        // "Forbidden: bot was blocked by the user") при HTTP 200 — статус-код
+        // один не показатель, нужно смотреть именно на поле "ok" в теле ответа.
+        let ok = match client
+            .post(format!("https://api.telegram.org/bot{token}/sendMessage"))
+            .json(&serde_json::json!({ "chat_id": user_id, "text": message }))
+            .send()
+            .await
+        {
+            Ok(r) => r
+                .json::<TelegramApiResponse<serde_json::Value>>()
+                .await
+                .map(|body| body.ok)
+                .unwrap_or(false),
+            Err(_) => false,
+        };
+        if ok {
+            sent += 1;
+        } else {
+            failed_user_ids.push(user_id.clone());
+        }
+    }
+
+    Ok(BroadcastResult {
+        total: ids.len(),
+        sent,
+        failed: failed_user_ids.len(),
+        failed_user_ids,
+    })
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -334,6 +433,8 @@ pub fn run() {
             set_config,
             generate_test_key,
             get_star_balance,
+            get_buyer_count,
+            broadcast_update,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

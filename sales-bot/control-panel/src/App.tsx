@@ -3,6 +3,7 @@ import StatusTab from "./tabs/StatusTab";
 import SalesTab from "./tabs/SalesTab";
 import LogsTab from "./tabs/LogsTab";
 import InstallersTab from "./tabs/InstallersTab";
+import BroadcastTab from "./tabs/BroadcastTab";
 import SettingsTab from "./tabs/SettingsTab";
 import { useSalesNotifier } from "./useSalesNotifier";
 
@@ -11,6 +12,7 @@ const TABS = [
   { id: "sales", label: "Продажи", icon: "₽" },
   { id: "logs", label: "Логи", icon: "▤" },
   { id: "installers", label: "Установщики", icon: "⬇" },
+  { id: "broadcast", label: "Рассылка", icon: "✉" },
   { id: "settings", label: "Настройки", icon: "⚙" },
 ] as const;
 
@@ -43,6 +45,7 @@ export default function App() {
         {tab === "sales" && <SalesTab />}
         {tab === "logs" && <LogsTab />}
         {tab === "installers" && <InstallersTab />}
+        {tab === "broadcast" && <BroadcastTab />}
         {tab === "settings" && <SettingsTab />}
       </main>
     </div>

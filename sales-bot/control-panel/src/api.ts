@@ -37,6 +37,13 @@ export interface StarBalance {
   nanostarAmount: number;
 }
 
+export interface BroadcastResult {
+  total: number;
+  sent: number;
+  failed: number;
+  failedUserIds: string[];
+}
+
 export const api = {
   getBotStatus: () => invoke<BotStatus>("get_bot_status"),
   startBot: () => invoke<void>("start_bot"),
@@ -49,4 +56,6 @@ export const api = {
   setConfig: (config: BotConfig) => invoke<void>("set_config", { config }),
   generateTestKey: () => invoke<string>("generate_test_key"),
   getStarBalance: () => invoke<StarBalance>("get_star_balance"),
+  getBuyerCount: () => invoke<number>("get_buyer_count"),
+  broadcastUpdate: (message: string) => invoke<BroadcastResult>("broadcast_update", { message }),
 };
