@@ -339,8 +339,8 @@ async function handleDemo(chatId) {
     const [img1, img2, img3, img4, audioUrl] = await Promise.all([
       uploadPublicFile(path.join(SCREENSHOTS_DIR, "01_editor.png")),
       uploadPublicFile(path.join(SCREENSHOTS_DIR, "04_rich_mode.png")),
-      uploadPublicFile(path.join(SCREENSHOTS_DIR, "05_rich_publish.png")),
-      uploadPublicFile(path.join(SCREENSHOTS_DIR, "07_rich_with_image.png")),
+      uploadPublicFile(path.join(SCREENSHOTS_DIR, "demo_slide1.jpg")),
+      uploadPublicFile(path.join(SCREENSHOTS_DIR, "demo_slide2.jpg")),
       uploadPublicFile(path.join(SCREENSHOTS_DIR, "demo_audio.mp3")),
     ]);
 
