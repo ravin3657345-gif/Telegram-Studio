@@ -337,8 +337,8 @@ async function handleDemo(chatId) {
   await api("sendMessage", { chat_id: chatId, text: "Собираю демо-пост… это займёт пару секунд." });
   try {
     const [img1, img2, img3, img4, audioUrl] = await Promise.all([
-      uploadPublicFile(path.join(SCREENSHOTS_DIR, "01_editor.png")),
-      uploadPublicFile(path.join(SCREENSHOTS_DIR, "04_rich_mode.png")),
+      uploadPublicFile(path.join(SCREENSHOTS_DIR, "demo_collage1.jpg")),
+      uploadPublicFile(path.join(SCREENSHOTS_DIR, "demo_collage2.jpg")),
       uploadPublicFile(path.join(SCREENSHOTS_DIR, "demo_slide1.jpg")),
       uploadPublicFile(path.join(SCREENSHOTS_DIR, "demo_slide2.jpg")),
       uploadPublicFile(path.join(SCREENSHOTS_DIR, "demo_audio.mp3")),
