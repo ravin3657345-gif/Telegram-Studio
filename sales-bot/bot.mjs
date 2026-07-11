@@ -382,7 +382,8 @@ async function handleDemo(chatId) {
       "<p>И формулы, если вдруг это техническая статья:</p>" +
       "<tg-math-block>E = mc^2</tg-math-block>" +
       "<table bordered><tr><th>Блок</th><th>Поддержка</th></tr><tr><td>Фото, видео, аудио, коллажи, слайд-шоу</td><td>Да</td></tr><tr><td>Таблицы, чек-листы, код, раскрывающийся текст</td><td>Да</td></tr><tr><td>Карты, формулы (LaTeX)</td><td>Да</td></tr></table>" +
-      "<blockquote>💡 Всё это собирается визуально, перетаскиванием блоков — редактор сам превращает их в нужную разметку.</blockquote>";
+      "<blockquote>💡 Всё это собирается визуально, перетаскиванием блоков — редактор сам превращает их в нужную разметку.</blockquote>" +
+      '<p>А ссылки в тексте — обычным словом, без некрасивого URL целиком: <a href="https://telegram.org">вот так</a>.</p>';
 
     await api("sendRichMessage", { chat_id: chatId, rich_message: { html } });
     await api("sendMessage", { chat_id: chatId, text: "Это был реальный Rich-пост. Хотите собрать свой?", reply_markup: BUY_KEYBOARD });
