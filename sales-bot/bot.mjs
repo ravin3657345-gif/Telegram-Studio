@@ -479,6 +479,11 @@ async function handleCallbackQuery(query) {
   log(`Нажата кнопка "${query.data}" от ${query.from.username ?? query.from.id}`);
   await api("answerCallbackQuery", { callback_query_id: query.id });
   const chatId = query.message.chat.id;
+  // Убираем сообщение с нажатой кнопкой, прежде чем показать следующий шаг —
+  // иначе каждая кнопка плодит новую строку в чате и переписка растёт
+  // бесконечно. api() сама логирует и проглатывает неудачу (например,
+  // сообщение уже удалено), так что дальнейшая обработка не прерывается.
+  await api("deleteMessage", { chat_id: chatId, message_id: query.message.message_id });
   if (query.data === "buy") return handleBuy(chatId);
   if (query.data === "screenshots") return handleScreenshots(chatId);
   if (query.data === "help") return handleHelp(chatId);
