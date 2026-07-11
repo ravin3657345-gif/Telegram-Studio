@@ -56,7 +56,12 @@ export function PublishPanel({ draftId }: PublishPanelProps) {
   // Same reasoning as hasTable — audio is also Rich-only (Bot API 10.1's
   // <audio> tag), invisible to the normal-mode segments below.
   const hasAudio = (contentJson ?? "").includes('"type":"blockAudio"');
-  const hasContent = hasAttachments || (publishMode === "rich" && (hasTable || hasAudio)) || segments.some(
+  // Same reasoning as hasTable/hasAudio — maps and formulas are also
+  // Rich-only (Bot API 10.1's <tg-map>/<tg-math-block>), invisible to the
+  // normal-mode segments below.
+  const hasMap = (contentJson ?? "").includes('"type":"blockMap"');
+  const hasFormula = (contentJson ?? "").includes('"type":"blockFormula"');
+  const hasContent = hasAttachments || (publishMode === "rich" && (hasTable || hasAudio || hasMap || hasFormula)) || segments.some(
     (s) =>
       (s.type === "text" && s.html.trim()) ||
       s.type === "image" ||
@@ -77,6 +82,8 @@ export function PublishPanel({ draftId }: PublishPanelProps) {
   const videoBlockedInTelegraph = publishMode === "telegraph" && segments.some((s) => s.type === "video");
   const tableBlockedOutsideRich = publishMode !== "rich" && hasTable;
   const audioBlockedOutsideRich = publishMode !== "rich" && hasAudio;
+  const mapBlockedOutsideRich = publishMode !== "rich" && hasMap;
+  const formulaBlockedOutsideRich = publishMode !== "rich" && hasFormula;
   // Scheduled posts support text + images/video/files (scheduler persists media
   // to disk and sends it via the same photo/video/document logic as immediate
   // publish). Polls are the one segment type with no scheduled-send path yet —
@@ -89,6 +96,7 @@ export function PublishPanel({ draftId }: PublishPanelProps) {
     hasBots && selectedChannelIds.length > 0 && hasContent &&
     !fileBlockedInRich && !fileBlockedInTelegraph && !videoBlockedInTelegraph &&
     !tableBlockedOutsideRich && !audioBlockedOutsideRich &&
+    !mapBlockedOutsideRich && !formulaBlockedOutsideRich &&
     status !== "publishing" && status !== "scheduling";
 
   const canSchedule = canPublish && !mediaBlockedInSchedule;
@@ -707,6 +715,54 @@ export function PublishPanel({ draftId }: PublishPanelProps) {
                 onClick={() => setPublishMode("rich")}
               >
                 {t("publish.audioOutsideRichLink")}
+              </button>
+              .
+            </span>
+          </div>
+        )}
+
+        {/* Map warning outside Rich mode — maps only exist in Rich Messages */}
+        {mapBlockedOutsideRich && (
+          <div
+            className="flex items-start gap-2 px-3 py-2 rounded-lg text-xs"
+            style={{
+              backgroundColor: "rgba(251,191,36,0.1)",
+              border: "1px solid rgba(251,191,36,0.3)",
+              color: "var(--text-secondary)",
+            }}
+          >
+            <AlertCircle size={13} style={{ color: "#fbbf24", flexShrink: 0, marginTop: 1 }} />
+            <span>
+              {t("publish.mapOutsideRich")}&nbsp;
+              <button
+                style={{ color: "var(--accent)", textDecoration: "underline", background: "none", border: "none", cursor: "pointer", padding: 0, font: "inherit" }}
+                onClick={() => setPublishMode("rich")}
+              >
+                {t("publish.mapOutsideRichLink")}
+              </button>
+              .
+            </span>
+          </div>
+        )}
+
+        {/* Formula warning outside Rich mode — formulas only exist in Rich Messages */}
+        {formulaBlockedOutsideRich && (
+          <div
+            className="flex items-start gap-2 px-3 py-2 rounded-lg text-xs"
+            style={{
+              backgroundColor: "rgba(251,191,36,0.1)",
+              border: "1px solid rgba(251,191,36,0.3)",
+              color: "var(--text-secondary)",
+            }}
+          >
+            <AlertCircle size={13} style={{ color: "#fbbf24", flexShrink: 0, marginTop: 1 }} />
+            <span>
+              {t("publish.formulaOutsideRich")}&nbsp;
+              <button
+                style={{ color: "var(--accent)", textDecoration: "underline", background: "none", border: "none", cursor: "pointer", padding: 0, font: "inherit" }}
+                onClick={() => setPublishMode("rich")}
+              >
+                {t("publish.formulaOutsideRichLink")}
               </button>
               .
             </span>

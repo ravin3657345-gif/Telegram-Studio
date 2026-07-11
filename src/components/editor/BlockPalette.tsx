@@ -138,6 +138,32 @@ const PREVIEW_BUILDERS: Partial<Record<BlockPreviewType, (label: string) => HTML
     wrap.append(header, question, opt1, opt2);
     return wrap;
   },
+  // Mirrors BlockMap.tsx's collapsed row: bordered box, pin emoji, label.
+  map: (label) => {
+    const box = document.createElement("div");
+    box.style.cssText = "display:flex;align-items:center;gap:8px;border:1.5px solid var(--border-default);border-radius:8px;padding:10px 12px;background:var(--bg-elevated);";
+    const emoji = document.createElement("span");
+    emoji.textContent = "📍";
+    emoji.style.cssText = "font-size:15px;flex-shrink:0;";
+    const text = document.createElement("span");
+    text.textContent = label;
+    text.style.cssText = "font-size:14px;color:var(--text-primary);";
+    box.append(emoji, text);
+    return box;
+  },
+  // Mirrors BlockFormula.tsx's collapsed row: bordered box, sigma, label.
+  formula: (label) => {
+    const box = document.createElement("div");
+    box.style.cssText = "display:flex;align-items:center;gap:8px;border:1.5px solid var(--border-default);border-radius:8px;padding:10px 12px;background:var(--bg-elevated);";
+    const emoji = document.createElement("span");
+    emoji.textContent = "∑";
+    emoji.style.cssText = "font-size:15px;flex-shrink:0;color:var(--text-muted);";
+    const text = document.createElement("span");
+    text.textContent = label;
+    text.style.cssText = "font-size:14px;color:var(--text-primary);";
+    box.append(emoji, text);
+    return box;
+  },
   // A plain 2x2 grid — real column/row count is chosen after insertion via
   // the table's own resize widget, so the preview doesn't need to match it.
   // Wrapped in .tiptap-table-wrapper to match the real NodeView's DOM shape

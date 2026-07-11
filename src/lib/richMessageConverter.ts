@@ -189,6 +189,29 @@ function convertSingleNode(
       });
       return `<audio src="attach://${attachName}"></audio>`;
     }
+    case "blockMap": {
+      // <tg-map lat long zoom> — undocumented, confirmed by a live send
+      // (2026-07-11): parsed back as {type:"map", location:{lat,long}, zoom,
+      // width, height}. "latitude"/"longitude" attribute names are NOT
+      // recognized and silently produce garbage coordinates — must be lat/long.
+      const lat = (node.attrs?.lat as number) ?? 0;
+      const long = (node.attrs?.long as number) ?? 0;
+      const zoom = (node.attrs?.zoom as number) ?? 15;
+      return `<tg-map lat="${lat}" long="${long}" zoom="${zoom}"></tg-map>`;
+    }
+    case "blockFormula": {
+      // <tg-math-block> — undocumented, confirmed by a live send
+      // (2026-07-11): parsed back as {type:"mathematical_expression",
+      // expression: "..."} with the raw LaTeX (backslashes included)
+      // preserved as-is; JSON.stringify already handles the wire escaping,
+      // no extra doubling needed on our end.
+      const expr = (node.attrs?.expression as string) ?? "";
+      // Escaped like codeBlock above — a "<"/">" in the LaTeX (e.g. an
+      // inequality) would otherwise be parsed as an HTML tag boundary by
+      // Telegram's HTML parser before it ever reaches the math renderer.
+      const esc = expr.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+      return expr.trim() ? `<tg-math-block>${esc}</tg-math-block>` : "";
+    }
     case "anchorPoint":
       // Invisible marker — Bot API 10.1 Rich Messages support in-document
       // anchors/jump links, unlike regular Telegram HTML messages.

@@ -23,7 +23,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; script-src 'self' 'unsafe-inline' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://asset.localhost; font-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost https://asset.localhost; media-src 'self' blob: data: https://asset.localhost; frame-ancestors 'none'; base-uri 'self';",
+      "csp": "default-src 'self'; script-src 'self' 'unsafe-inline' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://asset.localhost https://*.tile.openstreetmap.org; font-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost https://asset.localhost; media-src 'self' blob: data: https://asset.localhost; frame-ancestors 'none'; base-uri 'self';",
       "assetProtocol": {
         "enable": true,
         "scope": ["**"]

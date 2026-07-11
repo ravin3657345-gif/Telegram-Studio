@@ -197,4 +197,25 @@ describe("tiptapToRichHtml", () => {
     );
     expect(html).toBe("<table bordered><tr><th>A</th><th>B</th></tr><tr><td>1</td><td>2</td></tr></table>");
   });
+
+  it("renders a blockMap as <tg-map lat long zoom>", () => {
+    const { html } = tiptapToRichHtml(
+      doc({ type: "blockMap", attrs: { lat: 55.7558, long: 37.6173, zoom: 15 } }),
+    );
+    expect(html).toBe('<tg-map lat="55.7558" long="37.6173" zoom="15"></tg-map>');
+  });
+
+  it("renders a blockFormula as <tg-math-block>, escaping < and >", () => {
+    const { html } = tiptapToRichHtml(
+      doc({ type: "blockFormula", attrs: { expression: "a < b \\frac{n}{2}" } }),
+    );
+    expect(html).toBe("<tg-math-block>a &lt; b \\frac{n}{2}</tg-math-block>");
+  });
+
+  it("omits an empty blockFormula entirely", () => {
+    const { html } = tiptapToRichHtml(
+      doc({ type: "blockFormula", attrs: { expression: "   " } }),
+    );
+    expect(html).toBe("");
+  });
 });

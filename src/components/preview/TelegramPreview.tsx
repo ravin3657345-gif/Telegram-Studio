@@ -1,5 +1,6 @@
 import { useMemo, useState, useRef, useEffect, createContext, useContext } from "react";
-import { Play, FileText, Eye, Table2 } from "lucide-react";
+import { Play, FileText, Eye, Table2, MapPin, Sigma } from "lucide-react";
+import katex from "katex";
 import { useEditorStore } from "@/store/editorStore";
 import { useSettingsStore } from "@/store/settingsStore";
 import { splitIntoMessagesAtGaps, splitJsonAtGaps, type ContentSegment } from "@/lib/htmlConverter";
@@ -387,7 +388,9 @@ type RichPart =
   | { type: "img";   src: string }
   | { type: "video"; src: string }
   | { type: "audio"; src: string }
-  | { type: "table"; rows: number; cols: number };
+  | { type: "table"; rows: number; cols: number }
+  | { type: "map"; lat: string; long: string }
+  | { type: "formula"; expression: string };
 
 // blockAudio isn't recognized by the normal-mode converter that builds
 // `segments` (it's Rich-only — see htmlConverter.ts), so unlike image/video
@@ -405,6 +408,16 @@ function collectAudioSrcs(contentJson: string): string[] {
   return out;
 }
 
+// Invalid/incomplete LaTeX (typed mid-edit) throws from katex.renderToString
+// by default — swallow it and show nothing rather than crashing the preview.
+function renderFormulaSafe(expression: string): string {
+  try {
+    return katex.renderToString(expression, { throwOnError: true, displayMode: true });
+  } catch {
+    return "";
+  }
+}
+
 function RichBubble({ html, segments, contentJson }: { html: string; segments: ContentSegment[]; contentJson: string }) {
   const tg = useTG();
   const parts = useMemo<RichPart[]>(() => {
@@ -420,7 +433,7 @@ function RichBubble({ html, segments, contentJson }: { html: string; segments: C
     // A real table physically can't fit a bubble this narrow (300px) without
     // becoming an unreadable, cramped mess — swap it for a compact "here's a
     // table" schematic instead of trying to render the actual grid.
-    const re = /<table[^>]*>([\s\S]*?)<\/table>|<(img|video|audio)\s[^>]*src="([^"]+)"[^>]*\/?>(?:<\/audio>)?/g;
+    const re = /<table[^>]*>([\s\S]*?)<\/table>|<tg-map\s+lat="([^"]*)"\s+long="([^"]*)"[^>]*><\/tg-map>|<tg-math-block>([\s\S]*?)<\/tg-math-block>|<(img|video|audio)\s[^>]*src="([^"]+)"[^>]*\/?>(?:<\/audio>)?/g;
     const result: RichPart[] = [];
     let last = 0, m: RegExpExecArray | null;
     while ((m = re.exec(cleanHtml)) !== null) {
@@ -429,10 +442,18 @@ function RichBubble({ html, segments, contentJson }: { html: string; segments: C
         const rows = (m[1].match(/<tr[ >]/g) || []).length;
         const cells = (m[1].match(/<t[hd][ >]/g) || []).length;
         result.push({ type: "table", rows, cols: rows > 0 ? Math.round(cells / rows) : 0 });
+      } else if (m[2] !== undefined) {
+        result.push({ type: "map", lat: m[2], long: m[3] });
+      } else if (m[4] !== undefined) {
+        // richMessageConverter.ts HTML-escapes &/</> before wrapping in
+        // <tg-math-block> (so a literal "<"/">" in the LaTeX doesn't get
+        // parsed as a tag boundary) — undo that here, KaTeX wants raw LaTeX.
+        const expression = m[4].replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");
+        result.push({ type: "formula", expression });
       } else {
         result.push(
-          m[2] === "img"   ? { type: "img",   src: imgSrcs[imgIdx++] ?? "" } :
-          m[2] === "video" ? { type: "video", src: vidSrcs[vidIdx++] ?? "" } :
+          m[5] === "img"   ? { type: "img",   src: imgSrcs[imgIdx++] ?? "" } :
+          m[5] === "video" ? { type: "video", src: vidSrcs[vidIdx++] ?? "" } :
                               { type: "audio", src: audSrcs[audIdx++] ?? "" }
         );
       }
@@ -464,6 +485,31 @@ function RichBubble({ html, segments, contentJson }: { html: string; segments: C
           }}>
             <Table2 size={15} color={tg.linkFg} style={{ flexShrink: 0 }} />
             <span style={{ fontSize: 12.5 }}>{ti("preview.table", { rows: p.rows, cols: p.cols })}</span>
+          </div>
+        );
+        // No tile server in this preview (would need an external CDN — see
+        // BlockMap.tsx) — just a schematic row with the coordinates, same
+        // spirit as the table schematic above.
+        if (p.type === "map") return (
+          <div key={i} style={{
+            display: "flex", alignItems: "center", gap: 8,
+            margin: "8px 12px", padding: "8px 10px",
+            borderRadius: 8, border: `1px solid ${tg.quoteBorder}`, background: tg.quoteBg,
+          }}>
+            <MapPin size={15} color={tg.linkFg} style={{ flexShrink: 0 }} />
+            <span style={{ fontSize: 12.5 }}>{p.lat}, {p.long}</span>
+          </div>
+        );
+        if (p.type === "formula") return (
+          <div key={i} style={{ margin: "8px 12px", overflowX: "auto" }}>
+            {p.expression.trim() ? (
+              // eslint-disable-next-line react/no-danger
+              <div dangerouslySetInnerHTML={{ __html: renderFormulaSafe(p.expression) }} />
+            ) : (
+              <span style={{ fontSize: 12.5, color: tg.linkFg, display: "flex", alignItems: "center", gap: 6 }}>
+                <Sigma size={15} />{t("preview.emptyFormula")}
+              </span>
+            )}
           </div>
         );
         const trimmed = p.html.trim();
@@ -520,7 +566,9 @@ export function TelegramPreview() {
   // table would otherwise always read as empty and never show the bubble.
   const hasTable = publishMode === "rich" && (contentJson ?? "").includes('"type":"blockTable"');
   const hasAudio = publishMode === "rich" && (contentJson ?? "").includes('"type":"blockAudio"');
-  const isEmpty = !hasTable && !hasAudio && (segments.length === 0 ||
+  const hasMap = publishMode === "rich" && (contentJson ?? "").includes('"type":"blockMap"');
+  const hasFormula = publishMode === "rich" && (contentJson ?? "").includes('"type":"blockFormula"');
+  const isEmpty = !hasTable && !hasAudio && !hasMap && !hasFormula && (segments.length === 0 ||
     segments.every((s) => s.type === "text" && !s.html.trim()));
 
   const scrollRef = useRef<HTMLDivElement>(null);

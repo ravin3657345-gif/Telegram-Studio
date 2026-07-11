@@ -4,7 +4,7 @@ import { ReactRenderer } from "@tiptap/react";
 import {
   Heading1, Heading2, Heading3, Pilcrow, Quote, Code2,
   List, ListOrdered, Minus, Image, Film, HelpCircle, BarChart2,
-  CheckSquare, Lightbulb, Table2, Music,
+  CheckSquare, Lightbulb, Table2, Music, MapPin, Sigma,
 } from "lucide-react";
 import tippy, { type Instance as TippyInstance } from "tippy.js";
 import "tippy.js/dist/tippy.css";
@@ -23,7 +23,7 @@ import { buildTableNode } from "@/extensions/BlockTable";
 export type BlockPreviewType =
   | "paragraph" | "h1" | "h2" | "h3" | "quote" | "code"
   | "list" | "orderedList" | "checklist" | "callout" | "divider"
-  | "image" | "video" | "audio" | "faq" | "poll" | "table";
+  | "image" | "video" | "audio" | "faq" | "poll" | "table" | "map" | "formula";
 
 export interface SlashItem {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -201,6 +201,36 @@ export function getSlashItems(): SlashItem[] {
         }
         const table = buildTableNode(e.schema, 2, 2);
         e.chain().focus().insertContent(table.toJSON()).run();
+      },
+    },
+    {
+      icon: MapPin,
+      label: t("slash.map"),
+      description: t("slash.map.desc"),
+      previewType: "map",
+      isBlocked: () => useEditorStore.getState().publishMode !== "rich",
+      command: (e) => {
+        const mode = useEditorStore.getState().publishMode;
+        if (mode !== "rich") {
+          useUiStore.getState().toast("warning", t("slash.mapWarning"), t("slash.mapHint"));
+          return;
+        }
+        e.commands.insertContent({ type: "blockMap", attrs: { lat: 55.7558, long: 37.6173, zoom: 15 } });
+      },
+    },
+    {
+      icon: Sigma,
+      label: t("slash.formula"),
+      description: t("slash.formula.desc"),
+      previewType: "formula",
+      isBlocked: () => useEditorStore.getState().publishMode !== "rich",
+      command: (e) => {
+        const mode = useEditorStore.getState().publishMode;
+        if (mode !== "rich") {
+          useUiStore.getState().toast("warning", t("slash.formulaWarning"), t("slash.formulaHint"));
+          return;
+        }
+        e.commands.insertContent({ type: "blockFormula", attrs: { expression: "" } });
       },
     },
   ];

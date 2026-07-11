@@ -27,6 +27,8 @@ import { Blockquote } from "@/extensions/Blockquote";
 import { MessageSplit } from "@/extensions/MessageSplit";
 import { BlockTable, TableRow, TableCell } from "@/extensions/BlockTable";
 import { BlockAudio } from "@/extensions/BlockAudio";
+import { BlockMap } from "@/extensions/BlockMap";
+import { BlockFormula } from "@/extensions/BlockFormula";
 
 export function createTiptapExtensions() {
   return [
@@ -108,6 +110,8 @@ export function createTiptapExtensions() {
     TableRow,
     TableCell,
     BlockAudio,
+    BlockMap,
+    BlockFormula,
     MediaPasteHandler,
     SlashCommand,
     BlockMoveShortcuts,
