@@ -194,6 +194,12 @@ function convertSingleNode(
       // (2026-07-11): parsed back as {type:"map", location:{lat,long}, zoom,
       // width, height}. "latitude"/"longitude" attribute names are NOT
       // recognized and silently produce garbage coordinates — must be lat/long.
+      // Also live-confirmed (2026-07-12, sales-bot demo A/B on a real phone):
+      // a low zoom (12) rendered as a blank/grey box on mobile Telegram while
+      // the exact same tag with zoom=15 rendered fine — desktop showed both
+      // correctly either way. Root cause unconfirmed (mobile-only map tile
+      // quirk?), but the default below stays at 15 specifically to avoid it —
+      // don't lower it without testing on a real phone first.
       const lat = (node.attrs?.lat as number) ?? 0;
       const long = (node.attrs?.long as number) ?? 0;
       const zoom = (node.attrs?.zoom as number) ?? 15;
