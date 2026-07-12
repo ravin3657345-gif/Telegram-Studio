@@ -279,6 +279,7 @@ const MAIN_KEYBOARD = {
     [{ text: "📸 Скриншоты", callback_data: "screenshots" }, { text: "💳 Купить", callback_data: "buy" }],
     [{ text: "❓ Как это работает", callback_data: "help" }, { text: "🔑 Мой ключ", callback_data: "mykey" }],
     [{ text: "🎬 Демо Rich-режима", callback_data: "demo" }, { text: "📥 Обновление", callback_data: "update" }],
+    [{ text: "🌐 Сайт", url: "https://ravin3657345-gif.github.io/Telegram-Studio/" }],
   ],
 };
 
