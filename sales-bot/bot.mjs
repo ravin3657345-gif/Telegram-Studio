@@ -54,6 +54,7 @@ const config = loadConfig();
 const STARS_PRICE = config.starsPrice;
 const ADMIN_CHAT_ID = config.adminChatId;
 const SUPPORT_CONTACT = config.supportContact;
+const BOT_START_TIME = Date.now(); // для /status — аптайм именно этого процесса, не бота "вообще"
 
 const RELEASE_DIR = "D:/Релиз";
 const KEYGEN_PATH = "D:/cargo-tgt/release/keygen.exe";
@@ -575,6 +576,11 @@ async function handleCallbackQuery(query) {
   if (query.data === "mykey") return handleMyKey(chatId, query.from.id);
   if (query.data === "demo") return handleDemo(chatId);
   if (query.data === "update") return handleGetUpdate(chatId, query.from.id);
+  if (query.data === "broadcast_confirm" && isAdmin(chatId)) return runPendingBroadcast(chatId);
+  if (query.data === "broadcast_cancel" && isAdmin(chatId)) {
+    pendingBroadcast = null;
+    return api("sendMessage", { chat_id: chatId, text: "Рассылка отменена." });
+  }
 }
 
 function describeUpdate(update) {
@@ -593,9 +599,190 @@ async function handleUpdate(update) {
   if (update.message?.text === "/mykey") return handleMyKey(update.message.chat.id, update.message.from.id);
   if (update.message?.text === "/demo") return handleDemo(update.message.chat.id);
   if (update.message?.text === "/update") return handleGetUpdate(update.message.chat.id, update.message.from.id);
+  // Мини-панель управления — доступна только ADMIN_CHAT_ID, для остальных
+  // эти команды не существуют (даже не отвечаем, чтобы не палить их наличие).
+  if (update.message?.text === "/status" && isAdmin(update.message.chat.id)) return handleAdminStatus(update.message.chat.id);
+  if (update.message?.text === "/sales" && isAdmin(update.message.chat.id)) return handleAdminSales(update.message.chat.id);
+  if (update.message?.text === "/log" && isAdmin(update.message.chat.id)) return handleAdminLog(update.message.chat.id);
+  if (update.message?.text === "/installers" && isAdmin(update.message.chat.id)) return handleAdminInstallers(update.message.chat.id);
+  if (update.message?.text?.startsWith("/broadcast") && isAdmin(update.message.chat.id)) {
+    return handleAdminBroadcastStart(update.message.chat.id, update.message.text.slice("/broadcast".length));
+  }
   if (update.callback_query) return handleCallbackQuery(update.callback_query);
   if (update.pre_checkout_query) return handlePreCheckout(update.pre_checkout_query);
   if (update.message?.successful_payment) return handleSuccessfulPayment(update.message);
+}
+
+// ── Мини-панель управления прямо в Telegram (для ADMIN_CHAT_ID) ─────────
+// "Мобильная версия" desktop-панели control-panel/ — та панель читает
+// D:\Релиз/леджер/PowerShell-процессы напрямую и физически не может
+// работать с телефона (эти пути существуют только на этом ПК). Через сам
+// Telegram то же самое доступно с любого устройства без установки чего-либо.
+
+function isAdmin(chatId) {
+  return Boolean(ADMIN_CHAT_ID) && String(chatId) === String(ADMIN_CHAT_ID);
+}
+
+function escapeHtml(str) {
+  return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+function formatUptime(ms) {
+  const totalMin = Math.floor(ms / 60000);
+  const days = Math.floor(totalMin / 1440);
+  const hours = Math.floor((totalMin % 1440) / 60);
+  const mins = totalMin % 60;
+  const parts = [];
+  if (days) parts.push(`${days}д`);
+  if (hours || days) parts.push(`${hours}ч`);
+  parts.push(`${mins}мин`);
+  return parts.join(" ");
+}
+
+// Тот же построчный CSV-разбор, что и findSalesByUser/findExistingSale,
+// просто без фильтра — единая точка для всего, что читает весь леджер целиком.
+function allSalesRows() {
+  if (!fs.existsSync(LEDGER_PATH)) return [];
+  return fs.readFileSync(LEDGER_PATH, "utf8").split("\n").filter(Boolean).slice(1).map((line) => {
+    const cols = line.split(",");
+    return { timestamp: cols[0], userId: cols[1], username: cols[2], firstName: cols[3], stars: cols[4], key: cols[5], chargeId: cols[6] };
+  });
+}
+
+function uniqueBuyerIds() {
+  const seen = new Set();
+  const ids = [];
+  for (const row of allSalesRows()) {
+    if (row.userId && !seen.has(row.userId)) {
+      seen.add(row.userId);
+      ids.push(row.userId);
+    }
+  }
+  return ids;
+}
+
+async function handleAdminStatus(chatId) {
+  const rows = allSalesRows();
+  const totalStars = rows.reduce((sum, r) => sum + (Number(r.stars) || 0), 0);
+  const balance = await api("getMyStarBalance", {});
+  const balanceText = balance.ok ? `${balance.result.amount} ⭐` : "не удалось получить";
+  const installer = findLatestInstaller();
+  await api("sendMessage", {
+    chat_id: chatId,
+    parse_mode: "HTML",
+    text:
+      "<b>Статус бота</b>\n\n" +
+      `Аптайм процесса: ${formatUptime(Date.now() - BOT_START_TIME)}\n` +
+      `Продаж всего: ${rows.length} (${uniqueBuyerIds().length} уникальных покупателей)\n` +
+      `Начислено Stars за всё время: ${totalStars}\n` +
+      `Баланс на счету бота: ${balanceText}\n` +
+      `Актуальный установщик: ${installer ? escapeHtml(path.basename(installer)) : "не найден"}`,
+  });
+}
+
+async function handleAdminSales(chatId) {
+  const rows = allSalesRows().slice(-10).reverse();
+  if (rows.length === 0) {
+    await api("sendMessage", { chat_id: chatId, text: "Продаж пока нет." });
+    return;
+  }
+  const formatDate = (iso) => new Date(iso).toLocaleString("ru-RU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+  const text =
+    "<b>Последние продажи</b> (не больше 10)\n\n" +
+    rows.map((r) => {
+      const buyer = r.username ? `@${escapeHtml(r.username)}` : r.userId;
+      return `${formatDate(r.timestamp)} — ${buyer} — ${r.stars}⭐`;
+    }).join("\n");
+  await api("sendMessage", { chat_id: chatId, text, parse_mode: "HTML" });
+}
+
+async function handleAdminLog(chatId) {
+  if (!fs.existsSync(LOG_PATH)) {
+    await api("sendMessage", { chat_id: chatId, text: "Лог-файл ещё не создан." });
+    return;
+  }
+  const lines = fs.readFileSync(LOG_PATH, "utf8").split("\n").filter(Boolean);
+  const tail = lines.slice(-20);
+  await api("sendMessage", {
+    chat_id: chatId,
+    parse_mode: "HTML",
+    text: `<b>Хвост лога</b> (последние ${tail.length} строк)\n\n<pre>${escapeHtml(tail.join("\n"))}</pre>`,
+  });
+}
+
+async function handleAdminInstallers(chatId) {
+  if (!fs.existsSync(RELEASE_DIR)) {
+    await api("sendMessage", { chat_id: chatId, text: `Папка ${RELEASE_DIR} не найдена.` });
+    return;
+  }
+  const re = /^Telegram Studio_(\d+)\.(\d+)\.(\d+)_x64_en-US\.msi$/;
+  const files = fs.readdirSync(RELEASE_DIR)
+    .map((name) => ({ name, m: name.match(re) }))
+    .filter((c) => c.m)
+    .map((c) => ({ name: c.name, version: c.m.slice(1, 4).map(Number) }));
+  files.sort((a, b) => { for (let i = 0; i < 3; i++) if (a.version[i] !== b.version[i]) return b.version[i] - a.version[i]; return 0; });
+  if (files.length === 0) {
+    await api("sendMessage", { chat_id: chatId, text: `Установщики (.msi) не найдены в ${RELEASE_DIR}.` });
+    return;
+  }
+  const text =
+    `<b>Установщики</b> (${RELEASE_DIR})\n\n` +
+    files.map((f, i) => `${i === 0 ? "⭐" : "▫️"} ${f.version.join(".")}`).join("\n");
+  await api("sendMessage", { chat_id: chatId, text, parse_mode: "HTML" });
+}
+
+// Один незавершённый broadcast за раз — этой панелью пользуется только
+// admin, полноценное per-chat состояние было бы лишней сложностью.
+let pendingBroadcast = null;
+
+async function handleAdminBroadcastStart(chatId, text) {
+  const trimmed = (text ?? "").trim();
+  if (!trimmed) {
+    await api("sendMessage", { chat_id: chatId, text: "Использование: /broadcast текст сообщения для рассылки покупателям" });
+    return;
+  }
+  const buyerCount = uniqueBuyerIds().length;
+  if (buyerCount === 0) {
+    await api("sendMessage", { chat_id: chatId, text: "Покупателей пока нет — рассылать некому." });
+    return;
+  }
+  pendingBroadcast = trimmed;
+  await api("sendMessage", {
+    chat_id: chatId,
+    text: `Разослать ${buyerCount} покупателям:\n\n${trimmed}`,
+    reply_markup: {
+      inline_keyboard: [[
+        { text: "✅ Отправить", callback_data: "broadcast_confirm" },
+        { text: "❌ Отмена", callback_data: "broadcast_cancel" },
+      ]],
+    },
+  });
+}
+
+async function runPendingBroadcast(chatId) {
+  if (!pendingBroadcast) return;
+  const text = pendingBroadcast;
+  pendingBroadcast = null;
+  const ids = uniqueBuyerIds();
+  let sent = 0;
+  for (let i = 0; i < ids.length; i++) {
+    // Пауза между отправками — тот же принцип, что broadcast_update в
+    // control-panel/src-tauri/src/lib.rs: не упереться в лимит Telegram
+    // (~30 сообщений/сек), для рассылки это не критично.
+    if (i > 0) await new Promise((r) => setTimeout(r, 50));
+    const res = await api("sendMessage", {
+      chat_id: ids[i],
+      text,
+      // Та же кнопка, что у рассылки из десктоп-панели — сразу присылает
+      // установщик по клику, без похода за /update отдельно.
+      reply_markup: { inline_keyboard: [[{ text: "📥 Скачать обновление", callback_data: "update" }]] },
+    });
+    if (res.ok) sent++;
+  }
+  await api("sendMessage", {
+    chat_id: chatId,
+    text: `Рассылка завершена: отправлено ${sent} из ${ids.length}${sent < ids.length ? `, не удалось ${ids.length - sent}` : ""}.`,
+  });
 }
 
 // ── Оформление профиля бота ──────────────────────────────────────────────
@@ -633,16 +820,35 @@ async function setupBotProfile() {
   if (desc.ok && desc.result.description !== desiredDescription) {
     await api("setMyDescription", { description: desiredDescription });
   }
-  await api("setMyCommands", {
-    commands: [
-      { command: "start", description: "О приложении" },
-      { command: "buy", description: "Купить лицензию" },
-      { command: "mykey", description: "Прислать мой ключ ещё раз" },
-      { command: "demo", description: "Живой пример Rich-поста" },
-      { command: "update", description: "Прислать последний установщик" },
-      { command: "help", description: "Как проходит покупка и активация" },
-    ],
-  });
+  const PUBLIC_COMMANDS = [
+    { command: "start", description: "О приложении" },
+    { command: "buy", description: "Купить лицензию" },
+    { command: "mykey", description: "Прислать мой ключ ещё раз" },
+    { command: "demo", description: "Живой пример Rich-поста" },
+    { command: "update", description: "Прислать последний установщик" },
+    { command: "help", description: "Как проходит покупка и активация" },
+  ];
+  await api("setMyCommands", { commands: PUBLIC_COMMANDS });
+
+  // Отдельный список команд именно для ADMIN_CHAT_ID (scope: chat) — это
+  // "мобильная панель управления": видна и раскрывается по "/" только в
+  // личном чате продавца с ботом, у покупателей меню остаётся обычным.
+  // scope-специфичный список Telegram полностью ЗАМЕНЯЕТ дефолтный для этого
+  // чата, а не дополняет — поэтому передаём публичные команды тоже, иначе
+  // они пропали бы из меню именно у админа.
+  if (ADMIN_CHAT_ID) {
+    await api("setMyCommands", {
+      commands: [
+        ...PUBLIC_COMMANDS,
+        { command: "status", description: "Статус, продажи, баланс Stars" },
+        { command: "sales", description: "Последние продажи" },
+        { command: "log", description: "Хвост лог-файла" },
+        { command: "installers", description: "Установщики в D:\\Релиз" },
+        { command: "broadcast", description: "Разослать сообщение покупателям" },
+      ],
+      scope: { type: "chat", chat_id: ADMIN_CHAT_ID },
+    });
+  }
 }
 
 // ── Long polling ─────────────────────────────────────────────────────────
