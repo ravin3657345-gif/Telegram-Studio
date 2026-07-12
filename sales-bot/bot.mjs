@@ -605,6 +605,7 @@ async function handleUpdate(update) {
   if (update.message?.text === "/sales" && isAdmin(update.message.chat.id)) return handleAdminSales(update.message.chat.id);
   if (update.message?.text === "/log" && isAdmin(update.message.chat.id)) return handleAdminLog(update.message.chat.id);
   if (update.message?.text === "/installers" && isAdmin(update.message.chat.id)) return handleAdminInstallers(update.message.chat.id);
+  if (update.message?.text === "/mybuild" && isAdmin(update.message.chat.id)) return handleAdminGetBuild(update.message.chat.id);
   if (update.message?.text?.startsWith("/broadcast") && isAdmin(update.message.chat.id)) {
     return handleAdminBroadcastStart(update.message.chat.id, update.message.text.slice("/broadcast".length));
   }
@@ -731,6 +732,19 @@ async function handleAdminInstallers(chatId) {
   await api("sendMessage", { chat_id: chatId, text, parse_mode: "HTML" });
 }
 
+// В отличие от /update (для покупателей, проверяет леджер) — эта версия
+// без проверки покупки: продавцу нужно самому тестировать свежую сборку,
+// не оформляя себе фиктивную продажу ради обхода фильтра.
+async function handleAdminGetBuild(chatId) {
+  const installer = findLatestInstaller();
+  if (!installer) {
+    await api("sendMessage", { chat_id: chatId, text: `Не нашёл установщик в ${RELEASE_DIR}.` });
+    return;
+  }
+  log(`Отправляю установщик админу (без проверки покупки): ${installer}`);
+  await sendDocument(chatId, installer, `Тестовая сборка: ${path.basename(installer)}`);
+}
+
 // Один незавершённый broadcast за раз — этой панелью пользуется только
 // admin, полноценное per-chat состояние было бы лишней сложностью.
 let pendingBroadcast = null;
@@ -844,6 +858,7 @@ async function setupBotProfile() {
         { command: "sales", description: "Последние продажи" },
         { command: "log", description: "Хвост лог-файла" },
         { command: "installers", description: "Установщики в D:\\Релиз" },
+        { command: "mybuild", description: "Прислать мне свежую сборку (без проверки покупки)" },
         { command: "broadcast", description: "Разослать сообщение покупателям" },
       ],
       scope: { type: "chat", chat_id: ADMIN_CHAT_ID },
