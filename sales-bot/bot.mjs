@@ -393,17 +393,27 @@ async function handleGetUpdate(chatId, userId) {
 // собранные вручную под один демонстрационный пост. Карты и формулы в
 // список не входят: приложение пока не умеет такие блоки (см. Advanced —
 // табличка внутри демо сама об этом честно говорит).
+// Общий список для handleDemo и warmDemoCache — один источник правды, чтобы
+// прогрев не мог незаметно разойтись с тем, что реально шлёт /demo.
+const DEMO_ASSET_FILES = ["demo_collage1.jpg", "demo_collage2.jpg", "demo_slide1.jpg", "demo_slide2.jpg", "demo_audio.mp3"];
+
+// Кэш uploadPublicFile живёт в памяти процесса — каждый рестарт бота обнуляет
+// его, и без прогрева именно тот, кто первым нажмёт /demo после рестарта,
+// платит полную цену пяти загрузок (несколько секунд). Прогреваем сразу при
+// старте и затем перепроверяем в цикле раз в ~30с (та же точка, что у
+// warmInstallerCache) — если запись протухла (70ч TTL), эта же проверка её
+// перезальёт заранее, до того как это попадёт на реального пользователя.
+async function warmDemoCache() {
+  await Promise.all(DEMO_ASSET_FILES.map((f) => uploadPublicFile(path.join(SCREENSHOTS_DIR, f))));
+}
+
 async function handleDemo(chatId) {
   log(`Демо Rich-режима для chat ${chatId}`);
   await api("sendMessage", { chat_id: chatId, text: "Собираю демо-пост… это займёт пару секунд." });
   try {
-    const [img1, img2, img3, img4, audioUrl] = await Promise.all([
-      uploadPublicFile(path.join(SCREENSHOTS_DIR, "demo_collage1.jpg")),
-      uploadPublicFile(path.join(SCREENSHOTS_DIR, "demo_collage2.jpg")),
-      uploadPublicFile(path.join(SCREENSHOTS_DIR, "demo_slide1.jpg")),
-      uploadPublicFile(path.join(SCREENSHOTS_DIR, "demo_slide2.jpg")),
-      uploadPublicFile(path.join(SCREENSHOTS_DIR, "demo_audio.mp3")),
-    ]);
+    const [img1, img2, img3, img4, audioUrl] = await Promise.all(
+      DEMO_ASSET_FILES.map((f) => uploadPublicFile(path.join(SCREENSHOTS_DIR, f)))
+    );
 
     const html =
       "<h2>Демо Rich-режима</h2>" +
@@ -647,7 +657,7 @@ async function warmInstallerCache() {
 
 async function main() {
   await setupBotProfile();
-  await warmInstallerCache();
+  await Promise.all([warmInstallerCache(), warmDemoCache()]);
 
   log(`Продающий бот запущен. Цена: ${STARS_PRICE} Stars. Жду сообщения...`);
   let offset = 0;
@@ -671,6 +681,7 @@ async function main() {
       handleUpdate(update).catch((err) => logError("handleUpdate failed:", err?.stack || err));
     }
     warmInstallerCache().catch((err) => logError("warmInstallerCache failed:", err?.stack || err));
+    warmDemoCache().catch((err) => logError("warmDemoCache failed:", err?.stack || err));
   }
 }
 
