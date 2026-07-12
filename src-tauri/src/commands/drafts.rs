@@ -80,6 +80,16 @@ pub async fn upsert_draft(
             .clone()
             .or_else(|| existing.as_ref().and_then(|d| d.template_id.clone()));
 
+        // Same fallback pattern as template_id: only an explicit payload value
+        // (the frontend sends this whenever the Обычный/Rich toggle changes)
+        // overrides it, otherwise keep whatever the existing row already has.
+        // New drafts with no existing row default to "normal".
+        let publish_mode = payload
+            .publish_mode
+            .clone()
+            .or_else(|| existing.as_ref().map(|d| d.publish_mode.clone()))
+            .unwrap_or_else(|| "normal".to_string());
+
         let draft = Draft {
             id: id.clone(),
             title: payload.title,
@@ -87,7 +97,14 @@ pub async fn upsert_draft(
             content_json: payload.content_json,
             content_text: payload.content_text,
             parse_mode: payload.parse_mode.unwrap_or_else(|| "HTML".to_string()),
+            // Intentionally NOT taken from payload — status is a state machine
+            // (draft/scheduled/published) moved forward only by explicit
+            // transitions in commands::publish/scheduler. q::upsert's SQL
+            // excludes `status` from its ON CONFLICT UPDATE SET, so this value
+            // only ever takes effect for a brand-new row; editing an existing
+            // scheduled/published draft leaves its real status untouched.
             status: "draft".to_string(),
+            publish_mode,
             template_id,
             template_name: None,
             media: vec![],

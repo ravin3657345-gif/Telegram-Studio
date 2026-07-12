@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Send, Clock, CheckCircle2, AlertCircle, Loader2, ExternalLink, FileText, Layers, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { ScheduleDialog } from "@/components/editor/ScheduleDialog";
@@ -6,7 +6,7 @@ import { PublishConfirmDialog } from "@/components/editor/PublishConfirmDialog";
 import { useChannelsStore } from "@/store/channelsStore";
 import { usePublishStore } from "@/store/publishStore";
 import { useEditorStore } from "@/store/editorStore";
-import { publishPost, schedulePost, telegraphPublish, publishRichPost, republishRichPost, sendPoll, editPublishedPost, upsertDraft } from "@/lib/tauriApi";
+import { publishPost, schedulePost, telegraphPublish, publishRichPost, republishRichPost, sendPoll, editPublishedPost, upsertDraft, updateScheduledPostContent } from "@/lib/tauriApi";
 import { segmentDocument, splitIntoMessagesAtGaps, splitJsonAtGaps } from "@/lib/htmlConverter";
 import type { TextSegment, PollSegment } from "@/lib/htmlConverter";
 import { tiptapToTelegraphNodes } from "@/lib/telegraphConverter";
@@ -28,7 +28,7 @@ export function PublishPanel({ draftId }: PublishPanelProps) {
   const { bots, channels } = useChannelsStore();
   const { selectedChannelIds, status, results, lastError,
           toggleChannel, setStatus, setResults, setError, reset } = usePublishStore();
-  const { contentJson, postTitle, includeTitle, publishMode, setPublishMode, editingHistoryId, setEditingHistoryId, draftTitle, setDraftId } = useEditorStore();
+  const { contentJson, postTitle, includeTitle, publishMode, setPublishMode, editingHistoryId, setEditingHistoryId, draftTitle, setDraftId, draftStatus, lastSavedAt } = useEditorStore();
   useSettingsStore((s) => s.language);
   const bumpHistory      = useUiStore((s) => s.bumpHistory);
   const attachedFiles    = useAttachmentStore((s) => s.files);
@@ -99,7 +99,62 @@ export function PublishPanel({ draftId }: PublishPanelProps) {
     !mapBlockedOutsideRich && !formulaBlockedOutsideRich &&
     status !== "publishing" && status !== "scheduling";
 
-  const canSchedule = canPublish && !mediaBlockedInSchedule;
+  // Rich messages have no editRichMessage / re-snapshot path on the Telegram
+  // side (see richOutsideSchedule warning below), and PublishPanel's own
+  // schedule flow builds its content from plain text segments only — a
+  // scheduled Rich post would silently lose tables/maps/formulas/collages.
+  // Scheduling is therefore Rich-exclusive-blocked, same shape as the
+  // Rich-only blocks being blocked outside Rich.
+  const richBlockedInSchedule = publishMode === "rich";
+  const canSchedule = canPublish && !mediaBlockedInSchedule && !richBlockedInSchedule;
+
+  // Keeps an already-scheduled post's queued content in sync with the draft.
+  // scheduled_posts.content_html is a one-time snapshot taken when the post
+  // was first scheduled — editing the draft afterwards never touched it, so
+  // fire a best-effort resync after every autosave completes (only for
+  // normal-mode drafts; Rich can't be scheduled at all, see richBlockedInSchedule).
+  useEffect(() => {
+    if (!draftId || draftStatus !== "scheduled" || publishMode === "rich" || !lastSavedAt) return;
+
+    (async () => {
+      try {
+        const textHtml = segments
+          .filter((s): s is TextSegment => s.type === "text")
+          .map((s) => s.html)
+          .join("\n\n")
+          .trim();
+
+        type Encoded = { fileName: string; mimeType: string; mediaType: string; dataBase64: string };
+        const encoded: Encoded[] = [];
+        for (const seg of segments) {
+          if (seg.type !== "image" && seg.type !== "video" && seg.type !== "file") continue;
+          const file = fileRegistry.getFile(seg.fileId);
+          if (!file) continue;
+          const { base64: dataBase64, mimeType, fileName } = seg.type === "image"
+            ? await normalizeImageToJpeg(file)
+            : { base64: await fileToBase64(file), mimeType: seg.mimeType, fileName: seg.fileName };
+          encoded.push({ fileName, mimeType, mediaType: seg.type, dataBase64 });
+        }
+        const freshAttachments = useAttachmentStore.getState().files;
+        for (const att of freshAttachments) {
+          const file = fileRegistry.getFile(att.id);
+          if (!file) continue;
+          encoded.push({ fileName: att.name, mimeType: att.mimeType, mediaType: "file", dataBase64: await fileToBase64(file) });
+        }
+
+        await updateScheduledPostContent({
+          draftId,
+          contentHtml: textHtml || "—",
+          media: encoded,
+        });
+      } catch {
+        // Best-effort — the autosave itself already succeeded, the next edit
+        // will retry the resync.
+      }
+    })();
+    // Only re-run when a fresh autosave actually completed.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lastSavedAt]);
 
   // ── Normal / Caption publish ─────────────────────────────────────────────────
 
@@ -781,6 +836,21 @@ export function PublishPanel({ draftId }: PublishPanelProps) {
           >
             <AlertCircle size={13} style={{ color: "#fbbf24", flexShrink: 0, marginTop: 1 }} />
             <span>{t("publish.mediaInSchedule")}</span>
+          </div>
+        )}
+
+        {/* Rich can't be scheduled — no snapshot/edit path for it later */}
+        {richBlockedInSchedule && !editingHistoryId && (
+          <div
+            className="flex items-start gap-2 px-3 py-2 rounded-lg text-xs"
+            style={{
+              backgroundColor: "rgba(251,191,36,0.1)",
+              border: "1px solid rgba(251,191,36,0.3)",
+              color: "var(--text-secondary)",
+            }}
+          >
+            <AlertCircle size={13} style={{ color: "#fbbf24", flexShrink: 0, marginTop: 1 }} />
+            <span>{t("publish.richNoSchedule")}</span>
           </div>
         )}
 

@@ -1,14 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  Plus, Trash2, SlidersHorizontal, ArrowUpDown, FileText, Check, Search, X,
+  Plus, Trash2, SlidersHorizontal, ArrowUpDown, FileText, Check, Search, X, XCircle,
 } from "lucide-react";
 import { TopBar } from "@/components/layout/TopBar";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Spinner } from "@/components/ui/Spinner";
 import { useDraftsStore } from "@/store/draftsStore";
-import { getDrafts, deleteDraft } from "@/lib/tauriApi";
+import { getDrafts, deleteDraft, getScheduledPosts, cancelScheduledPost } from "@/lib/tauriApi";
 import { toast, TOAST_DURATIONS } from "@/store/uiStore";
 import { t, ti, type TranslationKey } from "@/lib/i18n";
 import { useSettingsStore } from "@/store/settingsStore";
@@ -17,6 +17,7 @@ import {
   type DraftStatus, type DraftSortKey, filterAndSortDrafts, searchDrafts,
 } from "@/lib/draftsFilter";
 import { DRAFT_MAX_COUNT } from "@/lib/constants";
+import { NewPostChooserDialog } from "@/components/drafts/NewPostChooserDialog";
 
 const DRAFT_LIMIT = DRAFT_MAX_COUNT;
 
@@ -27,6 +28,19 @@ const STATUS_LABEL_KEY: Record<DraftStatus, TranslationKey> = {
   scheduled: "drafts.status.sched",
   published: "drafts.status.published",
 };
+
+// ── Countdown ──────────────────────────────────────────────────────────────────
+
+function formatCountdown(scheduledAt: string): string {
+  const diffMs = new Date(scheduledAt).getTime() - Date.now();
+  if (diffMs <= 0) return t("drafts.countdownDue");
+  const mins = Math.round(diffMs / 60000);
+  if (mins < 60) return ti("drafts.countdownMinutes", { n: mins });
+  const hours = Math.round(mins / 60);
+  if (hours < 24) return ti("drafts.countdownHours", { n: hours });
+  const days = Math.round(hours / 24);
+  return ti("drafts.countdownDays", { n: days });
+}
 
 // ── Status pill ───────────────────────────────────────────────────────────────
 
@@ -73,6 +87,7 @@ export function DraftsPage() {
   const [sortBy, setSortBy] = useState<DraftSortKey>("updated");
   const [search, setSearch] = useState("");
   const [openMenu, setOpenMenu] = useState<"filters" | "sort" | null>(null);
+  const [showChooser, setShowChooser] = useState(false);
   const toolbarRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -100,6 +115,27 @@ export function DraftsPage() {
     setLoading(true);
     getDrafts().then(setDrafts).finally(() => setLoading(false));
   }, [setDrafts, setLoading]);
+
+  // Re-renders the countdown column periodically without a full data refetch.
+  const [, forceTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => forceTick((n) => n + 1), 60_000);
+    return () => clearInterval(id);
+  }, []);
+
+  async function handleCancelSchedule(e: React.MouseEvent, id: string) {
+    e.stopPropagation();
+    try {
+      const posts = await getScheduledPosts();
+      const mine = posts.filter((p) => p.draftId === id);
+      await Promise.all(mine.map((p) => cancelScheduledPost(p.id)));
+      const fresh = await getDrafts();
+      setDrafts(fresh);
+      toast.success(t("sched.cancelled"));
+    } catch {
+      toast.error(t("sched.cancelError"));
+    }
+  }
 
   function handleDelete(e: React.MouseEvent, id: string) {
     e.stopPropagation();
@@ -298,7 +334,7 @@ export function DraftsPage() {
                 <Button
                   variant="primary"
                   size="sm"
-                  onClick={() => navigate("/editor")}
+                  onClick={() => setShowChooser(true)}
                   leftIcon={<Plus size={13} />}
                 >
                   {t("drafts.new")}
@@ -313,7 +349,7 @@ export function DraftsPage() {
                   icon={Files}
                   title={t("drafts.empty")}
                   description={t("drafts.emptyDesc")}
-                  action={{ label: `+ ${t("drafts.new")}`, onClick: () => navigate("/editor") }}
+                  action={{ label: `+ ${t("drafts.new")}`, onClick: () => setShowChooser(true) }}
                 />
               </div>
             ) : visibleDrafts.length === 0 ? (
@@ -329,11 +365,19 @@ export function DraftsPage() {
                 />
               </div>
             ) : (
-              <DraftsTable drafts={visibleDrafts} onOpen={(id) => navigate(`/editor/${id}`)} onDelete={handleDelete} />
+              <DraftsTable
+                drafts={visibleDrafts}
+                onOpen={(id) => navigate(`/editor/${id}`)}
+                onDelete={handleDelete}
+                onCancelSchedule={handleCancelSchedule}
+                onNew={() => setShowChooser(true)}
+              />
             )}
           </div>
         )}
       </div>
+
+      {showChooser && <NewPostChooserDialog onClose={() => setShowChooser(false)} />}
     </>
   );
 }
@@ -354,12 +398,15 @@ function DraftsTable({
   drafts,
   onOpen,
   onDelete,
+  onCancelSchedule,
+  onNew,
 }: {
   drafts: DraftRow[];
   onOpen: (id: string) => void;
   onDelete: (e: React.MouseEvent, id: string) => void;
+  onCancelSchedule: (e: React.MouseEvent, id: string) => void;
+  onNew: () => void;
 }) {
-  const navigate = useNavigate();
   useSettingsStore((s) => s.language);
 
   return (
@@ -389,21 +436,24 @@ function DraftsTable({
         const schedDate = d.scheduledAt
           ? new Date(d.scheduledAt).toLocaleString("ru", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })
           : "—";
+        const countdown = status === "scheduled" && d.scheduledAt ? formatCountdown(d.scheduledAt) : null;
         return (
           <DraftTableRow
             key={d.id}
             title={title}
             status={status}
             schedDate={schedDate}
+            countdown={countdown}
             onClick={() => onOpen(d.id)}
             onDelete={(e) => onDelete(e, d.id)}
+            onCancelSchedule={(e) => onCancelSchedule(e, d.id)}
           />
         );
       })}
 
       {/* New row */}
       <button
-        onClick={() => navigate("/editor")}
+        onClick={onNew}
         className="flex items-center w-full px-6 border-b transition-colors"
         style={{
           height: 42,
@@ -431,14 +481,18 @@ function DraftTableRow({
   title,
   status,
   schedDate,
+  countdown,
   onClick,
   onDelete,
+  onCancelSchedule,
 }: {
   title: string;
   status: DraftStatus;
   schedDate: string;
+  countdown: string | null;
   onClick: () => void;
   onDelete: (e: React.MouseEvent) => void;
+  onCancelSchedule: (e: React.MouseEvent) => void;
 }) {
   const [hovered, setHovered] = useState(false);
 
@@ -467,8 +521,28 @@ function DraftTableRow({
       </div>
 
       {/* Scheduled */}
-      <div style={{ width: 160, flexShrink: 0, fontSize: 12, color: "var(--text-secondary)" }}>
-        {schedDate}
+      <div
+        className="flex items-center gap-1.5"
+        style={{ width: 160, flexShrink: 0, fontSize: 12, color: "var(--text-secondary)" }}
+        title={status === "scheduled" ? schedDate : undefined}
+      >
+        {countdown ? (
+          <>
+            <span className="truncate">{countdown}</span>
+            <button
+              onClick={onCancelSchedule}
+              className="flex items-center justify-center flex-shrink-0 rounded transition-colors"
+              style={{ width: 18, height: 18, color: "var(--text-muted)" }}
+              onMouseEnter={(e) => (e.currentTarget.style.color = "var(--danger)")}
+              onMouseLeave={(e) => (e.currentTarget.style.color = "var(--text-muted)")}
+              title={t("sched.cancel")}
+            >
+              <XCircle size={13} />
+            </button>
+          </>
+        ) : (
+          schedDate
+        )}
       </div>
 
       {/* Delete on hover */}

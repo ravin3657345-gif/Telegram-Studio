@@ -38,6 +38,10 @@ interface EditorState {
   saveStatus:        SaveStatus;
   lastSavedAt:       Date | null;
   publishMode:       PublishMode;
+  /** "draft" | "scheduled" | "published" — loaded from the draft row itself,
+   *  not derived. Used to gate editing/scheduling of Rich posts once queued
+   *  (Telegram has no editRichMessage — see PublishPanel/EditorPage). */
+  draftStatus:       string;
   templateName:      string | null; // set when the current draft was created from a template
 
   setDraftId:           (id: string | null) => void;
@@ -47,6 +51,7 @@ interface EditorState {
   setIncludeTitle:   (v: boolean) => void;
   setContentJson:    (json: string) => void;
   setPublishMode:    (mode: PublishMode) => void;
+  setDraftStatus:    (status: string) => void;
   setTemplateName:   (name: string | null) => void;
 
   addMedia:     (files: File[]) => { added: number; errors: string[] };
@@ -88,6 +93,7 @@ const INITIAL_STATE = {
   saveStatus:       "idle" as SaveStatus,
   lastSavedAt:      null as Date | null,
   publishMode:      "normal" as PublishMode,
+  draftStatus:      "draft" as string,
   splitGaps:        [] as number[],
   lockedGaps:       [] as number[],
   templateName:     null as string | null,
@@ -106,6 +112,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   setIncludeTitle: (v)     => set({ includeTitle: v }),
   setContentJson:  (json)  => set({ contentJson: json }),
   setPublishMode:  (mode)  => set({ publishMode: mode }),
+  setDraftStatus:  (status) => set({ draftStatus: status }),
   setTemplateName: (name)  => set({ templateName: name }),
 
   addMedia(files) {

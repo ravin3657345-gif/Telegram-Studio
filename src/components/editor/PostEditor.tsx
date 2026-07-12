@@ -76,6 +76,7 @@ export function PostEditor({ draftId: initialDraftId }: PostEditorProps) {
   const setEditingHistoryId = useEditorStore((s) => s.setEditingHistoryId);
   const setTemplateName     = useEditorStore((s) => s.setTemplateName);
   const setPublishMode      = useEditorStore((s) => s.setPublishMode);
+  const setDraftStatus      = useEditorStore((s) => s.setDraftStatus);
   const addRegistered       = useAttachmentStore((s) => s.addRegistered);
   const historyLoadedRef    = useRef(false);
 
@@ -252,6 +253,8 @@ export function PostEditor({ draftId: initialDraftId }: PostEditorProps) {
       setPostTitle(draft.postTitle ?? "");
       if (draft.title) setDraftTitle(draft.title);
       setTemplateName(draft.templateName ?? null);
+      if (draft.publishMode) setPublishMode(draft.publishMode as "normal" | "rich" | "telegraph");
+      setDraftStatus(draft.status);
 
       // Восстанавливаем вложения в fileRegistry и патчим blob-URL в contentJson
       const json = restoreAttachmentsIntoJson(draft.contentJson, draft.attachments ?? []);

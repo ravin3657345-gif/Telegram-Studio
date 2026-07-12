@@ -459,45 +459,7 @@ pub async fn schedule_post(
         // Persist media to disk so it survives until the scheduler sends it —
         // each channel gets its own copy (simpler and safer than sharing a
         // ref-counted file across multiple scheduled_posts rows).
-        if !payload.media.is_empty() {
-            use base64::Engine;
-            let media_dir = state.app_dir.join("scheduled_media").join(&id);
-            std::fs::create_dir_all(&media_dir)
-                .map_err(|e| format!("Не удалось создать директорию: {}", e))?;
-
-            for (i, item) in payload.media.iter().enumerate() {
-                let raw = base64::engine::general_purpose::STANDARD
-                    .decode(&item.data_base64)
-                    .map_err(|_| format!("Ошибка декодирования файла «{}»", item.file_name))?;
-                if raw.is_empty() { continue; }
-
-                let ext = item.file_name
-                    .rsplit('.')
-                    .next()
-                    .unwrap_or("bin")
-                    .chars()
-                    .filter(|c| c.is_alphanumeric())
-                    .take(10)
-                    .collect::<String>();
-                let ext = if ext.is_empty() { "bin".to_string() } else { ext };
-
-                let file_path = media_dir.join(format!("{}.{}", i, ext));
-                std::fs::write(&file_path, &raw)
-                    .map_err(|e| format!("Ошибка сохранения файла: {}", e))?;
-
-                let media_id = Uuid::new_v4().to_string();
-                let path_str = file_path.to_string_lossy().into_owned();
-                db.execute(
-                    "INSERT INTO scheduled_media
-                     (id, scheduled_post_id, file_path, file_name, mime_type, media_type, file_size, sort_order, created_at)
-                     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9)",
-                    rusqlite::params![
-                        media_id, id, path_str, item.file_name, item.mime_type,
-                        item.media_type, raw.len() as i64, i as i64, now,
-                    ],
-                ).map_err(|e| e.to_string())?;
-            }
-        }
+        persist_scheduled_media(&db, &state.app_dir, &id, &payload.media, &now)?;
 
         infos.push(ScheduledPostInfo {
             id,
@@ -809,6 +771,111 @@ pub async fn get_scheduled_posts(
         .map_err(|e| e.to_string())?;
 
     rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+}
+
+/// Persists media to disk for a scheduled post so it survives until the
+/// scheduler sends it. Extracted out of `schedule_post` so `update_scheduled_post_content`
+/// can reuse the exact same encoding/storage logic when re-syncing an
+/// already-scheduled post's content after an edit.
+fn persist_scheduled_media(
+    db: &rusqlite::Connection,
+    app_dir: &std::path::Path,
+    scheduled_post_id: &str,
+    media: &[MediaItem],
+    now: &str,
+) -> Result<(), String> {
+    if media.is_empty() {
+        return Ok(());
+    }
+    use base64::Engine;
+    let media_dir = app_dir.join("scheduled_media").join(scheduled_post_id);
+    std::fs::create_dir_all(&media_dir)
+        .map_err(|e| format!("Не удалось создать директорию: {}", e))?;
+
+    for (i, item) in media.iter().enumerate() {
+        let raw = base64::engine::general_purpose::STANDARD
+            .decode(&item.data_base64)
+            .map_err(|_| format!("Ошибка декодирования файла «{}»", item.file_name))?;
+        if raw.is_empty() { continue; }
+
+        let ext = item.file_name
+            .rsplit('.')
+            .next()
+            .unwrap_or("bin")
+            .chars()
+            .filter(|c| c.is_alphanumeric())
+            .take(10)
+            .collect::<String>();
+        let ext = if ext.is_empty() { "bin".to_string() } else { ext };
+
+        let file_path = media_dir.join(format!("{}.{}", i, ext));
+        std::fs::write(&file_path, &raw)
+            .map_err(|e| format!("Ошибка сохранения файла: {}", e))?;
+
+        let media_id = Uuid::new_v4().to_string();
+        let path_str = file_path.to_string_lossy().into_owned();
+        db.execute(
+            "INSERT INTO scheduled_media
+             (id, scheduled_post_id, file_path, file_name, mime_type, media_type, file_size, sort_order, created_at)
+             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9)",
+            rusqlite::params![
+                media_id, scheduled_post_id, path_str, item.file_name, item.mime_type,
+                item.media_type, raw.len() as i64, i as i64, now,
+            ],
+        ).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateScheduledContentPayload {
+    pub draft_id: String,
+    pub content_html: String,
+    pub media: Vec<MediaItem>,
+}
+
+/// Re-syncs the content snapshot of all pending `scheduled_posts` rows tied to
+/// a draft, without touching `scheduled_at`/channel/bot or creating a new
+/// queue entry. `scheduled_posts.content_html` is a one-time snapshot taken
+/// when the post was first scheduled (see `schedule_post`) — editing the
+/// draft afterwards never touched it, so what actually got sent at fire time
+/// silently diverged from the user's latest edits. Called from the frontend
+/// autosave path only for normal-mode drafts that are currently `scheduled`
+/// (Rich posts can't be scheduled at all — see PublishPanel's canSchedule).
+/// A no-op if nothing is currently pending for this draft.
+#[tauri::command]
+pub async fn update_scheduled_post_content(
+    payload: UpdateScheduledContentPayload,
+    state: tauri::State<'_, AppState>,
+) -> Result<(), String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let now = Utc::now().to_rfc3339();
+
+    let mut stmt = db
+        .prepare("SELECT id FROM scheduled_posts WHERE draft_id = ?1 AND status = 'pending'")
+        .map_err(|e| e.to_string())?;
+    let post_ids: Vec<String> = stmt
+        .query_map(rusqlite::params![payload.draft_id], |r| r.get(0))
+        .map_err(|e| e.to_string())?
+        .filter_map(|r| r.ok())
+        .collect();
+    drop(stmt);
+
+    for post_id in &post_ids {
+        db.execute(
+            "UPDATE scheduled_posts SET content_html = ?1, updated_at = ?2 WHERE id = ?3",
+            rusqlite::params![payload.content_html, now, post_id],
+        ).map_err(|e| e.to_string())?;
+
+        // Replace persisted media wholesale — simpler and safer than diffing
+        // old vs new attachments, and this runs at most once per (debounced)
+        // autosave, not per keystroke.
+        cleanup_scheduled_media(&db, &state.app_dir, post_id);
+        persist_scheduled_media(&db, &state.app_dir, post_id, &payload.media, &now)?;
+    }
+
+    Ok(())
 }
 
 /// Removes a scheduled post's persisted media (disk files + DB rows).

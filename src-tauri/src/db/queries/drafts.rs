@@ -8,6 +8,7 @@ pub fn find_all_summaries(conn: &Connection) -> Result<Vec<DraftSummary>> {
             (SELECT COUNT(*) FROM draft_media  WHERE draft_id = d.id) AS media_count,
             (SELECT COUNT(*) FROM draft_buttons WHERE draft_id = d.id) AS button_count,
             d.status,
+            d.publish_mode,
             (SELECT MIN(scheduled_at) FROM scheduled_posts
              WHERE draft_id = d.id AND status = 'pending') AS scheduled_at,
             d.updated_at
@@ -25,8 +26,9 @@ pub fn find_all_summaries(conn: &Connection) -> Result<Vec<DraftSummary>> {
             media_count:  r.get(4)?,
             button_count: r.get(5)?,
             status:       r.get(6)?,
-            scheduled_at: r.get(7)?,
-            updated_at:   r.get(8)?,
+            publish_mode: r.get(7)?,
+            scheduled_at: r.get(8)?,
+            updated_at:   r.get(9)?,
         })
     })?;
 
@@ -36,7 +38,7 @@ pub fn find_all_summaries(conn: &Connection) -> Result<Vec<DraftSummary>> {
 pub fn find_by_id(conn: &Connection, id: &str) -> Result<Option<Draft>> {
     let mut stmt = conn.prepare(
         "SELECT d.id, d.title, d.post_title, d.content_json, d.content_text, d.parse_mode,
-                d.status, d.template_id, t.title, d.created_at, d.updated_at
+                d.status, d.publish_mode, d.template_id, t.title, d.created_at, d.updated_at
          FROM drafts d
          LEFT JOIN drafts t ON t.id = d.template_id AND t.kind = 'template'
          WHERE d.id = ?1",
@@ -51,10 +53,11 @@ pub fn find_by_id(conn: &Connection, id: &str) -> Result<Option<Draft>> {
             content_text:  r.get(4)?,
             parse_mode:    r.get(5)?,
             status:        r.get(6)?,
-            template_id:   r.get(7)?,
-            template_name: r.get(8)?,
-            created_at:    r.get(9)?,
-            updated_at:    r.get(10)?,
+            publish_mode:  r.get(7)?,
+            template_id:   r.get(8)?,
+            template_name: r.get(9)?,
+            created_at:    r.get(10)?,
+            updated_at:    r.get(11)?,
             media:         vec![],
             buttons:       vec![],
             attachments:   vec![],
@@ -122,14 +125,15 @@ pub fn find_by_id(conn: &Connection, id: &str) -> Result<Option<Draft>> {
 pub fn upsert(conn: &Connection, draft: &Draft) -> Result<()> {
     conn.execute(
         "INSERT INTO drafts (id, title, post_title, content_json, content_text,
-                             parse_mode, status, template_id, created_at, updated_at)
-         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)
+                             parse_mode, status, publish_mode, template_id, created_at, updated_at)
+         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11)
          ON CONFLICT(id) DO UPDATE SET
              title        = excluded.title,
              post_title   = excluded.post_title,
              content_json = excluded.content_json,
              content_text = excluded.content_text,
              parse_mode   = excluded.parse_mode,
+             publish_mode = excluded.publish_mode,
              template_id  = excluded.template_id,
              updated_at   = excluded.updated_at",
         rusqlite::params![
@@ -140,6 +144,7 @@ pub fn upsert(conn: &Connection, draft: &Draft) -> Result<()> {
             draft.content_text,
             draft.parse_mode,
             draft.status,
+            draft.publish_mode,
             draft.template_id,
             draft.created_at,
             draft.updated_at,

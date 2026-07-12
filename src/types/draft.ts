@@ -40,6 +40,8 @@ export interface Draft {
   contentText?: string | null;
   parseMode: ParseMode;
   status: DraftStatus;
+  /** "normal" | "rich" | "telegraph" — mode the post was composed in. */
+  publishMode: string;
   templateId?: string | null;
   templateName?: string | null;
   media: DraftMedia[];
@@ -57,6 +59,7 @@ export interface DraftSummary {
   mediaCount: number;
   buttonCount: number;
   status: DraftStatus;
+  publishMode: string;
   /** Earliest still-pending scheduled_posts.scheduled_at for this draft, if any. */
   scheduledAt?: string | null;
   updatedAt: string;
@@ -69,6 +72,7 @@ export interface DraftPayload {
   contentJson: string;
   contentText?: string;
   parseMode?: ParseMode;
+  publishMode?: string;
   templateId?: string;
   attachments?: DraftAttachment[];
 }

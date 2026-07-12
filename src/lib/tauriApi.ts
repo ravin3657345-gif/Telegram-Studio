@@ -6,6 +6,7 @@ import type { AppSettings } from "@/types/settings";
 import type { Template, SaveTemplatePayload } from "@/types/template";
 import type {
   BotInfo,
+  MediaPayload,
   PublishPayload,
   PublishResult,
   ScheduledPostInfo,
@@ -78,6 +79,18 @@ export const getScheduledPosts = (): Promise<ScheduledPostInfo[]> =>
 
 export const cancelScheduledPost = (postId: string): Promise<void> =>
   invoke("cancel_scheduled_post", { postId });
+
+export interface UpdateScheduledContentPayload {
+  draftId: string;
+  contentHtml: string;
+  media: MediaPayload[];
+}
+
+// Re-syncs the content snapshot of an already-scheduled post after the
+// underlying draft is edited — a no-op if nothing is currently pending for
+// this draft (see src-tauri/src/commands/publish.rs::update_scheduled_post_content).
+export const updateScheduledPostContent = (payload: UpdateScheduledContentPayload): Promise<void> =>
+  invoke("update_scheduled_post_content", { payload });
 
 export const getTodayStats = (): Promise<TodayStats> =>
   invoke("get_today_stats");

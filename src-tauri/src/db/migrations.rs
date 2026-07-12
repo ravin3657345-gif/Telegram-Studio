@@ -12,6 +12,7 @@ pub fn run(conn: &Connection) -> Result<()> {
     migrate_v9(conn)?;
     migrate_v10(conn)?;
     migrate_v11(conn)?;
+    migrate_v12(conn)?;
     seed_settings(conn)?;
     Ok(())
 }
@@ -198,6 +199,17 @@ fn migrate_v11(conn: &Connection) -> Result<()> {
 
     conn.execute_batch("CREATE INDEX IF NOT EXISTS idx_drafts_kind ON drafts(kind);")?;
 
+    Ok(())
+}
+
+fn migrate_v12(conn: &Connection) -> Result<()> {
+    // Persists which publish mode (normal/rich) a draft was written in — was
+    // previously only a runtime UI toggle, never saved with the draft. Needed
+    // so a scheduled post's mode can be checked later (e.g. to block editing
+    // rich posts after they've been queued — Telegram has no editRichMessage).
+    let _ = conn.execute_batch(
+        "ALTER TABLE drafts ADD COLUMN publish_mode TEXT NOT NULL DEFAULT 'normal';"
+    );
     Ok(())
 }
 

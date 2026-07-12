@@ -1,13 +1,13 @@
 import { useState } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
-import { CheckCircle2, AlertCircle, Loader2, LayoutTemplate, PenLine, Eye, Send } from "lucide-react";
+import { CheckCircle2, AlertCircle, Loader2, LayoutTemplate, PenLine, Eye, Send, Lock, XCircle } from "lucide-react";
 import { TopBar } from "@/components/layout/TopBar";
 import { PostEditor } from "@/components/editor/PostEditor";
 import { PublishPanel } from "@/components/editor/PublishPanel";
 import { TelegramPreview } from "@/components/preview/TelegramPreview";
 import { SaveTemplateDialog } from "@/components/editor/SaveTemplateDialog";
 import { useEditorStore } from "@/store/editorStore";
-import { saveTemplate } from "@/lib/tauriApi";
+import { saveTemplate, getScheduledPosts, cancelScheduledPost } from "@/lib/tauriApi";
 import { collectInlineAttachments } from "@/lib/attachmentRestore";
 import { toast } from "@/store/uiStore";
 import { t, ti } from "@/lib/i18n";
@@ -29,14 +29,38 @@ export function EditorPage() {
   const showPreview = useSettingsStore((s) => s.showTelegramPreview);
   const isMobile = useIsMobileLayout();
 
-  const { draftTitle, postTitle, contentJson, saveStatus, lastSavedAt, draftId: storeDraftId, templateName } =
-    useEditorStore();
+  const { draftTitle, postTitle, contentJson, saveStatus, lastSavedAt, draftId: storeDraftId, templateName,
+          draftStatus, publishMode, setDraftStatus } = useEditorStore();
 
   const effectiveDraftId = draftId ?? storeDraftId ?? undefined;
   const displayTitle     = postTitle || draftTitle || t("editor.untitled");
 
   const [showTemplateDialog, setShowTemplateDialog] = useState(false);
   const [mobileTab, setMobileTab] = useState<MobileTab>("editor");
+  const [unlocking, setUnlocking] = useState(false);
+
+  // Defensive guard: scheduling a Rich post is blocked in PublishPanel (see
+  // richBlockedInSchedule), so this combination shouldn't be reachable going
+  // forward — kept as a fallback in case a scheduled+rich row exists anyway
+  // (e.g. leftover data). Telegram has no editRichMessage and no snapshot/
+  // resync path for a queued Rich post, so editing has to stay blocked.
+  const isRichScheduledLocked = !!effectiveDraftId && draftStatus === "scheduled" && publishMode === "rich";
+
+  async function handleUnlockScheduledRich() {
+    if (!effectiveDraftId) return;
+    setUnlocking(true);
+    try {
+      const posts = await getScheduledPosts();
+      const mine = posts.filter((p) => p.draftId === effectiveDraftId);
+      await Promise.all(mine.map((p) => cancelScheduledPost(p.id)));
+      setDraftStatus("draft");
+      toast.success(t("editor.scheduledRichUnlocked"));
+    } catch {
+      toast.error(t("editor.scheduledRichUnlockError"));
+    } finally {
+      setUnlocking(false);
+    }
+  }
 
   async function handleSaveAsTemplate(name: string, category: TemplateCategory) {
     setShowTemplateDialog(false);
@@ -101,13 +125,24 @@ export function EditorPage() {
 
       {/* ── Body ─────────────────────────────────────────────────────────── */}
       {isMobile ? (
-        <MobileEditorBody
-          draftId={draftId}
-          effectiveDraftId={effectiveDraftId}
-          showPreview={showPreview}
-          activeTab={mobileTab}
-          onTabChange={setMobileTab}
-        />
+        isRichScheduledLocked ? (
+          <ScheduledRichLockedPanel onUnlock={handleUnlockScheduledRich} unlocking={unlocking} />
+        ) : (
+          <MobileEditorBody
+            draftId={draftId}
+            effectiveDraftId={effectiveDraftId}
+            showPreview={showPreview}
+            activeTab={mobileTab}
+            onTabChange={setMobileTab}
+          />
+        )
+      ) : isRichScheduledLocked ? (
+        <>
+          {/* Kept mounted (hidden) so its draft-load effect still runs — that's
+              what populated draftStatus/publishMode in the first place. */}
+          <div style={{ display: "none" }}><PostEditor draftId={draftId} /></div>
+          <ScheduledRichLockedPanel onUnlock={handleUnlockScheduledRich} unlocking={unlocking} />
+        </>
       ) : (
         <div className="flex flex-1 overflow-hidden">
 
@@ -208,6 +243,40 @@ function SaveStatus({
 
 function formatTime(date: Date): string {
   return date.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+}
+
+// ── ScheduledRichLockedPanel ───────────────────────────────────────────────────
+// Shown instead of the editor when a draft is somehow both scheduled and in
+// Rich mode — Telegram has no editRichMessage, so there's no safe way to
+// apply edits to an already-queued Rich post. The only way forward is to
+// cancel the schedule (the draft goes back to a normal editable draft).
+
+function ScheduledRichLockedPanel({ onUnlock, unlocking }: { onUnlock: () => void; unlocking: boolean }) {
+  return (
+    <div className="flex flex-1 items-center justify-center p-8">
+      <div
+        className="flex flex-col items-center gap-3 text-center rounded-xl border p-8"
+        style={{ maxWidth: 420, borderColor: "var(--border-subtle)", backgroundColor: "var(--bg-surface)" }}
+      >
+        <Lock size={28} style={{ color: "var(--text-muted)" }} />
+        <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
+          {t("editor.scheduledRichLockedTitle")}
+        </p>
+        <p className="text-xs" style={{ color: "var(--text-muted)", lineHeight: 1.5 }}>
+          {t("editor.scheduledRichLockedDesc")}
+        </p>
+        <button
+          onClick={onUnlock}
+          disabled={unlocking}
+          className="flex items-center gap-1.5 px-3 h-8 rounded text-xs font-medium transition-colors mt-1"
+          style={{ color: "#fff", backgroundColor: "var(--danger)", opacity: unlocking ? 0.6 : 1 }}
+        >
+          {unlocking ? <Loader2 size={13} className="animate-spin" /> : <XCircle size={13} />}
+          {t("editor.scheduledRichLockedCancel")}
+        </button>
+      </div>
+    </div>
+  );
 }
 
 // ── MobileEditorBody sub-component ────────────────────────────────────────────

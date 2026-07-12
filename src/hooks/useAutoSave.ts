@@ -42,7 +42,7 @@ export function useAutoSave() {
       // Read ALL values fresh from store to avoid stale closures
       const {
         draftId, draftTitle, postTitle: latestPostTitle,
-        contentJson: latestContentJson,
+        contentJson: latestContentJson, publishMode,
         setSaveStatus, setLastSavedAt, setDraftId,
       } = useEditorStore.getState();
 
@@ -80,6 +80,7 @@ export function useAutoSave() {
           postTitle:   latestPostTitle,
           contentJson: latestContentJson || "{}",
           contentText: extractPlainText(latestContentJson),
+          publishMode,
           attachments: attachments.length ? attachments : undefined,
         });
         if (!draftId) setDraftId(draft.id);

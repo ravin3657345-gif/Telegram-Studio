@@ -145,6 +145,7 @@ pub fn run() {
             commands::publish::schedule_post,
             commands::publish::get_scheduled_posts,
             commands::publish::cancel_scheduled_post,
+            commands::publish::update_scheduled_post_content,
             commands::publish::publish_rich_post,
             commands::publish::republish_rich_post,
             commands::publish::send_poll,
