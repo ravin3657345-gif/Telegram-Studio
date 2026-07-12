@@ -416,6 +416,10 @@ async function handleDemo(chatId) {
     );
 
     const html =
+      // Точка-якорь для «Лифта» — та же разметка, что вставляет
+      // insertJumpToTopLink() в EditorToolbar.tsx, должна стоять в самом
+      // начале документа (позиция 0), а не рядом с заголовком.
+      '<a name="top"></a>' +
       "<h2>Демо Rich-режима</h2>" +
       "<p>Так выглядит пост, собранный в Telegram Studio из блоков — без единой строчки HTML или Markdown.</p>" +
       "<p><b>жирный</b> <i>курсив</i> <u>подчёркнутый</u> <s>зачёркнутый</s> <tg-spoiler>спойлер</tg-spoiler> <mark>маркер</mark> и <code>инлайн-код</code></p>" +
@@ -442,7 +446,8 @@ async function handleDemo(chatId) {
       "<tg-math-block>E = mc^2</tg-math-block>" +
       "<table bordered><tr><th>Блок</th><th>Поддержка</th></tr><tr><td>Фото, видео, аудио, коллажи, слайд-шоу</td><td>Да</td></tr><tr><td>Таблицы, чек-листы, код, раскрывающийся текст</td><td>Да</td></tr><tr><td>Карты, формулы (LaTeX)</td><td>Да</td></tr></table>" +
       "<blockquote>💡 Всё это собирается визуально, перетаскиванием блоков — редактор сам превращает их в нужную разметку.</blockquote>" +
-      '<p>А ссылки в тексте — обычным словом, без некрасивого URL целиком: <a href="https://telegram.org">вот так</a>.</p>';
+      '<p>А ссылки в тексте — обычным словом, без некрасивого URL целиком: <a href="https://telegram.org">вот так</a>.</p>' +
+      '<p>И «Лифт» — для длинных постов, мгновенный переход наверх без прокрутки: <a href="#top">👆 Лифт</a></p>';
 
     await api("sendRichMessage", { chat_id: chatId, rich_message: { html } });
     await api("sendMessage", { chat_id: chatId, text: "Это был реальный Rich-пост. Хотите собрать свой?", reply_markup: BUY_KEYBOARD });
