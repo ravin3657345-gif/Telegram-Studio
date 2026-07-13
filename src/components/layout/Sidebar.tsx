@@ -169,7 +169,7 @@ function SidebarWidget() {
         margin: "10px 10px 6px",
         borderRadius: 12,
         padding: "12px 14px 10px",
-        background: "linear-gradient(135deg, rgba(42,171,238,0.12) 0%, rgba(99,102,241,0.10) 100%)",
+        background: "linear-gradient(135deg, color-mix(in srgb, var(--accent) 12%, transparent) 0%, rgba(99,102,241,0.10) 100%)",
         position: "relative",
         overflow: "hidden",
       }}
@@ -178,7 +178,7 @@ function SidebarWidget() {
       <div style={{
         position: "absolute", top: -18, right: -18,
         width: 70, height: 70, borderRadius: "50%",
-        background: "radial-gradient(circle, rgba(42,171,238,0.18) 0%, transparent 70%)",
+        background: "radial-gradient(circle, color-mix(in srgb, var(--accent) 18%, transparent) 0%, transparent 70%)",
         pointerEvents: "none",
       }} />
 

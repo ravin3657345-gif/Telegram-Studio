@@ -95,10 +95,10 @@ export function NewPostChooserDialog({ onClose }: Props) {
               marginBottom: 14,
               transition: "border-color 0.15s, background-color 0.15s",
             }}
-            onMouseEnter={(e) => { e.currentTarget.style.borderColor = "var(--accent)"; e.currentTarget.style.backgroundColor = "rgba(42,171,238,0.07)"; }}
+            onMouseEnter={(e) => { e.currentTarget.style.borderColor = "var(--accent)"; e.currentTarget.style.backgroundColor = "color-mix(in srgb, var(--accent) 7%, transparent)"; }}
             onMouseLeave={(e) => { e.currentTarget.style.borderColor = "var(--border-default)"; e.currentTarget.style.backgroundColor = "var(--bg-elevated)"; }}
           >
-            <div style={{ width: 34, height: 34, borderRadius: 8, flexShrink: 0, backgroundColor: "rgba(42,171,238,0.12)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <div style={{ width: 34, height: 34, borderRadius: 8, flexShrink: 0, backgroundColor: "color-mix(in srgb, var(--accent) 12%, transparent)", display: "flex", alignItems: "center", justifyContent: "center" }}>
               <FileEdit size={16} />
             </div>
             <div>
@@ -133,10 +133,10 @@ export function NewPostChooserDialog({ onClose }: Props) {
                     opacity: usingId && usingId !== tmpl.id ? 0.5 : 1,
                     transition: "border-color 0.15s, background-color 0.15s",
                   }}
-                  onMouseEnter={(e) => { if (!usingId) { e.currentTarget.style.borderColor = "var(--accent)"; e.currentTarget.style.backgroundColor = "rgba(42,171,238,0.07)"; } }}
+                  onMouseEnter={(e) => { if (!usingId) { e.currentTarget.style.borderColor = "var(--accent)"; e.currentTarget.style.backgroundColor = "color-mix(in srgb, var(--accent) 7%, transparent)"; } }}
                   onMouseLeave={(e) => { e.currentTarget.style.borderColor = "var(--border-default)"; e.currentTarget.style.backgroundColor = "var(--bg-elevated)"; }}
                 >
-                  <div style={{ width: 30, height: 30, borderRadius: 7, flexShrink: 0, backgroundColor: "rgba(42,171,238,0.12)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <div style={{ width: 30, height: 30, borderRadius: 7, flexShrink: 0, backgroundColor: "color-mix(in srgb, var(--accent) 12%, transparent)", display: "flex", alignItems: "center", justifyContent: "center" }}>
                     {usingId === tmpl.id ? <Loader2 size={14} className="animate-spin" /> : <LayoutTemplate size={14} />}
                   </div>
                   <div style={{ minWidth: 0, flex: 1 }}>

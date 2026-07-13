@@ -92,7 +92,7 @@ export function PublishConfirmDialog({ channels, publishMode, postTitle, onConfi
 
           {/* Warning */}
           <div className="flex items-start gap-1.5" style={{ fontSize: 11.5, color: "var(--text-muted)" }}>
-            <AlertTriangle size={12} style={{ flexShrink: 0, marginTop: 1, color: "#fbbf24" }} />
+            <AlertTriangle size={12} style={{ flexShrink: 0, marginTop: 1, color: "var(--warning)" }} />
             <span>{t("publish.confirmWarning")}</span>
           </div>
         </div>

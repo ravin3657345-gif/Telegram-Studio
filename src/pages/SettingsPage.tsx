@@ -1,4 +1,4 @@
-import { Sun, Moon, Monitor, User, Send, Palette, Bell, Smile } from "lucide-react";
+import { Sun, Moon, Monitor, User, Send, Palette, Bell, Smile, X } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { getVersion } from "@tauri-apps/api/app";
@@ -9,7 +9,7 @@ import { telegraphOpenLogin } from "@/lib/tauriApi";
 import { EmojiPicker } from "@/components/editor/EmojiPicker";
 import { t, setI18nLanguage, type TranslationKey } from "@/lib/i18n";
 import { useIsMobileLayout } from "@/hooks/useIsMobileLayout";
-import type { Theme, Language } from "@/types/settings";
+import type { Theme, Language, DesignTheme } from "@/types/settings";
 
 // ── Local nav definition ──────────────────────────────────────────────────────
 
@@ -127,6 +127,9 @@ function AppearanceSection() {
   const setLanguage        = useSettingsStore((s) => s.setLanguage);
   const accentColor        = useSettingsStore((s) => s.accentColor);
   const setAccentColor     = useSettingsStore((s) => s.setAccentColor);
+  const designTheme        = useSettingsStore((s) => s.designTheme);
+  const setDesignTheme     = useSettingsStore((s) => s.setDesignTheme);
+  const [showDesignPicker, setShowDesignPicker] = useState(false);
   const largeFontEditor    = useSettingsStore((s) => s.largeFontEditor);
   const setLargeFontEditor = useSettingsStore((s) => s.setLargeFontEditor);
   const anchorLinkText     = useSettingsStore((s) => s.anchorLinkText);
@@ -188,15 +191,24 @@ function AppearanceSection() {
           <div className="flex gap-3 flex-wrap">
             {themeOptions.map(({ value, labelKey, icon }) => {
               const isActive = theme === value;
+              // "soft" has no dark-mode tokens of its own (see designs.css) —
+              // dark would leave success/warning/danger/status colors from
+              // theme.css's dark palette showing through against soft's light
+              // paper background, so it's blocked outright while soft is on.
+              const isDisabled = designTheme === "soft" && value === "dark";
               return (
                 <button
                   key={value}
-                  onClick={() => setTheme(value)}
+                  onClick={() => !isDisabled && setTheme(value)}
+                  disabled={isDisabled}
+                  title={isDisabled ? t("settings.theme.darkBlockedBySoft") : undefined}
                   className="flex flex-col items-center gap-2 p-3 rounded-xl border transition-all"
                   style={{
                     width: 88,
                     backgroundColor: isActive ? "var(--accent-subtle)" : "var(--bg-elevated)",
                     borderColor: isActive ? "var(--accent)" : "var(--border-default)",
+                    opacity: isDisabled ? 0.4 : 1,
+                    cursor: isDisabled ? "not-allowed" : "pointer",
                   }}
                 >
                   <span style={{ color: isActive ? "var(--accent)" : "var(--text-secondary)" }}>
@@ -217,6 +229,21 @@ function AppearanceSection() {
               );
             })}
           </div>
+        </Field>
+
+        {/* ── Design skin ──────────────────────────────────────────── */}
+        <Field label={t("settings.designTheme")}>
+          <button
+            onClick={() => setShowDesignPicker(true)}
+            className="flex items-center gap-2 px-3 h-8 rounded-lg text-sm border transition-colors"
+            style={{ backgroundColor: "var(--bg-elevated)", borderColor: "var(--border-default)", color: "var(--text-primary)" }}
+          >
+            <span
+              className="w-3.5 h-3.5 rounded-full flex-shrink-0"
+              style={{ background: designTheme === "standard" ? "var(--accent)" : "var(--accent)", boxShadow: "0 0 0 2px var(--bg-surface), 0 0 0 3px var(--border-default)" }}
+            />
+            {t(`settings.design.${designTheme}` as any)}
+          </button>
         </Field>
 
         {/* ── Accent color ─────────────────────────────────────────── */}
@@ -339,7 +366,81 @@ function AppearanceSection() {
           )}
         </Field>
       </Section>
+
+      {showDesignPicker && (
+        <DesignThemeDialog
+          current={designTheme}
+          onSelect={(d) => { setDesignTheme(d); setShowDesignPicker(false); }}
+          onClose={() => setShowDesignPicker(false)}
+        />
+      )}
     </>
+  );
+}
+
+// ── Design theme picker (separate window) ────────────────────────────────
+// Deliberately its own dialog rather than another row of inline cards like
+// Theme/Accent above — a bigger visual commitment (structure, not just a
+// color swap), so it gets room to show a real preview swatch instead of a
+// tiny dot.
+
+const DESIGN_OPTIONS: Array<{ id: DesignTheme; nameKey: TranslationKey; swatch: [string, string, string] }> = [
+  { id: "standard", nameKey: "settings.design.standard", swatch: ["#ffffff", "#2c87c9", "#37352f"] },
+  { id: "soft",     nameKey: "settings.design.soft",     swatch: ["#f7f5f1", "#2c87c9", "#37352f"] },
+];
+
+function DesignThemeDialog({
+  current, onSelect, onClose,
+}: {
+  current: DesignTheme;
+  onSelect: (d: DesignTheme) => void;
+  onClose: () => void;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center"
+      style={{ backgroundColor: "rgba(0,0,0,0.5)" }}
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div
+        style={{
+          width: 460, maxWidth: "calc(100vw - 32px)", borderRadius: 16,
+          backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-default)",
+          boxShadow: "0 12px 40px rgba(0,0,0,0.4)", overflow: "hidden",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 18px 12px" }}>
+          <span style={{ fontWeight: 600, fontSize: 15, color: "var(--text-primary)" }}>{t("settings.designTheme")}</span>
+          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", padding: 4, borderRadius: 6, color: "var(--text-muted)", lineHeight: 0 }}>
+            <X size={16} />
+          </button>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, padding: "0 18px 18px" }}>
+          {DESIGN_OPTIONS.map(({ id, nameKey, swatch }) => {
+            const isActive = current === id;
+            return (
+              <button
+                key={id}
+                onClick={() => onSelect(id)}
+                style={{
+                  display: "flex", flexDirection: "column", gap: 8, padding: 10, borderRadius: 12,
+                  border: `1.5px solid ${isActive ? "var(--accent)" : "var(--border-default)"}`,
+                  backgroundColor: isActive ? "var(--accent-subtle)" : "var(--bg-elevated)",
+                  textAlign: "left", cursor: "pointer",
+                }}
+              >
+                <div style={{ display: "flex", height: 40, borderRadius: 7, overflow: "hidden" }}>
+                  {swatch.map((c, i) => <div key={i} style={{ flex: 1, background: c }} />)}
+                </div>
+                <span style={{ fontSize: 12.5, fontWeight: 600, color: isActive ? "var(--accent)" : "var(--text-primary)" }}>
+                  {t(nameKey)}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </div>
   );
 }
 

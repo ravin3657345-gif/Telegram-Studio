@@ -92,7 +92,7 @@ export function AttachmentZone({ onAddClick }: AttachmentZoneProps) {
           style={{
             color: "var(--accent)",
             border: "1.5px solid var(--accent)",
-            background: "rgba(42,171,238,0.08)",
+            background: "color-mix(in srgb, var(--accent) 8%, transparent)",
             transition: "all 0.15s",
           }}
         >

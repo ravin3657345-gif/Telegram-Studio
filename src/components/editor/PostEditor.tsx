@@ -547,7 +547,7 @@ export function PostEditor({ draftId: initialDraftId }: PostEditorProps) {
             <div
               ref={(el) => setScrollEl(el)}
               data-tour="editor-content"
-              className="h-full overflow-y-auto"
+              className="editor-scroll-area h-full overflow-y-auto"
               style={{ backgroundColor: "var(--bg-app)", padding: "16px 20px" }}
             >
               <InlineBubbleMenu editor={editor} onLinkClick={() => setShowLinkDialog(true)} />
@@ -575,6 +575,7 @@ export function PostEditor({ draftId: initialDraftId }: PostEditorProps) {
                 )}
               </AnimatePresence>
               <div
+                className="post-content-card"
                 style={{
                   minHeight: "100%",
                   backgroundColor: "var(--bg-surface)",
@@ -602,8 +603,8 @@ export function PostEditor({ draftId: initialDraftId }: PostEditorProps) {
             className="text-sm font-semibold px-4 py-2 rounded-lg"
             style={{
               color: "var(--accent)",
-              background: "rgba(42,171,238,0.1)",
-              border: "1px solid rgba(42,171,238,0.25)",
+              background: "color-mix(in srgb, var(--accent) 10%, transparent)",
+              border: "1px solid color-mix(in srgb, var(--accent) 25%, transparent)",
               backdropFilter: "blur(6px)",
             }}
           >

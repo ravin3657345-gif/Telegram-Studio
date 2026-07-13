@@ -547,9 +547,9 @@ export function PublishPanel({ draftId }: PublishPanelProps) {
                 return (
                   <label
                     key={ch.id}
-                    className="flex items-center gap-2.5 cursor-pointer rounded-lg px-2.5 py-2 transition-colors"
+                    className="publish-channel-row flex items-center gap-2.5 cursor-pointer rounded-lg px-2.5 py-2 transition-colors"
                     style={{
-                      backgroundColor: checked ? "rgba(42,171,238,0.10)" : "var(--bg-elevated)",
+                      backgroundColor: checked ? "color-mix(in srgb, var(--accent) 10%, transparent)" : "var(--bg-elevated)",
                       border: `1.5px solid ${checked ? "var(--accent)" : "var(--border-default)"}`,
                       transition: "background-color 0.13s, border-color 0.13s",
                     }}
@@ -593,10 +593,10 @@ export function PublishPanel({ draftId }: PublishPanelProps) {
                 <label
                   key={id}
                   title={hint}
-                  className="flex items-center gap-2 cursor-pointer rounded-md px-2 py-1.5 transition-colors"
+                  className="publish-format-row flex items-center gap-2 cursor-pointer rounded-md px-2 py-1.5 transition-colors"
                   style={{
-                    backgroundColor: publishMode === id ? "rgba(42,171,238,0.08)" : "transparent",
-                    border: `1px solid ${publishMode === id ? "rgba(42,171,238,0.3)" : "var(--border-default)"}`,
+                    backgroundColor: publishMode === id ? "color-mix(in srgb, var(--accent) 8%, transparent)" : "transparent",
+                    border: `1px solid ${publishMode === id ? "color-mix(in srgb, var(--accent) 30%, transparent)" : "var(--border-default)"}`,
                     borderRadius: 6,
                   }}
                 >
@@ -615,7 +615,7 @@ export function PublishPanel({ draftId }: PublishPanelProps) {
             </div>
           </div>
         ) : (
-          <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-md" style={{ background: "rgba(42,171,238,0.06)", border: "1px solid rgba(42,171,238,0.2)" }}>
+          <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-md" style={{ background: "color-mix(in srgb, var(--accent) 6%, transparent)", border: "1px solid color-mix(in srgb, var(--accent) 20%, transparent)" }}>
             {publishMode === "rich" ? <Layers size={11} style={{ color: "var(--accent)" }}/> : <Send size={11} style={{ color: "var(--accent)" }}/>}
             <span className="text-xs" style={{ color: "var(--accent)" }}>
               {publishMode === "rich" ? t("publish.rich") : publishMode === "telegraph" ? t("publish.telegraph") : t("publish.normal")}
@@ -631,7 +631,7 @@ export function PublishPanel({ draftId }: PublishPanelProps) {
             target="_blank"
             rel="noreferrer"
             className="flex items-center gap-1.5 text-2xs px-2 py-1.5 rounded-md"
-            style={{ color: "var(--accent)", backgroundColor: "rgba(42,171,238,0.08)", textDecoration: "none" }}
+            style={{ color: "var(--accent)", backgroundColor: "color-mix(in srgb, var(--accent) 8%, transparent)", textDecoration: "none" }}
           >
             <ExternalLink size={10} />
             <span className="truncate">{telegraphUrl}</span>
@@ -668,14 +668,14 @@ export function PublishPanel({ draftId }: PublishPanelProps) {
         {/* File warning in Rich mode */}
         {fileBlockedInRich && (
           <div
-            className="flex items-start gap-2 px-3 py-2 rounded-lg text-xs"
+            className="publish-warning-box flex items-start gap-2 px-3 py-2 rounded-lg text-xs"
             style={{
-              backgroundColor: "rgba(251,191,36,0.1)",
-              border: "1px solid rgba(251,191,36,0.3)",
+              backgroundColor: "var(--warning-subtle)",
+              border: "1px solid color-mix(in srgb, var(--warning) 30%, transparent)",
               color: "var(--text-secondary)",
             }}
           >
-            <AlertCircle size={13} style={{ color: "#fbbf24", flexShrink: 0, marginTop: 1 }} />
+            <AlertCircle size={13} style={{ color: "var(--warning)", flexShrink: 0, marginTop: 1 }} />
             <span>
               {t("publish.fileInRich")}&nbsp;
               <button
@@ -692,14 +692,14 @@ export function PublishPanel({ draftId }: PublishPanelProps) {
         {/* File warning in Telegraph mode — attached documents have no place in an article */}
         {fileBlockedInTelegraph && (
           <div
-            className="flex items-start gap-2 px-3 py-2 rounded-lg text-xs"
+            className="publish-warning-box flex items-start gap-2 px-3 py-2 rounded-lg text-xs"
             style={{
-              backgroundColor: "rgba(251,191,36,0.1)",
-              border: "1px solid rgba(251,191,36,0.3)",
+              backgroundColor: "var(--warning-subtle)",
+              border: "1px solid color-mix(in srgb, var(--warning) 30%, transparent)",
               color: "var(--text-secondary)",
             }}
           >
-            <AlertCircle size={13} style={{ color: "#fbbf24", flexShrink: 0, marginTop: 1 }} />
+            <AlertCircle size={13} style={{ color: "var(--warning)", flexShrink: 0, marginTop: 1 }} />
             <span>{t("publish.fileInTelegraph")}</span>
           </div>
         )}
@@ -707,14 +707,14 @@ export function PublishPanel({ draftId }: PublishPanelProps) {
         {/* Video warning in Telegraph mode — telegraphConverter.ts silently drops video entirely */}
         {videoBlockedInTelegraph && (
           <div
-            className="flex items-start gap-2 px-3 py-2 rounded-lg text-xs"
+            className="publish-warning-box flex items-start gap-2 px-3 py-2 rounded-lg text-xs"
             style={{
-              backgroundColor: "rgba(251,191,36,0.1)",
-              border: "1px solid rgba(251,191,36,0.3)",
+              backgroundColor: "var(--warning-subtle)",
+              border: "1px solid color-mix(in srgb, var(--warning) 30%, transparent)",
               color: "var(--text-secondary)",
             }}
           >
-            <AlertCircle size={13} style={{ color: "#fbbf24", flexShrink: 0, marginTop: 1 }} />
+            <AlertCircle size={13} style={{ color: "var(--warning)", flexShrink: 0, marginTop: 1 }} />
             <span>
               {t("publish.videoOutsideTelegraph")}&nbsp;
               <button
@@ -731,14 +731,14 @@ export function PublishPanel({ draftId }: PublishPanelProps) {
         {/* Table warning outside Rich mode — tables only exist in Rich Messages */}
         {tableBlockedOutsideRich && (
           <div
-            className="flex items-start gap-2 px-3 py-2 rounded-lg text-xs"
+            className="publish-warning-box flex items-start gap-2 px-3 py-2 rounded-lg text-xs"
             style={{
-              backgroundColor: "rgba(251,191,36,0.1)",
-              border: "1px solid rgba(251,191,36,0.3)",
+              backgroundColor: "var(--warning-subtle)",
+              border: "1px solid color-mix(in srgb, var(--warning) 30%, transparent)",
               color: "var(--text-secondary)",
             }}
           >
-            <AlertCircle size={13} style={{ color: "#fbbf24", flexShrink: 0, marginTop: 1 }} />
+            <AlertCircle size={13} style={{ color: "var(--warning)", flexShrink: 0, marginTop: 1 }} />
             <span>
               {t("publish.tableOutsideRich")}&nbsp;
               <button
@@ -755,14 +755,14 @@ export function PublishPanel({ draftId }: PublishPanelProps) {
         {/* Audio warning outside Rich mode — audio only exists in Rich Messages */}
         {audioBlockedOutsideRich && (
           <div
-            className="flex items-start gap-2 px-3 py-2 rounded-lg text-xs"
+            className="publish-warning-box flex items-start gap-2 px-3 py-2 rounded-lg text-xs"
             style={{
-              backgroundColor: "rgba(251,191,36,0.1)",
-              border: "1px solid rgba(251,191,36,0.3)",
+              backgroundColor: "var(--warning-subtle)",
+              border: "1px solid color-mix(in srgb, var(--warning) 30%, transparent)",
               color: "var(--text-secondary)",
             }}
           >
-            <AlertCircle size={13} style={{ color: "#fbbf24", flexShrink: 0, marginTop: 1 }} />
+            <AlertCircle size={13} style={{ color: "var(--warning)", flexShrink: 0, marginTop: 1 }} />
             <span>
               {t("publish.audioOutsideRich")}&nbsp;
               <button
@@ -779,14 +779,14 @@ export function PublishPanel({ draftId }: PublishPanelProps) {
         {/* Map warning outside Rich mode — maps only exist in Rich Messages */}
         {mapBlockedOutsideRich && (
           <div
-            className="flex items-start gap-2 px-3 py-2 rounded-lg text-xs"
+            className="publish-warning-box flex items-start gap-2 px-3 py-2 rounded-lg text-xs"
             style={{
-              backgroundColor: "rgba(251,191,36,0.1)",
-              border: "1px solid rgba(251,191,36,0.3)",
+              backgroundColor: "var(--warning-subtle)",
+              border: "1px solid color-mix(in srgb, var(--warning) 30%, transparent)",
               color: "var(--text-secondary)",
             }}
           >
-            <AlertCircle size={13} style={{ color: "#fbbf24", flexShrink: 0, marginTop: 1 }} />
+            <AlertCircle size={13} style={{ color: "var(--warning)", flexShrink: 0, marginTop: 1 }} />
             <span>
               {t("publish.mapOutsideRich")}&nbsp;
               <button
@@ -803,14 +803,14 @@ export function PublishPanel({ draftId }: PublishPanelProps) {
         {/* Formula warning outside Rich mode — formulas only exist in Rich Messages */}
         {formulaBlockedOutsideRich && (
           <div
-            className="flex items-start gap-2 px-3 py-2 rounded-lg text-xs"
+            className="publish-warning-box flex items-start gap-2 px-3 py-2 rounded-lg text-xs"
             style={{
-              backgroundColor: "rgba(251,191,36,0.1)",
-              border: "1px solid rgba(251,191,36,0.3)",
+              backgroundColor: "var(--warning-subtle)",
+              border: "1px solid color-mix(in srgb, var(--warning) 30%, transparent)",
               color: "var(--text-secondary)",
             }}
           >
-            <AlertCircle size={13} style={{ color: "#fbbf24", flexShrink: 0, marginTop: 1 }} />
+            <AlertCircle size={13} style={{ color: "var(--warning)", flexShrink: 0, marginTop: 1 }} />
             <span>
               {t("publish.formulaOutsideRich")}&nbsp;
               <button
@@ -827,14 +827,14 @@ export function PublishPanel({ draftId }: PublishPanelProps) {
         {/* Media/poll warning for scheduled posts — scheduler only carries text */}
         {mediaBlockedInSchedule && !fileBlockedInRich && !fileBlockedInTelegraph && (
           <div
-            className="flex items-start gap-2 px-3 py-2 rounded-lg text-xs"
+            className="publish-warning-box flex items-start gap-2 px-3 py-2 rounded-lg text-xs"
             style={{
-              backgroundColor: "rgba(251,191,36,0.1)",
-              border: "1px solid rgba(251,191,36,0.3)",
+              backgroundColor: "var(--warning-subtle)",
+              border: "1px solid color-mix(in srgb, var(--warning) 30%, transparent)",
               color: "var(--text-secondary)",
             }}
           >
-            <AlertCircle size={13} style={{ color: "#fbbf24", flexShrink: 0, marginTop: 1 }} />
+            <AlertCircle size={13} style={{ color: "var(--warning)", flexShrink: 0, marginTop: 1 }} />
             <span>{t("publish.mediaInSchedule")}</span>
           </div>
         )}
@@ -842,14 +842,14 @@ export function PublishPanel({ draftId }: PublishPanelProps) {
         {/* Rich can't be scheduled — no snapshot/edit path for it later */}
         {richBlockedInSchedule && !editingHistoryId && (
           <div
-            className="flex items-start gap-2 px-3 py-2 rounded-lg text-xs"
+            className="publish-warning-box flex items-start gap-2 px-3 py-2 rounded-lg text-xs"
             style={{
-              backgroundColor: "rgba(251,191,36,0.1)",
-              border: "1px solid rgba(251,191,36,0.3)",
+              backgroundColor: "var(--warning-subtle)",
+              border: "1px solid color-mix(in srgb, var(--warning) 30%, transparent)",
               color: "var(--text-secondary)",
             }}
           >
-            <AlertCircle size={13} style={{ color: "#fbbf24", flexShrink: 0, marginTop: 1 }} />
+            <AlertCircle size={13} style={{ color: "var(--warning)", flexShrink: 0, marginTop: 1 }} />
             <span>{t("publish.richNoSchedule")}</span>
           </div>
         )}
@@ -859,8 +859,8 @@ export function PublishPanel({ draftId }: PublishPanelProps) {
           <div style={{
             display: "flex", alignItems: "center", gap: 8,
             padding: "8px 10px", borderRadius: 8, marginBottom: 6,
-            backgroundColor: "rgba(42,171,238,0.10)",
-            border: "1px solid rgba(42,171,238,0.25)",
+            backgroundColor: "color-mix(in srgb, var(--accent) 10%, transparent)",
+            border: "1px solid color-mix(in srgb, var(--accent) 25%, transparent)",
           }}>
             <Pencil size={12} style={{ color: "var(--accent)", flexShrink: 0 }} />
             <div style={{ flex: 1, minWidth: 0 }}>
@@ -896,6 +896,7 @@ export function PublishPanel({ draftId }: PublishPanelProps) {
         ) : (
           <>
             <Button variant="primary" size="sm" fullWidth disabled={!canPublish}
+              className="btn-publish-main"
               leftIcon={status === "publishing" ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
               onClick={() => setShowPublishConfirm(true)}
             >

@@ -172,6 +172,14 @@ describe("tiptapToRichHtml", () => {
     expect(html).toBe('<a name="top"></a>');
   });
 
+  it("puts a leading anchorPoint BEFORE the title, not after (regression: 'Лифт' jumped past the title instead of to it)", () => {
+    const { html } = tiptapToRichHtml(
+      doc({ type: "anchorPoint" }, para(text("body"))),
+      "My Title",
+    );
+    expect(html).toBe('<a name="top"></a><h2>My Title</h2><p>body</p>');
+  });
+
   it("renders a link with a #top href unchanged, for jump-to-anchor links", () => {
     const { html } = tiptapToRichHtml(
       doc(para(text("👆 Лифт", [{ type: "link", attrs: { href: "#top" } }]))),

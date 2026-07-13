@@ -123,7 +123,7 @@ function AddBotModal({ onClose, onAdded }: AddBotModalProps) {
           <div style={{
             display: "flex", alignItems: "center", gap: 12, marginBottom: 16,
             padding: "10px 12px", borderRadius: 10,
-            backgroundColor: "rgba(42,171,238,0.08)", border: "1px solid rgba(42,171,238,0.2)",
+            backgroundColor: "color-mix(in srgb, var(--accent) 8%, transparent)", border: "1px solid color-mix(in srgb, var(--accent) 20%, transparent)",
           }}>
             <CheckCircle size={18} style={{ color: "var(--accent)", flexShrink: 0 }} />
             <div>
@@ -215,8 +215,8 @@ function BotCard({ bot, onDelete }: { bot: BotType; onDelete: () => void }) {
       <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 16px" }}>
         <div style={{
           width: 42, height: 42, borderRadius: "50%", flexShrink: 0,
-          backgroundColor: "rgba(42,171,238,0.12)",
-          border: "1.5px solid rgba(42,171,238,0.25)",
+          backgroundColor: "color-mix(in srgb, var(--accent) 12%, transparent)",
+          border: "1.5px solid color-mix(in srgb, var(--accent) 25%, transparent)",
           display: "flex", alignItems: "center", justifyContent: "center",
         }}>
           <Bot size={19} style={{ color: "var(--accent)" }} />

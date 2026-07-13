@@ -1,0 +1,67 @@
+/* ─────────────────────────────────────────────────────────────────────────
+   Alternate visual skin, selected in Settings independently of the light/
+   dark Theme toggle (see settingsStore.ts::setDesignTheme). "soft" is a
+   FIXED look (not itself light/dark-aware) — picking it overrides the same
+   semantic tokens theme.css defines, so every component that already reads
+   var(--bg-app)/var(--text-primary)/var(--accent)/etc. picks it up for free.
+   "standard" (the default) applies no overrides at all — theme.css's normal
+   light/dark tokens keep working unchanged.
+───────────────────────────────────────────────────────────────────────── */
+
+/* ═══ Мягкая структура (Soft Structuralism) ═══
+   Closest to the existing light theme on purpose — same brand blue accent
+   (keeps the app icon/channel avatar/bot avatar/landing page consistent),
+   just a warmer, slightly deeper off-white base. */
+[data-design="soft"] {
+  --bg-app:        #f7f5f1;
+  --bg-sidebar:    #f7f5f1;
+  --bg-surface:    #ffffff;
+  --bg-elevated:   #f1efe9;
+  --bg-hover:      #ebe8e1;
+  --bg-active:     #e2ded4;
+  --bg-input:      #ffffff;
+
+  --border-subtle:  #ebe7dd;
+  --border-default: #e2ddd0;
+  --border-strong:  #cac4b4;
+
+  --text-primary:   #37352f;
+  --text-secondary: #787774;
+  --text-muted:     #9b9a97;
+  --text-inverse:   #ffffff;
+
+  --accent:         #2c87c9;
+  --accent-hover:   #1a76b8;
+  --accent-subtle:  rgba(44, 135, 201, 0.10);
+
+  --shadow-sm: 0 1px 3px rgba(13, 39, 80, 0.06);
+  --shadow-md: 0 4px 12px rgba(13, 39, 80, 0.08);
+  --shadow-lg: 0 8px 24px rgba(13, 39, 80, 0.10);
+}
+
+/* ─── Signature flourish: soft-ui embossing on major surfaces ────────────── */
+
+[data-design="soft"] .rounded-xl,
+[data-design="soft"] .rounded-2xl {
+  box-shadow: var(--shadow-sm);
+}
+[data-design="soft"] .post-content-card {
+  margin: 4px;
+  border-radius: 14px;
+  box-shadow: var(--shadow-md);
+  overflow: hidden;
+}
+
+/* PublishPanel hooks (channels/format/warnings) — these three rows were the
+   one prominent panel left un-embossed; the broad .rounded-xl/.rounded-2xl
+   rule above doesn't reach them since they're rounded-lg/rounded-md. */
+[data-design="soft"] .publish-channel-row,
+[data-design="soft"] .publish-format-row,
+[data-design="soft"] .publish-warning-box {
+  box-shadow: var(--shadow-sm);
+}
+
+/* CharCounter hook */
+[data-design="soft"] .char-counter-bar {
+  box-shadow: inset 1px 1px 3px rgba(13,39,80,0.10);
+}

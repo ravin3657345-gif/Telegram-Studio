@@ -1,5 +1,6 @@
 import { Node, mergeAttributes } from "@tiptap/core";
 import type { Node as PMNode } from "@tiptap/pm/model";
+import { TextSelection, type Transaction } from "@tiptap/pm/state";
 import type { Editor } from "@tiptap/react";
 import { ReactNodeViewRenderer, NodeViewWrapper, NodeViewContent } from "@tiptap/react";
 import { createPortal } from "react-dom";
@@ -215,6 +216,156 @@ function TableView({ node, editor, getPos }: any) {
   );
 }
 
+// ── Excel-like cell navigation (Tab/Shift-Tab/arrows/Enter) ────────────────
+// This table is a from-scratch schema (no @tiptap/extension-table), so none
+// of that extension's built-in goToNextCell/arrow handling applies here —
+// without this, Tab/arrows just fell through to ProseMirror's generic
+// document-order caret movement, which doesn't know about rows/columns at
+// all (Tab did nothing, and Up/Down skipped whole cells unpredictably).
+
+interface CellInfo {
+  tablePos: number;
+  table: PMNode;
+  rowIndex: number;
+  colIndex: number;
+  cellPos: number;
+  cellNode: PMNode;
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function findCurrentCell(state: any): CellInfo | null {
+  const { $from } = state.selection;
+  let cellDepth = -1;
+  for (let d = $from.depth; d >= 0; d--) {
+    if ($from.node(d).type.name === "tableCell") { cellDepth = d; break; }
+  }
+  if (cellDepth < 2) return null;
+  const rowDepth = cellDepth - 1;
+  const tableDepth = cellDepth - 2;
+  if ($from.node(rowDepth).type.name !== "tableRow" || $from.node(tableDepth).type.name !== "blockTable") {
+    return null;
+  }
+  return {
+    tablePos: $from.before(tableDepth),
+    table: $from.node(tableDepth),
+    rowIndex: $from.index(tableDepth),
+    colIndex: $from.index(rowDepth),
+    cellPos: $from.before(cellDepth),
+    cellNode: $from.node(cellDepth),
+  };
+}
+
+// Document position of the start of (row, col) within a table at tablePos —
+// walks sibling node sizes rather than re-resolving through the doc, so it
+// works against a table node read from an in-progress transaction too.
+function cellAt(tablePos: number, table: PMNode, row: number, col: number): { cellPos: number; cellNode: PMNode } | null {
+  if (row < 0 || row >= table.childCount) return null;
+  const rowNode = table.child(row);
+  if (col < 0 || col >= rowNode.childCount) return null;
+  let pos = tablePos + 1;
+  for (let r = 0; r < row; r++) pos += table.child(r).nodeSize;
+  pos += 1;
+  for (let c = 0; c < col; c++) pos += rowNode.child(c).nodeSize;
+  return { cellPos: pos, cellNode: rowNode.child(col) };
+}
+
+// Selects the whole cell's text (not just a caret) — matches how Excel
+// highlights a cell's full value when you Tab/arrow into it, ready to
+// overtype.
+function selectCell(tr: Transaction, cellPos: number, cellNode: PMNode) {
+  const start = cellPos + 1;
+  tr.setSelection(TextSelection.create(tr.doc, start, start + cellNode.content.size));
+}
+
+function createEmptyRow(editor: Editor, cols: number): PMNode {
+  const { schema } = editor.state;
+  const cells = Array.from({ length: cols }, () => schema.nodes.tableCell.create({ header: false }));
+  return schema.nodes.tableRow.create(null, cells);
+}
+
+// Moves the selection to just outside the table (above/below), inserting an
+// empty paragraph there first if the table is the first/last node in the
+// doc — mirrors how other atom-ish blocks in this editor let you escape by
+// arrowing past their edge instead of getting stuck inside forever.
+function exitTable(editor: Editor, tr: Transaction, tablePos: number, table: PMNode, dir: 1 | -1) {
+  const { schema } = editor.state;
+  if (dir === -1) {
+    const before = tr.doc.resolve(tablePos).nodeBefore;
+    if (before?.isTextblock) {
+      tr.setSelection(TextSelection.near(tr.doc.resolve(tablePos), -1));
+    } else {
+      tr.insert(tablePos, schema.nodes.paragraph.create());
+      tr.setSelection(TextSelection.near(tr.doc.resolve(tablePos + 1), 1));
+    }
+  } else {
+    const afterPos = tablePos + table.nodeSize;
+    const after = tr.doc.resolve(afterPos).nodeAfter;
+    if (after?.isTextblock) {
+      tr.setSelection(TextSelection.near(tr.doc.resolve(afterPos), 1));
+    } else {
+      tr.insert(afterPos, schema.nodes.paragraph.create());
+      tr.setSelection(TextSelection.near(tr.doc.resolve(afterPos + 1), 1));
+    }
+  }
+}
+
+// Tab / Shift-Tab: next/previous cell, row-major, wrapping at row edges.
+// Tabbing past the last cell of the last row grows the table by one row
+// (finite table, so there's no "next row" to land on already like a real
+// spreadsheet — matches the same convention Google Docs/Notion tables use).
+// Shift-Tab at the very first cell is a no-op (nothing to move to).
+function handleTab(editor: Editor, reverse: boolean): boolean {
+  const info = findCurrentCell(editor.state);
+  if (!info) return false;
+  const { tablePos, table, rowIndex, colIndex } = info;
+  const cols = table.child(0).childCount;
+
+  let targetRow = rowIndex;
+  let targetCol = colIndex + (reverse ? -1 : 1);
+  if (targetCol >= cols) { targetCol = 0; targetRow += 1; }
+  if (targetCol < 0) { targetCol = cols - 1; targetRow -= 1; }
+
+  if (targetRow < 0) return true; // Shift-Tab at the first cell — swallow, stay put
+
+  const tr = editor.state.tr;
+  if (targetRow >= table.childCount) {
+    const insertPos = tablePos + table.nodeSize - 1; // end of table content, after the last row
+    tr.insert(insertPos, createEmptyRow(editor, cols));
+    const newTable = tr.doc.nodeAt(tablePos);
+    const target = newTable && cellAt(tablePos, newTable, targetRow, 0);
+    if (target) selectCell(tr, target.cellPos, target.cellNode);
+  } else {
+    const target = cellAt(tablePos, table, targetRow, targetCol);
+    if (!target) return true;
+    selectCell(tr, target.cellPos, target.cellNode);
+  }
+  editor.view.dispatch(tr);
+  return true;
+}
+
+// ArrowUp/ArrowDown/Enter: move one row up/down, same column — cells are
+// single-line (inline* content, no hardBreak paragraphs), so unlike a
+// regular textblock there's no "middle of a wrapped line" case to special-
+// case; any Up/Down press always means "change row," exactly like Excel.
+// At the top/bottom edge it exits the table instead of doing nothing.
+function handleVertical(editor: Editor, dir: 1 | -1): boolean {
+  const info = findCurrentCell(editor.state);
+  if (!info) return false;
+  const { tablePos, table, rowIndex, colIndex } = info;
+  const targetRow = rowIndex + dir;
+
+  const tr = editor.state.tr;
+  if (targetRow < 0 || targetRow >= table.childCount) {
+    exitTable(editor, tr, tablePos, table, dir);
+  } else {
+    const target = cellAt(tablePos, table, targetRow, colIndex);
+    if (!target) return false;
+    selectCell(tr, target.cellPos, target.cellNode);
+  }
+  editor.view.dispatch(tr);
+  return true;
+}
+
 // `header` toggles per-cell gray/bold styling (rendered as <th> vs <td>) —
 // independent of row position, via the floating TableCellToggle overlay
 // above (tableCell itself stays a plain schema node, no NodeView — see that
@@ -242,6 +393,16 @@ export const TableCell = Node.create({
 
   renderHTML({ node, HTMLAttributes }) {
     return [node.attrs.header ? "th" : "td", mergeAttributes({ class: "tiptap-table-cell" }, HTMLAttributes), 0];
+  },
+
+  addKeyboardShortcuts() {
+    return {
+      Tab: ({ editor }) => handleTab(editor, false),
+      "Shift-Tab": ({ editor }) => handleTab(editor, true),
+      ArrowUp: ({ editor }) => handleVertical(editor, -1),
+      ArrowDown: ({ editor }) => handleVertical(editor, 1),
+      Enter: ({ editor }) => handleVertical(editor, 1),
+    };
   },
 });
 

@@ -99,11 +99,11 @@ function CodeView({ node, updateAttributes }: any) {
                       display: "block", width: "100%", textAlign: "left",
                       padding: "5px 10px", fontSize: 12,
                       color: l.value === language ? "var(--accent)" : "var(--text-secondary)",
-                      backgroundColor: l.value === language ? "rgba(42,171,238,0.06)" : "transparent",
+                      backgroundColor: l.value === language ? "color-mix(in srgb, var(--accent) 6%, transparent)" : "transparent",
                       border: "none", cursor: "pointer",
                     }}
                     onMouseEnter={e => { if (l.value !== language) e.currentTarget.style.backgroundColor = "var(--bg-hover)"; }}
-                    onMouseLeave={e => { e.currentTarget.style.backgroundColor = l.value === language ? "rgba(42,171,238,0.06)" : "transparent"; }}
+                    onMouseLeave={e => { e.currentTarget.style.backgroundColor = l.value === language ? "color-mix(in srgb, var(--accent) 6%, transparent)" : "transparent"; }}
                   >
                     {l.label}
                   </button>

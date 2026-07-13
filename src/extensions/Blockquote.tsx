@@ -41,7 +41,7 @@ function BlockquoteView({ node, updateAttributes }: any) {
         borderRadius: "0 6px 6px 0",
         background: expandable
           ? "linear-gradient(to right, rgba(122,176,224,0.1), transparent)"
-          : "linear-gradient(to right, rgba(42,171,238,0.05), transparent)",
+          : "linear-gradient(to right, color-mix(in srgb, var(--accent) 5%, transparent), transparent)",
         color: "var(--text-secondary)",
         fontStyle: "italic",
         position: "relative",

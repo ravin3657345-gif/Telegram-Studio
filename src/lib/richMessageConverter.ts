@@ -248,12 +248,25 @@ export function tiptapToRichHtml(json: string, postTitle = ""): { html: string; 
   const counter = { n: 0 };
   const parts: string[] = [];
 
+  // insertJumpToTopLink() always inserts the anchor marker at doc position 0
+  // (the start of the BODY), but the post title is a separate field rendered
+  // before the body — left as-is, the anchor would land right after the
+  // title instead of at the true top of the post, so "👆 Лифт" would jump
+  // past the title instead of showing it. Emit the anchor first when it's
+  // the body's first node, then the title, then the rest of the body.
+  let bodyContent = doc.content ?? [];
+  const [firstNode, ...restContent] = bodyContent;
+  if (firstNode?.type === "anchorPoint") {
+    parts.push(convertSingleNode(firstNode, photos, counter));
+    bodyContent = restContent;
+  }
+
   if (postTitle.trim()) {
     const esc = escapeHtml(postTitle.trim());
     parts.push(`<h2>${esc}</h2>`);
   }
 
-  parts.push(convertBlockList(doc.content ?? [], photos, counter));
+  parts.push(convertBlockList(bodyContent, photos, counter));
 
   return { html: parts.join(""), photos };
 }

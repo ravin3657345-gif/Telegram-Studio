@@ -50,7 +50,7 @@ export function PostTitleInput() {
         onKeyDown={handleKeyDown}
         onInput={autoResize}
         placeholder={t("editor.titlePlaceholder")}
-        className="w-full resize-none overflow-hidden bg-transparent text-2xl font-bold leading-tight outline-none"
+        className="post-title-input w-full resize-none overflow-hidden bg-transparent text-2xl font-bold leading-tight outline-none"
         style={{
           color: includeTitle ? "var(--text-primary)" : "var(--text-muted)",
           caretColor: "var(--accent)",
@@ -74,7 +74,7 @@ export function PostTitleInput() {
           padding: "4px 10px 4px 8px",
           borderRadius: 8,
           border: `1.5px solid ${includeTitle ? "var(--accent)" : "var(--border-default)"}`,
-          background: includeTitle ? "rgba(42,171,238,0.12)" : "var(--bg-elevated)",
+          background: includeTitle ? "color-mix(in srgb, var(--accent) 12%, transparent)" : "var(--bg-elevated)",
           color: includeTitle ? "var(--accent)" : "var(--text-muted)",
           cursor: "pointer",
           fontSize: 11,

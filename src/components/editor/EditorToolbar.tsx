@@ -5,7 +5,7 @@ import {
   Heading1, Heading2, Heading3, Code2, Minus,
   Undo2, Redo2, Code, FileUp, Scissors,
   Subscript as SubscriptIcon, Superscript as SuperscriptIcon,
-  Highlighter, ChevronsDownUp, ArrowUpToLine, Music,
+  Highlighter, ChevronsDownUp, Anchor, Music,
 } from "lucide-react";
 import { ToolbarButton, ToolbarSeparator } from "./ToolbarButton";
 import { t } from "@/lib/i18n";
@@ -240,7 +240,7 @@ export function EditorToolbar({
             ? `${t("anchor.insert")} — ${t("anchor.unavail")}`
             : t("anchor.insert")
         }
-        icon={ArrowUpToLine}
+        icon={Anchor}
         isActive={false}
         disabled={publishMode !== "rich"}
         onClick={() => {

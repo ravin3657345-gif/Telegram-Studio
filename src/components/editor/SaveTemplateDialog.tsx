@@ -100,24 +100,24 @@ export function SaveTemplateDialog({ onConfirm, onClose, initialName, initialCat
                 padding: "10px 14px",
                 borderRadius: 10,
                 border: `1.5px solid ${selected ? "var(--accent)" : "var(--border-default)"}`,
-                backgroundColor: selected ? "rgba(42,171,238,0.07)" : "var(--bg-elevated)",
+                backgroundColor: selected ? "color-mix(in srgb, var(--accent) 7%, transparent)" : "var(--bg-elevated)",
                 cursor: "pointer",
                 textAlign: "left",
                 transition: "border-color 0.15s, background-color 0.15s",
               }}
               onMouseEnter={e => {
                 e.currentTarget.style.borderColor = "var(--accent)";
-                e.currentTarget.style.backgroundColor = "rgba(42,171,238,0.07)";
+                e.currentTarget.style.backgroundColor = "color-mix(in srgb, var(--accent) 7%, transparent)";
               }}
               onMouseLeave={e => {
                 e.currentTarget.style.borderColor = selected ? "var(--accent)" : "var(--border-default)";
-                e.currentTarget.style.backgroundColor = selected ? "rgba(42,171,238,0.07)" : "var(--bg-elevated)";
+                e.currentTarget.style.backgroundColor = selected ? "color-mix(in srgb, var(--accent) 7%, transparent)" : "var(--bg-elevated)";
               }}
             >
               <div
                 style={{
                   width: 34, height: 34, borderRadius: 8, flexShrink: 0,
-                  backgroundColor: "rgba(42,171,238,0.12)",
+                  backgroundColor: "color-mix(in srgb, var(--accent) 12%, transparent)",
                   display: "flex", alignItems: "center", justifyContent: "center",
                 }}
               >

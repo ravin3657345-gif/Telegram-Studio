@@ -73,7 +73,7 @@ export function CharCounter({ editor }: CharCounterProps) {
 
   return (
     <div
-      className="flex items-center gap-3 px-4 flex-shrink-0 border-t"
+      className="char-counter-root flex items-center gap-3 px-4 flex-shrink-0 border-t"
       style={{
         height: 32,
         borderColor: "var(--border-subtle)",
@@ -91,7 +91,7 @@ export function CharCounter({ editor }: CharCounterProps) {
       </span>
 
       <div
-        className="flex-1 h-1 rounded-full overflow-hidden"
+        className="char-counter-bar flex-1 h-1 rounded-full overflow-hidden"
         style={{ backgroundColor: "var(--bg-elevated)" }}
       >
         <div
@@ -101,7 +101,7 @@ export function CharCounter({ editor }: CharCounterProps) {
       </div>
 
       <span
-        className={clsx("text-2xs font-medium tabular-nums flex-shrink-0 flex items-center gap-1")}
+        className={clsx("char-counter-text text-2xs font-medium tabular-nums flex-shrink-0 flex items-center gap-1")}
         style={{ color: textColor }}
       >
         {isSplit ? (
