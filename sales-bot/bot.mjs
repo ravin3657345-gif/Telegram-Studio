@@ -60,6 +60,7 @@ const RELEASE_DIR = "D:/Релиз";
 const KEYGEN_PATH = "D:/cargo-tgt/release/keygen.exe";
 const LEDGER_PATH = "D:/tstudio-sales-ledger.csv"; // вне репозитория, приватный учёт продаж
 const LOG_PATH = "D:/tstudio-sales-bot.log"; // вне репозитория, лог на случай падения/перезапуска
+const LOCK_PATH = "D:/tstudio-sales-bot.lock"; // PID текущего рабочего экземпляра — see acquireSingletonLock
 
 // Скриншоты текущего интерфейса (не старше последнего редизайна!) — лежат
 // рядом, в sales-bot/screenshots/. Порядок и подписи — как в галерее /start.
@@ -116,6 +117,45 @@ function log(...args) {
 
 function logError(...args) {
   log("ОШИБКА:", ...args);
+}
+
+// ── Singleton-лок ─────────────────────────────────────────────────────────
+// Если бот случайно запущен дважды (например, run-forever.ps1 уже работает,
+// а панель управления или "Запустить бота.exe" стартуют второй экземпляр),
+// оба процесса начнут getUpdates-поллинг одним и тем же токеном — Telegram
+// отвечает 409 Conflict, и оба экземпляра начинают терять/дублировать
+// апдейты. Проверяем PID из предыдущего запуска ДО того, как что-либо
+// делаем в Telegram (даже setupBotProfile) — если он ещё жив, тихо выходим
+// и оставляем работать первый экземпляр.
+function isProcessAlive(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function acquireSingletonLock() {
+  if (fs.existsSync(LOCK_PATH)) {
+    const prevPid = parseInt(fs.readFileSync(LOCK_PATH, "utf8").trim(), 10);
+    if (!Number.isNaN(prevPid) && prevPid !== process.pid && isProcessAlive(prevPid)) {
+      log(`Уже запущен другой экземпляр бота (PID ${prevPid}) — выхожу, чтобы не конфликтовать с ним за getUpdates.`);
+      process.exit(0);
+    }
+  }
+  fs.writeFileSync(LOCK_PATH, String(process.pid));
+}
+
+function releaseSingletonLock() {
+  try {
+    if (fs.existsSync(LOCK_PATH) && fs.readFileSync(LOCK_PATH, "utf8").trim() === String(process.pid)) {
+      fs.unlinkSync(LOCK_PATH);
+    }
+  } catch {
+    // не критично — при следующем запуске лок всё равно распознается как
+    // "мёртвый" через isProcessAlive
+  }
 }
 
 async function api(method, body) {
@@ -929,5 +969,8 @@ process.on("uncaughtException", (err) => {
 process.on("unhandledRejection", (err) => {
   logError("Необработанный reject:", err);
 });
+process.on("SIGINT", () => { releaseSingletonLock(); process.exit(0); });
+process.on("SIGTERM", () => { releaseSingletonLock(); process.exit(0); });
 
+acquireSingletonLock();
 main();

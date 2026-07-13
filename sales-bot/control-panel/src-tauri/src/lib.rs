@@ -6,6 +6,12 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::os::windows::process::CommandExt;
 use std::process::Command;
+use tauri::{
+    image::Image,
+    menu::{Menu, MenuItem},
+    tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
+    Manager, WindowEvent,
+};
 
 const RUN_FOREVER_SCRIPT: &str = "D:/TElega POST/sales-bot/run-forever.ps1";
 const CONFIG_PATH: &str = "D:/TElega POST/sales-bot/config.json";
@@ -48,8 +54,12 @@ struct BotStatus {
     since: Option<String>,
 }
 
-#[tauri::command]
-fn get_bot_status() -> Result<BotStatus, String> {
+// Plain function (not a #[tauri::command]) so both the frontend-facing
+// command below AND the background tray poller can call the exact same
+// check — a second copy would inevitably drift (see the $PID self-match bug
+// already documented in stop_bot below, which only got caught in one of the
+// two places it originally existed).
+fn get_bot_status_inner() -> Result<BotStatus, String> {
     let script = r#"
 $bot = @(Get-CimInstance Win32_Process -Filter "Name='node.exe'" | Where-Object { $_.CommandLine -like '*bot.mjs*' } | Select-Object ProcessId, CreationDate)
 $sup = @(Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" | Where-Object { $_.ProcessId -ne $PID -and $_.CommandLine -like '*run-forever*' })
@@ -64,6 +74,11 @@ $sinceVal = if ($bot.Count -gt 0) { $bot[0].CreationDate.ToString("yyyy-MM-ddTHH
 "#;
     let out = run_powershell(script)?;
     serde_json::from_str(&out).map_err(|e| format!("Не удалось разобрать статус: {e} ({out})"))
+}
+
+#[tauri::command]
+fn get_bot_status() -> Result<BotStatus, String> {
+    get_bot_status_inner()
 }
 
 #[tauri::command]
@@ -426,6 +441,55 @@ async fn broadcast_update(message: String) -> Result<BroadcastResult, String> {
     })
 }
 
+// ── Трей: всегда видимый индикатор статуса бота ─────────────────────────
+// Раньше единственный способ узнать, жив ли бот, — открыть панель и
+// посмотреть вкладку "Статус" (опрашивает раз в 5с, только пока панель
+// открыта). Трей-иконка живёт постоянно, даже если окно панели закрыто —
+// закрытие окна теперь сворачивает панель в трей вместо выхода (см.
+// on_window_event ниже), а не убивает процесс.
+
+const TRAY_ID: &str = "bot-status-tray";
+
+/// (иконка, текст подсказки) для текущего статуса.
+/// - running=true → зелёная: всё в порядке.
+/// - running=false, supervisorRunning=true → жёлтая: супервизор жив, но бот
+///   между перезапусками (например, застрял в цикле падений) — переходное
+///   состояние, не обязательно повод для тревоги, но стоит присмотреться.
+/// - оба false → красная: бот полностью остановлен.
+fn status_to_icon_text<'a>(
+    status: &BotStatus,
+    icons: &'a TrayIcons,
+) -> (&'a Image<'static>, String) {
+    if status.running {
+        (&icons.green, "Бот работает".to_string())
+    } else if status.supervisor_running {
+        (&icons.amber, "Бот перезапускается…".to_string())
+    } else {
+        (&icons.red, "Бот остановлен".to_string())
+    }
+}
+
+struct TrayIcons {
+    green: Image<'static>,
+    amber: Image<'static>,
+    red: Image<'static>,
+}
+
+fn load_tray_icons() -> TrayIcons {
+    TrayIcons {
+        green: Image::from_bytes(include_bytes!("../icons/tray/green.png")).expect("tray icon green.png"),
+        amber: Image::from_bytes(include_bytes!("../icons/tray/amber.png")).expect("tray icon amber.png"),
+        red: Image::from_bytes(include_bytes!("../icons/tray/red.png")).expect("tray icon red.png"),
+    }
+}
+
+fn show_main_window(app: &tauri::AppHandle) {
+    if let Some(w) = app.get_webview_window("main") {
+        let _ = w.show();
+        let _ = w.set_focus();
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -445,6 +509,69 @@ pub fn run() {
             get_buyer_count,
             broadcast_update,
         ])
+        .setup(|app| {
+            let icons = load_tray_icons();
+
+            let show_i = MenuItem::with_id(app, "show", "Открыть панель", true, None::<&str>)?;
+            let start_i = MenuItem::with_id(app, "start", "Запустить бота", true, None::<&str>)?;
+            let stop_i = MenuItem::with_id(app, "stop", "Остановить бота", true, None::<&str>)?;
+            let restart_i = MenuItem::with_id(app, "restart", "Перезапустить бота", true, None::<&str>)?;
+            let quit_i = MenuItem::with_id(app, "quit", "Выход", true, None::<&str>)?;
+            let menu = Menu::with_items(app, &[&show_i, &start_i, &stop_i, &restart_i, &quit_i])?;
+
+            TrayIconBuilder::with_id(TRAY_ID)
+                .icon(icons.red.clone())
+                .tooltip("Проверяю статус бота…")
+                .menu(&menu)
+                .show_menu_on_left_click(false)
+                .on_menu_event(|app, event| match event.id.as_ref() {
+                    "show" => show_main_window(app),
+                    "start" => { let _ = start_bot(); }
+                    "stop" => { let _ = stop_bot(); }
+                    "restart" => { let _ = restart_bot(); }
+                    "quit" => app.exit(0),
+                    _ => {}
+                })
+                .on_tray_icon_event(|tray, event| {
+                    if let TrayIconEvent::Click { button: MouseButton::Left, button_state: MouseButtonState::Up, .. } = event {
+                        show_main_window(tray.app_handle());
+                    }
+                })
+                .build(app)?;
+
+            // Фоновый поллинг статуса — работает независимо от того, открыта
+            // ли панель, так что иконка в трее остаётся живым индикатором
+            // всегда, а не только пока открыта вкладка "Статус".
+            let handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                loop {
+                    if let Ok(status) = get_bot_status_inner() {
+                        if let Some(tray) = handle.tray_by_id(TRAY_ID) {
+                            let (icon, text) = status_to_icon_text(&status, &icons);
+                            let _ = tray.set_icon(Some(icon.clone()));
+                            let _ = tray.set_tooltip(Some(&text));
+                        }
+                    }
+                    tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                }
+            });
+
+            Ok(())
+        })
+        .on_window_event(|window, event| {
+            // Закрытие окна сворачивает панель в трей вместо завершения
+            // процесса — иначе фоновый поллинг (и сама трей-иконка) умирали
+            // бы вместе с окном, и статус снова был бы виден только пока
+            // панель открыта, что и есть та проблема, ради которой всё это
+            // затевалось. Выйти по-настоящему можно только через "Выход" в
+            // меню трея.
+            if window.label() == "main" {
+                if let WindowEvent::CloseRequested { api, .. } = event {
+                    api.prevent_close();
+                    let _ = window.hide();
+                }
+            }
+        })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
