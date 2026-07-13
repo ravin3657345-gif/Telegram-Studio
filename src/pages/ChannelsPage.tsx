@@ -13,6 +13,7 @@ import { toast } from "@/store/uiStore";
 import { t, ti } from "@/lib/i18n";
 import { useSettingsStore } from "@/store/settingsStore";
 import type { Channel } from "@/types/channel";
+import { Dialog, DialogTitle, DialogDescription } from "@/components/ui/Dialog";
 
 
 interface ChannelStats {
@@ -64,26 +65,25 @@ function AddChannelModal({ onClose, onAdded }: AddChannelModalProps) {
   const canSubmit = !!botId && !!canonical && !adding;
 
   return (
-    <div
+    <Dialog
+      onOpenChange={(open) => !open && onClose()}
+      overlayStyle={{ backgroundColor: "rgba(0,0,0,0.55)", backdropFilter: "blur(2px)" }}
       style={{
-        position: "fixed", inset: 0, zIndex: 1000,
-        backgroundColor: "rgba(0,0,0,0.55)",
-        display: "flex", alignItems: "center", justifyContent: "center",
-        backdropFilter: "blur(2px)",
-      }}
-      onClick={(e) => e.target === e.currentTarget && onClose()}
-    >
-      <div style={{
         width: 460, maxWidth: "calc(100vw - 32px)", backgroundColor: "var(--bg-surface)",
         border: "1px solid var(--border-subtle)", borderRadius: 14, padding: 24,
         boxShadow: "0 20px 60px rgba(0,0,0,0.5)",
-      }}>
-        <h2 style={{ fontSize: 16, fontWeight: 700, color: "var(--text-primary)", marginBottom: 6 }}>
-          {t("channels.addTitle")}
-        </h2>
-        <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 20, lineHeight: 1.5 }}>
-          {t("channels.adminHint")}
-        </p>
+      }}
+    >
+        <DialogTitle asChild>
+          <h2 style={{ fontSize: 16, fontWeight: 700, color: "var(--text-primary)", marginBottom: 6 }}>
+            {t("channels.addTitle")}
+          </h2>
+        </DialogTitle>
+        <DialogDescription asChild>
+          <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 20, lineHeight: 1.5 }}>
+            {t("channels.adminHint")}
+          </p>
+        </DialogDescription>
 
         {bots.length === 0 ? (
           <div style={{
@@ -180,9 +180,8 @@ function AddChannelModal({ onClose, onAdded }: AddChannelModalProps) {
             {t("common.add")}
           </button>
         </div>
-      </div>
-      <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
-    </div>
+        <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
+    </Dialog>
   );
 }
 

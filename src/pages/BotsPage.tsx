@@ -8,6 +8,7 @@ import { toast } from "@/store/uiStore";
 import { t, ti } from "@/lib/i18n";
 import { useSettingsStore } from "@/store/settingsStore";
 import type { Bot as BotType } from "@/types/bot";
+import { Dialog, DialogTitle, DialogDescription } from "@/components/ui/Dialog";
 
 
 // ─── Add-bot modal ────────────────────────────────────────────────────────────
@@ -60,29 +61,26 @@ function AddBotModal({ onClose, onAdded }: AddBotModalProps) {
   }
 
   return (
-    <div
+    <Dialog
+      onOpenChange={(open) => !open && onClose()}
+      overlayStyle={{ backgroundColor: "rgba(0,0,0,0.55)", backdropFilter: "blur(2px)" }}
       style={{
-        position: "fixed", inset: 0, zIndex: 1000,
-        backgroundColor: "rgba(0,0,0,0.55)",
-        display: "flex", alignItems: "center", justifyContent: "center",
-        backdropFilter: "blur(2px)",
+        width: 440, maxWidth: "calc(100vw - 32px)", backgroundColor: "var(--bg-surface)",
+        border: "1px solid var(--border-subtle)",
+        borderRadius: 14, padding: 24,
+        boxShadow: "0 20px 60px rgba(0,0,0,0.5)",
       }}
-      onClick={(e) => e.target === e.currentTarget && onClose()}
     >
-      <div
-        style={{
-          width: 440, maxWidth: "calc(100vw - 32px)", backgroundColor: "var(--bg-surface)",
-          border: "1px solid var(--border-subtle)",
-          borderRadius: 14, padding: 24,
-          boxShadow: "0 20px 60px rgba(0,0,0,0.5)",
-        }}
-      >
-        <h2 style={{ fontSize: 16, fontWeight: 700, color: "var(--text-primary)", marginBottom: 6 }}>
-          {t("bots.addTitle")}
-        </h2>
-        <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 18, lineHeight: 1.5 }}>
-          {t("bots.createHintPre")} <span style={{ color: "var(--accent)" }}>@BotFather</span> {t("bots.createHintPost")}
-        </p>
+        <DialogTitle asChild>
+          <h2 style={{ fontSize: 16, fontWeight: 700, color: "var(--text-primary)", marginBottom: 6 }}>
+            {t("bots.addTitle")}
+          </h2>
+        </DialogTitle>
+        <DialogDescription asChild>
+          <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 18, lineHeight: 1.5 }}>
+            {t("bots.createHintPre")} <span style={{ color: "var(--accent)" }}>@BotFather</span> {t("bots.createHintPost")}
+          </p>
+        </DialogDescription>
 
         {/* Token input */}
         <div style={{ marginBottom: 12 }}>
@@ -179,9 +177,8 @@ function AddBotModal({ onClose, onAdded }: AddBotModalProps) {
             </button>
           )}
         </div>
-      </div>
-      <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
-    </div>
+        <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
+    </Dialog>
   );
 }
 

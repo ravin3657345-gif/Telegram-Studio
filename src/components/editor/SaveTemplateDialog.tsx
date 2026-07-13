@@ -3,6 +3,7 @@ import { X, Megaphone, List, Users, Tag, type LucideIcon } from "lucide-react";
 import type { TemplateCategory } from "@/types/template";
 import { t } from "@/lib/i18n";
 import { useSettingsStore } from "@/store/settingsStore";
+import { Dialog, DialogTitle, DialogDescription } from "@/components/ui/Dialog";
 
 interface Props {
   onConfirm: (name: string, category: TemplateCategory) => void;
@@ -29,27 +30,25 @@ export function SaveTemplateDialog({ onConfirm, onClose, initialName, initialCat
   const [name, setName] = useState(initialName ?? "");
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center"
-      style={{ backgroundColor: "rgba(0,0,0,0.5)" }}
-      onClick={e => { if (e.target === e.currentTarget) onClose(); }}
+    <Dialog
+      onOpenChange={(open) => !open && onClose()}
+      style={{
+        width: 320,
+        maxWidth: "calc(100vw - 32px)",
+        borderRadius: 16,
+        backgroundColor: "var(--bg-surface)",
+        border: "1px solid var(--border-default)",
+        boxShadow: "0 12px 40px rgba(0,0,0,0.4)",
+        overflow: "hidden",
+      }}
     >
-      <div
-        style={{
-          width: 320,
-          maxWidth: "calc(100vw - 32px)",
-          borderRadius: 16,
-          backgroundColor: "var(--bg-surface)",
-          border: "1px solid var(--border-default)",
-          boxShadow: "0 12px 40px rgba(0,0,0,0.4)",
-          overflow: "hidden",
-        }}
-      >
         {/* Header */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 16px 12px" }}>
-          <span style={{ fontWeight: 600, fontSize: 15, color: "var(--text-primary)" }}>
-            {t("editor.saveAsTemplate")}
-          </span>
+          <DialogTitle asChild>
+            <span style={{ fontWeight: 600, fontSize: 15, color: "var(--text-primary)" }}>
+              {t("editor.saveAsTemplate")}
+            </span>
+          </DialogTitle>
           <button
             onClick={onClose}
             style={{ background: "none", border: "none", cursor: "pointer", padding: 4, borderRadius: 6, color: "var(--text-muted)", lineHeight: 0 }}
@@ -81,9 +80,11 @@ export function SaveTemplateDialog({ onConfirm, onClose, initialName, initialCat
           />
         </div>
 
-        <p style={{ padding: "0 16px 12px", fontSize: 12, color: "var(--text-muted)" }}>
-          {t("template.chooseCategory")}
-        </p>
+        <DialogDescription asChild>
+          <p style={{ padding: "0 16px 12px", fontSize: 12, color: "var(--text-muted)" }}>
+            {t("template.chooseCategory")}
+          </p>
+        </DialogDescription>
 
         {/* Category cards */}
         <div style={{ display: "flex", flexDirection: "column", gap: 6, padding: "0 12px 16px" }}>
@@ -135,7 +136,6 @@ export function SaveTemplateDialog({ onConfirm, onClose, initialName, initialCat
             );
           })}
         </div>
-      </div>
-    </div>
+    </Dialog>
   );
 }

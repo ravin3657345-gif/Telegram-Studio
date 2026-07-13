@@ -4,6 +4,7 @@ import { Link, X, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { t } from "@/lib/i18n";
 import { useSettingsStore } from "@/store/settingsStore";
+import { Dialog, DialogTitle, DialogDescription, VisuallyHidden } from "@/components/ui/Dialog";
 
 interface LinkDialogProps {
   editor: Editor;
@@ -11,7 +12,6 @@ interface LinkDialogProps {
 }
 
 export function LinkDialog({ editor, onClose }: LinkDialogProps) {
-  const overlayRef  = useRef<HTMLDivElement>(null);
   const urlInputRef = useRef<HTMLInputElement>(null);
   useSettingsStore((s) => s.language);
 
@@ -32,14 +32,6 @@ export function LinkDialog({ editor, onClose }: LinkDialogProps) {
     urlInputRef.current?.focus();
     urlInputRef.current?.select();
   }, []);
-
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [onClose]);
 
   function validate(value: string): boolean {
     if (!value.trim()) {
@@ -88,24 +80,15 @@ export function LinkDialog({ editor, onClose }: LinkDialogProps) {
   const hasExistingLink = !!existingHref;
 
   return (
-    <>
-      {/* Backdrop */}
-      <div
-        ref={overlayRef}
-        className="fixed inset-0 z-40"
-        onClick={onClose}
-      />
-
-      {/* Dialog */}
-      <div
-        className="fixed z-50 top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 rounded-xl border"
-        style={{
-          backgroundColor: "var(--bg-elevated)",
-          borderColor: "var(--border-default)",
-          boxShadow: "var(--shadow-modal)",
-        }}
-        onClick={(e) => e.stopPropagation()}
-      >
+    <Dialog
+      onOpenChange={(open) => !open && onClose()}
+      className="w-96 rounded-xl border"
+      style={{
+        backgroundColor: "var(--bg-elevated)",
+        borderColor: "var(--border-default)",
+        boxShadow: "var(--shadow-modal)",
+      }}
+    >
         {/* Header */}
         <div
           className="flex items-center justify-between px-4 py-3 border-b"
@@ -113,10 +96,13 @@ export function LinkDialog({ editor, onClose }: LinkDialogProps) {
         >
           <div className="flex items-center gap-2">
             <Link size={15} style={{ color: "var(--accent)" }} />
-            <span className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
-              {hasExistingLink ? t("link.editTitle") : t("link.insertTitle")}
-            </span>
+            <DialogTitle asChild>
+              <span className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
+                {hasExistingLink ? t("link.editTitle") : t("link.insertTitle")}
+              </span>
+            </DialogTitle>
           </div>
+          <VisuallyHidden><DialogDescription>{t("link.urlLabel")}</DialogDescription></VisuallyHidden>
           <button
             onClick={onClose}
             className="rounded p-0.5 transition-colors"
@@ -217,7 +203,6 @@ export function LinkDialog({ editor, onClose }: LinkDialogProps) {
             </Button>
           </div>
         </div>
-      </div>
-    </>
+    </Dialog>
   );
 }

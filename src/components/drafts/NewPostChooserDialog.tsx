@@ -6,6 +6,7 @@ import { t, ti } from "@/lib/i18n";
 import { useSettingsStore } from "@/store/settingsStore";
 import { toast } from "@/store/uiStore";
 import type { Template } from "@/types/template";
+import { Dialog, DialogTitle, DialogDescription, VisuallyHidden } from "@/components/ui/Dialog";
 
 interface Props {
   onClose: () => void;
@@ -50,30 +51,29 @@ export function NewPostChooserDialog({ onClose }: Props) {
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center"
-      style={{ backgroundColor: "rgba(0,0,0,0.5)" }}
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    <Dialog
+      onOpenChange={(open) => !open && onClose()}
+      style={{
+        width: 460,
+        maxWidth: "calc(100vw - 32px)",
+        maxHeight: "calc(100vh - 64px)",
+        borderRadius: 16,
+        backgroundColor: "var(--bg-surface)",
+        border: "1px solid var(--border-default)",
+        boxShadow: "0 12px 40px rgba(0,0,0,0.4)",
+        overflow: "hidden",
+        display: "flex",
+        flexDirection: "column",
+      }}
     >
-      <div
-        style={{
-          width: 460,
-          maxWidth: "calc(100vw - 32px)",
-          maxHeight: "calc(100vh - 64px)",
-          borderRadius: 16,
-          backgroundColor: "var(--bg-surface)",
-          border: "1px solid var(--border-default)",
-          boxShadow: "0 12px 40px rgba(0,0,0,0.4)",
-          overflow: "hidden",
-          display: "flex",
-          flexDirection: "column",
-        }}
-      >
         {/* Header */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 16px 12px", flexShrink: 0 }}>
-          <span style={{ fontWeight: 600, fontSize: 15, color: "var(--text-primary)" }}>
-            {t("drafts.new")}
-          </span>
+          <DialogTitle asChild>
+            <span style={{ fontWeight: 600, fontSize: 15, color: "var(--text-primary)" }}>
+              {t("drafts.new")}
+            </span>
+          </DialogTitle>
+          <VisuallyHidden><DialogDescription>{t("drafts.chooser.scratchDesc")}</DialogDescription></VisuallyHidden>
           <button
             onClick={onClose}
             style={{ background: "none", border: "none", cursor: "pointer", padding: 4, borderRadius: 6, color: "var(--text-muted)", lineHeight: 0 }}
@@ -154,7 +154,6 @@ export function NewPostChooserDialog({ onClose }: Props) {
             </div>
           )}
         </div>
-      </div>
-    </div>
+    </Dialog>
   );
 }

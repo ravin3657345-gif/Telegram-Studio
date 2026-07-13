@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { ChevronLeft, ChevronRight, ChevronUp, ChevronDown, X, Check } from "lucide-react";
 import { t } from "@/lib/i18n";
 import { useSettingsStore } from "@/store/settingsStore";
+import { Dialog, DialogTitle, DialogDescription, VisuallyHidden } from "@/components/ui/Dialog";
 
 interface ScheduleDialogProps {
   onConfirm: (isoDate: string) => void;
@@ -194,26 +195,25 @@ export function ScheduleDialog({ onConfirm, onClose }: ScheduleDialogProps) {
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center"
-      style={{ backgroundColor: "rgba(0,0,0,0.5)" }}
-      onClick={e => { if (e.target === e.currentTarget) onClose(); }}
+    <Dialog
+      onOpenChange={(open) => !open && onClose()}
+      style={{
+        width: 296,
+        borderRadius: 16,
+        backgroundColor: "var(--bg-surface)",
+        border: "1px solid var(--border-default)",
+        boxShadow: "0 12px 40px rgba(0,0,0,0.4)",
+        overflow: "hidden",
+      }}
     >
-      <div
-        style={{
-          width: 296,
-          borderRadius: 16,
-          backgroundColor: "var(--bg-surface)",
-          border: "1px solid var(--border-default)",
-          boxShadow: "0 12px 40px rgba(0,0,0,0.4)",
-          overflow: "hidden",
-        }}
-      >
         {/* Header */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 16px 8px" }}>
-          <span style={{ fontWeight: 600, fontSize: 15, color: "var(--text-primary)" }}>
-            {t("schedule.title")}
-          </span>
+          <DialogTitle asChild>
+            <span style={{ fontWeight: 600, fontSize: 15, color: "var(--text-primary)" }}>
+              {t("schedule.title")}
+            </span>
+          </DialogTitle>
+          <VisuallyHidden><DialogDescription>{t("schedule.title")}</DialogDescription></VisuallyHidden>
           <button
             onClick={onClose}
             style={{ background: "none", border: "none", cursor: "pointer", padding: 4, borderRadius: 6, color: "var(--text-muted)", lineHeight: 0 }}
@@ -325,7 +325,6 @@ export function ScheduleDialog({ onConfirm, onClose }: ScheduleDialogProps) {
             {t("schedule.confirm")}
           </button>
         </div>
-      </div>
-    </div>
+    </Dialog>
   );
 }

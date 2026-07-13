@@ -1,5 +1,6 @@
 import { X, Send, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/Button";
+import { Dialog, DialogTitle, DialogDescription } from "@/components/ui/Dialog";
 import { t } from "@/lib/i18n";
 import type { PublishMode } from "@/store/editorStore";
 import type { Channel } from "@/types/channel";
@@ -22,27 +23,25 @@ function modeLabel(mode: PublishMode) {
 
 export function PublishConfirmDialog({ channels, publishMode, postTitle, onConfirm, onClose }: PublishConfirmDialogProps) {
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center"
-      style={{ backgroundColor: "rgba(0,0,0,0.5)" }}
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    <Dialog
+      onOpenChange={(open) => !open && onClose()}
+      style={{
+        width: 340,
+        maxWidth: "calc(100vw - 32px)",
+        borderRadius: 16,
+        backgroundColor: "var(--bg-surface)",
+        border: "1px solid var(--border-default)",
+        boxShadow: "0 12px 40px rgba(0,0,0,0.4)",
+        overflow: "hidden",
+      }}
     >
-      <div
-        style={{
-          width: 340,
-          maxWidth: "calc(100vw - 32px)",
-          borderRadius: 16,
-          backgroundColor: "var(--bg-surface)",
-          border: "1px solid var(--border-default)",
-          boxShadow: "0 12px 40px rgba(0,0,0,0.4)",
-          overflow: "hidden",
-        }}
-      >
         {/* Header */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 16px 8px" }}>
-          <span style={{ fontWeight: 600, fontSize: 15, color: "var(--text-primary)" }}>
-            {t("publish.confirmTitle")}
-          </span>
+          <DialogTitle asChild>
+            <span style={{ fontWeight: 600, fontSize: 15, color: "var(--text-primary)" }}>
+              {t("publish.confirmTitle")}
+            </span>
+          </DialogTitle>
           <button
             onClick={onClose}
             style={{ background: "none", border: "none", cursor: "pointer", padding: 4, borderRadius: 6, color: "var(--text-muted)", lineHeight: 0 }}
@@ -52,9 +51,11 @@ export function PublishConfirmDialog({ channels, publishMode, postTitle, onConfi
         </div>
 
         <div style={{ padding: "6px 16px 4px", display: "flex", flexDirection: "column", gap: 10 }}>
-          <p style={{ fontSize: 12.5, color: "var(--text-muted)" }}>
-            {t("publish.confirmIntro")}
-          </p>
+          <DialogDescription asChild>
+            <p style={{ fontSize: 12.5, color: "var(--text-muted)" }}>
+              {t("publish.confirmIntro")}
+            </p>
+          </DialogDescription>
 
           {/* Channel list */}
           <div className="flex flex-col gap-1" style={{ maxHeight: 140, overflowY: "auto" }}>
@@ -106,7 +107,6 @@ export function PublishConfirmDialog({ channels, publishMode, postTitle, onConfi
             {t("publish.button")}
           </Button>
         </div>
-      </div>
-    </div>
+    </Dialog>
   );
 }

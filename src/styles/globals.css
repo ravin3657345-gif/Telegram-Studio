@@ -238,3 +238,36 @@ select:focus-visible {
 .leaflet-top,
 .leaflet-bottom          { z-index: 8 !important; }
 .leaflet-control         { z-index: 8 !important; }
+
+/* ── Radix Dialog base (see components/ui/Dialog.tsx) ─────────────────────
+   Every hand-rolled modal in the app shares this shell — backdrop + centered
+   card, fading in on mount via Radix's data-state attribute. Each dialog's
+   own width/radius/etc. still comes from its own inline style, unchanged. */
+.dialog-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  background-color: rgba(0, 0, 0, 0.5);
+}
+.dialog-content {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 50;
+  outline: none;
+}
+.dialog-overlay[data-state="open"] { animation: dialogOverlayIn 0.15s ease-out; }
+.dialog-content[data-state="open"] { animation: dialogContentIn 0.16s cubic-bezier(0.16, 1, 0.3, 1); }
+@keyframes dialogOverlayIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes dialogContentIn {
+  from { opacity: 0; transform: translate(-50%, -50%) scale(0.96) translateY(4px); }
+  to   { opacity: 1; transform: translate(-50%, -50%) scale(1) translateY(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dialog-overlay[data-state="open"],
+  .dialog-content[data-state="open"] { animation: none; }
+}
