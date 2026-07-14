@@ -582,7 +582,7 @@ export function PublishPanel({ draftId }: PublishPanelProps) {
 
         {/* Publish mode selector — hidden when editing a published post (mode is locked) */}
         {!editingHistoryId ? (
-          <div>
+          <div data-tour="format-switcher">
             <p className="text-2xs mb-1.5" style={{ color: "var(--text-muted)" }}>{t("publish.format")}</p>
             <div className="flex flex-col gap-1">
               {([

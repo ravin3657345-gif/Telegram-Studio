@@ -375,6 +375,7 @@ export function BlockPalette({ editor }: BlockPaletteProps) {
 
   return (
     <div
+      data-tour="block-palette"
       className="flex flex-col border-l flex-shrink-0"
       style={{ width: 220, backgroundColor: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}
     >

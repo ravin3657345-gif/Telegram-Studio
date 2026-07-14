@@ -73,6 +73,7 @@ export function CharCounter({ editor }: CharCounterProps) {
 
   return (
     <div
+      data-tour="char-counter"
       className="char-counter-root flex items-center gap-3 px-4 flex-shrink-0 border-t"
       style={{
         height: 32,
