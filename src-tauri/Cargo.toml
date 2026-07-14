@@ -1,5 +1,5 @@
 [workspace]
-members = ["core"]
+members = ["core", "tools/keygen", "tools/sales-bot-launcher"]
 
 [package]
 name = "telegram-studio"
@@ -11,14 +11,6 @@ default-run = "telegram-studio"
 [lib]
 name = "telegram_studio_lib"
 crate-type = ["lib", "cdylib", "staticlib"]
-
-[[bin]]
-name = "keygen"
-path = "src/bin/keygen.rs"
-
-[[bin]]
-name = "sales-bot-launcher"
-path = "src/bin/sales_bot_launcher.rs"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

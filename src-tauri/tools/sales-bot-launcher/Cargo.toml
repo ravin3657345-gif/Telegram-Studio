@@ -1,0 +1,9 @@
+[package]
+name = "sales-bot-launcher"
+version = "1.0.0"
+edition = "2021"
+description = "Internal seller tool — double-click launcher for sales-bot/bot.mjs. Never bundled with the client app (its own workspace package, outside telegram-studio's Cargo.toml, so Tauri's bundler can't sweep it into the installer)."
+
+[[bin]]
+name = "sales-bot-launcher"
+path = "src/main.rs"

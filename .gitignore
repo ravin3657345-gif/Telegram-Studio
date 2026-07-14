@@ -12,7 +12,7 @@ src-tauri/gen/
 src-tauri/android-release.jks
 src-tauri/android-release.properties
 
-# Compiled dev tool (source: src-tauri/src/bin/keygen.rs)
+# Compiled dev tool (source: src-tauri/tools/keygen/src/main.rs)
 /keygen.exe
 
 # for-testers/ — built installers, test keys and archives for manual
@@ -30,7 +30,7 @@ for-testers-android/*.apk
 .claude/
 
 # Sales bot — token.txt holds a real bot secret, the launcher exe is a
-# compiled artifact (source: src-tauri/src/bin/sales_bot_launcher.rs)
+# compiled artifact (source: src-tauri/tools/sales-bot-launcher/src/main.rs)
 sales-bot/token.txt
 sales-bot/*.exe
 sales-bot/*.lnk

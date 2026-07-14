@@ -1,0 +1,15 @@
+[package]
+name = "keygen"
+version = "1.0.0"
+edition = "2021"
+description = "Internal seller tool — mints/checks license keys against Supabase. Never bundled with the client app (deliberately its own workspace package, outside telegram-studio's Cargo.toml, so Tauri's bundler can't sweep it into the installer)."
+
+[[bin]]
+name = "keygen"
+path = "src/main.rs"
+
+[dependencies]
+tstudio-core = { path = "../../core" }
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+serde_json = "1"
