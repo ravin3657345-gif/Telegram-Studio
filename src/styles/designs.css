@@ -37,9 +37,32 @@
   --shadow-sm: 0 1px 3px rgba(13, 39, 80, 0.06);
   --shadow-md: 0 4px 12px rgba(13, 39, 80, 0.08);
   --shadow-lg: 0 8px 24px rgba(13, 39, 80, 0.10);
+
+  /* This skin's whole identity is the embossed .soft-ui look (globals.css) —
+     theme.css's light-theme pair (0.14/0.85) is tuned to read as a subtle
+     touch on plain white, and came out too faint here (block palette tiles,
+     primary buttons, etc. all looked flat). Pushed well past that baseline
+     — this is the one skin where the shadow IS the point, so it should be
+     unmistakable, not a hint. */
+  --soft-shadow-dark:  rgba(13, 39, 80, 0.4);
+  --soft-shadow-light: rgba(255, 255, 255, 1);
 }
 
 /* ─── Signature flourish: soft-ui embossing on major surfaces ────────────── */
+
+/* Bigger shadow spread on top of the stronger colors above — the shared
+   4px/10px in globals.css is sized for occasional use elsewhere; here the
+   emboss is the whole point of the skin, so it gets to be more voluminous. */
+[data-design="soft"] .soft-ui-sm {
+  box-shadow:
+    5px 5px 13px var(--soft-shadow-dark),
+    -5px -5px 13px var(--soft-shadow-light);
+}
+[data-design="soft"] .soft-ui-pressed {
+  box-shadow:
+    inset 4px 4px 10px var(--soft-shadow-dark),
+    inset -4px -4px 10px var(--soft-shadow-light);
+}
 
 [data-design="soft"] .rounded-xl,
 [data-design="soft"] .rounded-2xl {

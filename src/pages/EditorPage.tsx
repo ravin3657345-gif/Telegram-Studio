@@ -1,9 +1,11 @@
 import { useState } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
+import type { Editor } from "@tiptap/react";
 import { CheckCircle2, AlertCircle, Loader2, LayoutTemplate, PenLine, Eye, Send, Lock, XCircle } from "lucide-react";
 import { TopBar } from "@/components/layout/TopBar";
 import { PostEditor } from "@/components/editor/PostEditor";
 import { PublishPanel } from "@/components/editor/PublishPanel";
+import { BlockPalette } from "@/components/editor/BlockPalette";
 import { TelegramPreview } from "@/components/preview/TelegramPreview";
 import { SaveTemplateDialog } from "@/components/editor/SaveTemplateDialog";
 import { useEditorStore } from "@/store/editorStore";
@@ -38,6 +40,14 @@ export function EditorPage() {
   const [showTemplateDialog, setShowTemplateDialog] = useState(false);
   const [mobileTab, setMobileTab] = useState<MobileTab>("editor");
   const [unlocking, setUnlocking] = useState(false);
+  // Only needed to render BlockPalette in the right panel (in place of the
+  // Telegram preview when it's off) — the editor instance itself lives in
+  // PostEditor, this is just a read-only handle to it.
+  const [editorInstance, setEditorInstance] = useState<Editor | null>(null);
+  // Whether the right panel has something above the publish panel (preview
+  // or, in its place, the block palette) — governs whether Publish is capped
+  // at 60% of the column or gets the whole thing to itself.
+  const hasTopContent = showPreview || !!editorInstance;
 
   // Defensive guard: scheduling a Rich post is blocked in PublishPanel (see
   // richBlockedInSchedule), so this combination shouldn't be reachable going
@@ -147,56 +157,75 @@ export function EditorPage() {
         <div className="flex flex-1 overflow-hidden">
 
           {/* ── Editor column ───────────────────────────────────────────── */}
-          <div className="flex flex-col flex-1 overflow-hidden">
-            <PostEditor draftId={draftId} />
+          <div className="flex flex-1 overflow-hidden">
+            <div className="flex flex-col flex-1 overflow-hidden">
+              <PostEditor draftId={draftId} onEditorReady={setEditorInstance} />
+            </div>
 
+            {/* Docked in its original spot right next to the editor while the
+                preview is showing — it relocates into the right panel below
+                (in place of the preview) only once the preview is off. */}
+            {showPreview && editorInstance && <BlockPalette editor={editorInstance} />}
           </div>
 
           {/* ── Right panel ─────────────────────────────────────────────── */}
-          {showPreview && (
+          {/* Always rendered — Publish (channels/format/send) must stay
+              reachable regardless of the "show Telegram preview" setting.
+              Only the preview label + TelegramPreview above it are gated by
+              showPreview; hiding them just lets Publish take the full column. */}
+          <div
+            className="flex flex-col flex-shrink-0 border-l overflow-hidden"
+            style={{
+              width: 300,
+              borderColor: "var(--border-subtle)",
+              backgroundColor: "var(--bg-surface)",
+            }}
+          >
+            {showPreview ? (
+              <>
+                {/* Preview label */}
+                <div
+                  className="px-4 py-2.5 text-xs font-semibold uppercase tracking-wide border-b flex-shrink-0"
+                  style={{
+                    borderColor: "var(--border-subtle)",
+                    color: "var(--text-muted)",
+                  }}
+                >
+                  {t("editor.preview")}
+                </div>
+
+                {/* Telegram preview */}
+                <div className="flex-1 overflow-y-auto" style={{ minHeight: 0 }}>
+                  <TelegramPreview />
+                </div>
+              </>
+            ) : (
+              // Preview off — the block palette takes its place instead of
+              // leaving that space empty (it's normally docked next to the
+              // editor; here it moves into this column).
+              editorInstance && <BlockPalette editor={editorInstance} fill />
+            )}
+
+            {/* Publish panel — buttons stay pinned inside it; only its own
+                content area scrolls, so "Опубликовать"/"Запланировать" can
+                never be pushed out of view regardless of how tall the
+                channel list or warnings above them get. Capped at 60% only
+                when something (preview or block palette) fills the rest of
+                the column above it — otherwise it owns the whole column. */}
             <div
-              className="flex flex-col flex-shrink-0 border-l overflow-hidden"
+              data-tour="publish-panel"
+              className={hasTopContent ? "border-t flex-shrink-0" : "flex-1"}
               style={{
-                width: 300,
                 borderColor: "var(--border-subtle)",
-                backgroundColor: "var(--bg-surface)",
+                maxHeight: hasTopContent ? "60%" : undefined,
+                display: "flex",
+                flexDirection: "column",
+                overflow: "hidden",
               }}
             >
-              {/* Preview label */}
-              <div
-                className="px-4 py-2.5 text-xs font-semibold uppercase tracking-wide border-b flex-shrink-0"
-                style={{
-                  borderColor: "var(--border-subtle)",
-                  color: "var(--text-muted)",
-                }}
-              >
-                {t("editor.preview")}
-              </div>
-
-              {/* Telegram preview */}
-              <div className="flex-1 overflow-y-auto" style={{ minHeight: 0 }}>
-                <TelegramPreview />
-              </div>
-
-              {/* Publish panel — buttons stay pinned inside it; only its own
-                  content area scrolls, so "Опубликовать"/"Запланировать" can
-                  never be pushed out of view regardless of how tall the
-                  channel list or warnings above them get. */}
-              <div
-                data-tour="publish-panel"
-                className="border-t flex-shrink-0"
-                style={{
-                  borderColor: "var(--border-subtle)",
-                  maxHeight: "60%",
-                  display: "flex",
-                  flexDirection: "column",
-                  overflow: "hidden",
-                }}
-              >
-                <PublishPanel draftId={effectiveDraftId} />
-              </div>
+              <PublishPanel draftId={effectiveDraftId} />
             </div>
-          )}
+          </div>
         </div>
       )}
 

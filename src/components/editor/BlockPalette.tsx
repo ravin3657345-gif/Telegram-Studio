@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import type { Editor } from "@tiptap/react";
-import { GripVertical, Plus } from "lucide-react";
+import { Plus } from "lucide-react";
 import { getSlashItems, type SlashItem, type BlockPreviewType } from "@/extensions/SlashCommand";
 import {
   getNestedDropInfo, listBlocks, setGapBefore, clearGap,
@@ -13,6 +13,11 @@ import { t } from "@/lib/i18n";
 
 interface BlockPaletteProps {
   editor: Editor;
+  /** Rendered inside the right panel in place of the Telegram preview (when
+   * the preview is toggled off) instead of docked next to the editor in its
+   * own fixed-width, left-bordered column — the parent column already
+   * supplies both. */
+  fill?: boolean;
 }
 
 // Creates a fresh empty paragraph at `pos`, moves the selection into it, then
@@ -233,7 +238,7 @@ function fillGhostAsPreview(shell: HTMLDivElement, item: SlashItem): boolean {
 
 const DRAG_THRESHOLD = 4;
 
-export function BlockPalette({ editor }: BlockPaletteProps) {
+export function BlockPalette({ editor, fill }: BlockPaletteProps) {
   useSettingsStore((s) => s.language); // реактивность при смене языка — getSlashItems() читает t()
   const items = getSlashItems();
   const [selected, setSelected] = useState<number | null>(null);
@@ -376,8 +381,10 @@ export function BlockPalette({ editor }: BlockPaletteProps) {
   return (
     <div
       data-tour="block-palette"
-      className="flex flex-col border-l flex-shrink-0"
-      style={{ width: 220, backgroundColor: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}
+      className={fill ? "flex flex-col flex-1 overflow-hidden" : "flex flex-col border-l flex-shrink-0"}
+      style={fill
+        ? { backgroundColor: "var(--bg-surface)" }
+        : { width: 220, backgroundColor: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}
     >
       <div
         className="px-3 py-2.5 text-xs font-semibold uppercase tracking-wide border-b flex-shrink-0"
@@ -386,39 +393,55 @@ export function BlockPalette({ editor }: BlockPaletteProps) {
         {t("palette.title")}
       </div>
 
-      <div className="flex-1 overflow-y-auto py-1.5">
-        {items.map((item, i) => {
-          const isSelected = selected === i;
-          return (
-            <div
-              key={item.label}
-              onPointerDown={(e) => handleRowPointerDown(item, i, e)}
-              className="palette-row flex items-center gap-2 px-3 py-1.5 mx-1.5 rounded-md"
-              style={{
-                backgroundColor: isSelected ? "var(--accent-subtle)" : "transparent",
-                transition: "background-color 0.1s",
-                cursor: "grab",
-              }}
-              onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.backgroundColor = "var(--bg-hover)"; }}
-              onMouseLeave={(e) => { if (!isSelected) e.currentTarget.style.backgroundColor = "transparent"; }}
-            >
-              <item.icon
-                size={14}
-                strokeWidth={1.75}
-                style={{ flexShrink: 0, color: isSelected ? "var(--accent)" : "var(--text-muted)" }}
-              />
-              <span
-                className="text-xs flex-1 truncate"
-                style={{ color: isSelected ? "var(--accent)" : "var(--text-primary)" }}
+      {/* Same soft-ui tile styling in both modes — only the layout differs:
+          fill (preview off, wider column) stays a 2-column grid with
+          truncated labels; docked (preview on, narrow 220px column) is a
+          single column so full labels always fit. Either way this scroll
+          container handles overflow at a small window height. */}
+      <div className="flex-1 overflow-y-auto p-2.5">
+        <div className={fill ? "grid grid-cols-2 gap-2" : "flex flex-col gap-2"}>
+          {items.map((item, i) => {
+            const isSelected = selected === i;
+            return (
+              <div
+                key={item.label}
+                onPointerDown={(e) => handleRowPointerDown(item, i, e)}
+                title={item.label}
+                className={"palette-tile flex items-center gap-2.5 px-2.5 py-2.5 rounded-xl " + (isSelected ? "soft-ui-pressed" : "soft-ui-sm")}
+                style={{
+                  // bg-elevated (not bg-surface) — the tile needs to read as
+                  // a distinct raised card by color too, not rely on the
+                  // shadow alone to separate it from an identically-colored
+                  // parent panel.
+                  backgroundColor: "var(--bg-elevated)",
+                  cursor: "grab",
+                }}
               >
-                {item.label}
-              </span>
-              <span title={t("palette.drag")} style={{ display: "flex", color: "var(--text-muted)", flexShrink: 0 }}>
-                <GripVertical size={13} />
-              </span>
-            </div>
-          );
-        })}
+                <span
+                  className="flex items-center justify-center rounded-lg flex-shrink-0"
+                  style={{
+                    width: 24,
+                    height: 24,
+                    backgroundColor: isSelected ? "var(--accent)" : "color-mix(in srgb, var(--accent) 12%, transparent)",
+                    transition: "background-color 0.12s",
+                  }}
+                >
+                  <item.icon
+                    size={12.5}
+                    strokeWidth={1.85}
+                    style={{ color: isSelected ? "#fff" : "var(--accent)" }}
+                  />
+                </span>
+                <span
+                  className={fill ? "text-2xs truncate" : "text-2xs whitespace-nowrap"}
+                  style={{ color: isSelected ? "var(--text-primary)" : "var(--text-secondary)", fontWeight: isSelected ? 600 : 500 }}
+                >
+                  {item.label}
+                </span>
+              </div>
+            );
+          })}
+        </div>
       </div>
 
       <AnimatePresence>
@@ -433,7 +456,7 @@ export function BlockPalette({ editor }: BlockPaletteProps) {
           >
             <button
               onClick={handleInsertSelected}
-              className="flex items-center justify-center gap-1.5 w-full h-8 rounded-lg text-xs font-semibold"
+              className="soft-ui-sm flex items-center justify-center gap-1.5 w-full h-8 rounded-lg text-xs font-semibold transition-transform active:scale-[0.97]"
               style={{ backgroundColor: "var(--accent)", color: "#fff", border: "none", cursor: "pointer" }}
             >
               <Plus size={13} />

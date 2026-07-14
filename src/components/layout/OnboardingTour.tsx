@@ -20,7 +20,6 @@ const TOUR_STEPS: TourStep[] = [
   { selector: '[data-tour="nav-schedule"]',  titleKey: "tour.schedule.title",  descKey: "tour.schedule.desc" },
   { selector: '[data-tour="nav-history"]',   titleKey: "tour.history.title",   descKey: "tour.history.desc" },
   { selector: '[data-tour="editor-content"]', titleKey: "tour.slash.title",   descKey: "tour.slash.desc" },
-  { selector: '[data-tour="block-palette"]', titleKey: "tour.palette.title",  descKey: "tour.palette.desc" },
   { selector: '[data-tour="format-switcher"]', titleKey: "tour.richBlocks.title", descKey: "tour.richBlocks.desc" },
   { selector: '[data-tour="char-counter"]',  titleKey: "tour.counter.title",   descKey: "tour.counter.desc" },
   { selector: '[data-tour="publish-panel"]', titleKey: "tour.publish.title",  descKey: "tour.publish.desc" },

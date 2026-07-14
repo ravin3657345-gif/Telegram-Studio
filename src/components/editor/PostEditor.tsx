@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
-import { useEditor, EditorContent } from "@tiptap/react";
+import { useEditor, EditorContent, type Editor } from "@tiptap/react";
 import { AnimatePresence } from "framer-motion";
 import { createTiptapExtensions } from "@/lib/tiptapConfig";
 import { useEditorStore } from "@/store/editorStore";
@@ -18,12 +18,10 @@ import { HtmlViewPanel } from "./HtmlViewPanel";
 import { AttachmentZone } from "./AttachmentZone";
 import { EditorContextMenu } from "./EditorContextMenu";
 import { BlockHoverControls } from "./BlockHoverControls";
-import { BlockPalette } from "./BlockPalette";
 import { toast } from "@/store/uiStore";
 import { t, ti } from "@/lib/i18n";
 import { useAttachmentStore } from "@/store/attachmentStore";
 import { useAutoSplit } from "@/hooks/useAutoSplit";
-import { useIsMobileLayout } from "@/hooks/useIsMobileLayout";
 import { SplitOverlay } from "./SplitOverlay";
 import { Scissors, RefreshCw } from "lucide-react";
 import {
@@ -47,12 +45,15 @@ const ALLOWED_MEDIA = [...ALLOWED_IMAGE, ...ALLOWED_VIDEO, ...ALLOWED_AUDIO].joi
 
 interface PostEditorProps {
   draftId?: string | null;
+  /** Lets EditorPage render the block palette in its own right panel (in
+   * place of the Telegram preview when it's toggled off) — the editor
+   * instance itself is only ever created here. */
+  onEditorReady?: (editor: Editor | null) => void;
 }
 
-export function PostEditor({ draftId: initialDraftId }: PostEditorProps) {
+export function PostEditor({ draftId: initialDraftId, onEditorReady }: PostEditorProps) {
   const containerRef  = useRef<HTMLDivElement>(null);
   const draftLoadedRef = useRef(false);
-  const isMobile = useIsMobileLayout();
 
   // Separate state refs for SplitOverlay — must be state (not useRef) so React
   // re-renders when the DOM nodes mount, passing non-null values to SplitOverlay.
@@ -101,6 +102,12 @@ export function PostEditor({ draftId: initialDraftId }: PostEditorProps) {
       setContentJson(JSON.stringify(e.getJSON()));
     },
   });
+
+  useEffect(() => {
+    onEditorReady?.(editor ?? null);
+    return () => onEditorReady?.(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editor]);
 
   // ── Auto-split hook ───────────────────────────────────────────────────────
   const { splitCount, recalculate, forceSplitAtCursor } = useAutoSplit(editor);
@@ -590,7 +597,6 @@ export function PostEditor({ draftId: initialDraftId }: PostEditorProps) {
         </div>
 
         {showHtmlView && <HtmlViewPanel onClose={() => setShowHtmlView(false)} />}
-        {!isMobile && <BlockPalette editor={editor} />}
       </div>
 
       {/* Drop overlay */}

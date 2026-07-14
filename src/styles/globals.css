@@ -119,6 +119,17 @@ textarea,
     inset -3px -3px 8px var(--soft-shadow-light);
 }
 
+/* ── Block palette tiles (fill mode, see BlockPalette.tsx) ─────────────────
+   soft-ui-sm/-pressed above already handle the shadow; this just adds the
+   press micro-interaction every other primary control in the app already
+   has (Button.tsx's active:scale-[0.97]). */
+.palette-tile {
+  transition: transform 0.08s ease;
+}
+.palette-tile:active {
+  transform: scale(0.96);
+}
+
 /* ── Theme-aware color utilities ────────────────────────── */
 @layer utilities {
   .bg-app       { background-color: var(--bg-app); }
