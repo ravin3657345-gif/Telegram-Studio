@@ -84,7 +84,11 @@ const API = `https://api.telegram.org/bot${TOKEN}`;
 
 // ── Поиск последнего установщика в папке релизов ────────────────────────
 function findLatestInstaller() {
-  const re = /^Telegram Studio_(\d+)\.(\d+)\.(\d+)_x64_en-US\.msi$/;
+  // New builds drop the WiX-default "_en-US" language suffix from the
+  // filename (renamed on copy into RELEASE_DIR going forward) — the
+  // trailing group stays optional so older already-shipped .msi files with
+  // the suffix are still recognized too.
+  const re = /^Telegram Studio_(\d+)\.(\d+)\.(\d+)_x64(?:_en-US)?\.msi$/;
   const candidates = fs.readdirSync(RELEASE_DIR)
     .map((name) => ({ name, m: name.match(re) }))
     .filter((c) => c.m)
@@ -764,7 +768,11 @@ async function handleAdminInstallers(chatId) {
     await api("sendMessage", { chat_id: chatId, text: `Папка ${RELEASE_DIR} не найдена.` });
     return;
   }
-  const re = /^Telegram Studio_(\d+)\.(\d+)\.(\d+)_x64_en-US\.msi$/;
+  // New builds drop the WiX-default "_en-US" language suffix from the
+  // filename (renamed on copy into RELEASE_DIR going forward) — the
+  // trailing group stays optional so older already-shipped .msi files with
+  // the suffix are still recognized too.
+  const re = /^Telegram Studio_(\d+)\.(\d+)\.(\d+)_x64(?:_en-US)?\.msi$/;
   const files = fs.readdirSync(RELEASE_DIR)
     .map((name) => ({ name, m: name.match(re) }))
     .filter((c) => c.m)

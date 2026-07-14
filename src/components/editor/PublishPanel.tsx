@@ -8,6 +8,7 @@ import { usePublishStore } from "@/store/publishStore";
 import { useEditorStore } from "@/store/editorStore";
 import { publishPost, schedulePost, telegraphPublish, publishRichPost, republishRichPost, sendPoll, editPublishedPost, upsertDraft, updateScheduledPostContent } from "@/lib/tauriApi";
 import { segmentDocument, splitIntoMessagesAtGaps, splitJsonAtGaps } from "@/lib/htmlConverter";
+import { TELEGRAM_MAX_RICH_BLOCKS } from "@/lib/constants";
 import type { TextSegment, PollSegment } from "@/lib/htmlConverter";
 import { tiptapToTelegraphNodes } from "@/lib/telegraphConverter";
 import { tiptapToRichHtml } from "@/lib/richMessageConverter";
@@ -61,6 +62,17 @@ export function PublishPanel({ draftId }: PublishPanelProps) {
   // normal-mode segments below.
   const hasMap = (contentJson ?? "").includes('"type":"blockMap"');
   const hasFormula = (contentJson ?? "").includes('"type":"blockFormula"');
+  // Bot API 10.1 caps a single Rich Message at 500 top-level blocks
+  // (separate from the 32,768-char length cap) — checked per split chunk
+  // via the same splitJsonAtGaps used by the real publish call, since each
+  // chunk becomes its own independent sendRichMessage.
+  const richBlockLimitExceeded = publishMode === "rich" && splitJsonAtGaps(
+    contentJson || '{"type":"doc","content":[]}',
+    splitGaps,
+  ).some((chunk) => {
+    try { return (JSON.parse(chunk).content ?? []).length > TELEGRAM_MAX_RICH_BLOCKS; }
+    catch { return false; }
+  });
   const hasContent = hasAttachments || (publishMode === "rich" && (hasTable || hasAudio || hasMap || hasFormula)) || segments.some(
     (s) =>
       (s.type === "text" && s.html.trim()) ||
@@ -96,7 +108,7 @@ export function PublishPanel({ draftId }: PublishPanelProps) {
     hasBots && selectedChannelIds.length > 0 && hasContent &&
     !fileBlockedInRich && !fileBlockedInTelegraph && !videoBlockedInTelegraph &&
     !tableBlockedOutsideRich && !audioBlockedOutsideRich &&
-    !mapBlockedOutsideRich && !formulaBlockedOutsideRich &&
+    !mapBlockedOutsideRich && !formulaBlockedOutsideRich && !richBlockLimitExceeded &&
     status !== "publishing" && status !== "scheduling";
 
   // Rich messages have no editRichMessage / re-snapshot path on the Telegram
@@ -686,6 +698,21 @@ export function PublishPanel({ draftId }: PublishPanelProps) {
               </button>
               .
             </span>
+          </div>
+        )}
+
+        {/* Rich block-count warning — Telegram caps a single Rich Message at 500 blocks */}
+        {richBlockLimitExceeded && (
+          <div
+            className="publish-warning-box flex items-start gap-2 px-3 py-2 rounded-lg text-xs"
+            style={{
+              backgroundColor: "var(--warning-subtle)",
+              border: "1px solid color-mix(in srgb, var(--warning) 30%, transparent)",
+              color: "var(--text-secondary)",
+            }}
+          >
+            <AlertCircle size={13} style={{ color: "var(--warning)", flexShrink: 0, marginTop: 1 }} />
+            <span>{ti("publish.tooManyRichBlocks", { n: TELEGRAM_MAX_RICH_BLOCKS })}</span>
           </div>
         )}
 

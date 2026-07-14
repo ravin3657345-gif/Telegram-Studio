@@ -97,4 +97,13 @@ describe("useAutoSplit — real editor, real ProseMirror transactions", () => {
     expect(useEditorStore.getState().lockedGaps).toContain(1);
     expect(useEditorStore.getState().splitGaps).toContain(1);
   });
+
+  it("regression: a manually-locked gap left pointing past the end of a now-shorter document (blocks actually deleted, not just shrunk) is dropped instead of lingering forever", () => {
+    setParas([1000, 1000, 1000]); // 3 blocks — gap 2 sits between block 1 and block 2
+    act(() => { useEditorStore.getState().setSplitGaps([2], [2]); });
+    expect(useEditorStore.getState().lockedGaps).toEqual([2]);
+    setParas([10, 10]); // block(s) deleted — only 2 blocks left, gap 2 is now out of range
+    expect(useEditorStore.getState().lockedGaps).toEqual([]);
+    expect(useEditorStore.getState().splitGaps).toEqual([]);
+  });
 });

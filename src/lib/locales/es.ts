@@ -249,6 +249,7 @@ export const es = {
     "publish.mapOutsideRichLink":   "Rich",
     "publish.formulaOutsideRich":     "Esta publicación tiene una fórmula — las fórmulas solo funcionan en modo Rich. Cambia a",
     "publish.formulaOutsideRichLink": "Rich",
+    "publish.tooManyRichBlocks":    "Demasiados bloques en un solo mensaje (el límite de Telegram es {n}) — divide la publicación en varios mensajes (clic derecho en un bloque → «Dividir mensaje aquí»).",
     "publish.mediaInSchedule":      "Las encuestas aún no se pueden programar — quita la encuesta o publica esta entrada de inmediato.",
     "publish.richNoSchedule":       "Las publicaciones Rich no se pueden programar — Telegram no permite reenviarlas más tarde. Publica ahora o cambia al modo normal.",
     "publish.defaultTitle":         "Publicación",

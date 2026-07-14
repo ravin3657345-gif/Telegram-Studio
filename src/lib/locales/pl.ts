@@ -249,6 +249,7 @@ export const pl = {
     "publish.mapOutsideRichLink":   "Rich",
     "publish.formulaOutsideRich":     "Ten post zawiera wzór — wzory działają tylko w trybie Rich. Przełącz na",
     "publish.formulaOutsideRichLink": "Rich",
+    "publish.tooManyRichBlocks":    "Za dużo bloków w jednej wiadomości (limit Telegrama to {n}) — podziel post na kilka wiadomości (kliknij prawym na blok → „Podziel wiadomość tutaj”).",
     "publish.mediaInSchedule":      "Ankiet nie można jeszcze zaplanować — usuń ankietę albo opublikuj ten post od razu.",
     "publish.richNoSchedule":       "Postów Rich nie można zaplanować — Telegram nie pozwala wysłać ich ponownie później. Opublikuj od razu albo przełącz się na tryb zwykły.",
     "publish.defaultTitle":         "Publikacja",

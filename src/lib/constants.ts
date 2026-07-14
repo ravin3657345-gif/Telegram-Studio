@@ -1,5 +1,10 @@
 export const TELEGRAM_MAX_TEXT_LENGTH    = 4096;   // Bot API — sendMessage
 export const TELEGRAM_MAX_RICH_LENGTH   = 32768;  // Bot API 10.1 — sendRichMessage (UTF-8)
+// Bot API 10.1 docs: a single Rich Message accepts up to 500 top-level
+// structural blocks (RichBlock) — separate from the 32,768-char cap above.
+// Counted per sent message (i.e. per manual-split chunk), since each chunk
+// is its own independent sendRichMessage call.
+export const TELEGRAM_MAX_RICH_BLOCKS   = 500;
 export const TELEGRAM_MAX_CAPTION_LENGTH = 1024;
 export const TELEGRAM_MAX_MEDIA_GROUP  = 10;
 export const TELEGRAM_MAX_PHOTO_SIZE   = 10 * 1024 * 1024; // 10 MB

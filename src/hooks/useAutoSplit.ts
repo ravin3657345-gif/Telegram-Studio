@@ -79,18 +79,35 @@ export function useAutoSplit(
       const blocks: number[] = [];
       editor!.state.doc.forEach((n) => blocks.push(n.textContent.length));
 
+      // A locked gap ("Split message here") is a raw block index — deleting
+      // blocks/text can leave it pointing past the end of a now-shorter
+      // document (or at a position that no longer makes sense). Neither
+      // branch below used to re-validate `locked` against the *current*
+      // block count before writing it back to the store, so a stale gap
+      // would sit in state forever: the divider itself never disappeared,
+      // and — since splitJsonAtGaps applies this exact same bounds check at
+      // actual publish time — it silently produced no split at all despite
+      // still looking present in the editor.
+      const validLocked = locked.filter((g) => g > 0 && g < blocks.length);
+
       if (charCount <= limit) {
-        const lockedSet = new Set(locked);
+        const lockedSet = new Set(validLocked);
         const toKeep = current.filter((g) => lockedSet.has(g));
-        if (JSON.stringify(toKeep) !== JSON.stringify(current)) {
-          setSplitGaps(toKeep, locked);
+        if (
+          JSON.stringify(toKeep) !== JSON.stringify(current) ||
+          JSON.stringify(validLocked) !== JSON.stringify(locked)
+        ) {
+          setSplitGaps(toKeep, validLocked);
         }
         return;
       }
 
-      const allGaps = computeAutoGaps(blocks, limit, locked);
-      if (JSON.stringify(allGaps) !== JSON.stringify(current)) {
-        setSplitGaps(allGaps, locked);
+      const allGaps = computeAutoGaps(blocks, limit, validLocked);
+      if (
+        JSON.stringify(allGaps) !== JSON.stringify(current) ||
+        JSON.stringify(validLocked) !== JSON.stringify(locked)
+      ) {
+        setSplitGaps(allGaps, validLocked);
       }
     }
 
@@ -128,8 +145,10 @@ export function useAutoSplit(
     // Re-derive auto gaps for overflow, but keep any gap the user manually
     // placed ("Split message here" from the block menu) — this button used to
     // pass an empty locked set, silently deleting every manual split the
-    // instant someone clicked it to re-check for overflow.
-    const locked = lockedGapsRef.current;
+    // instant someone clicked it to re-check for overflow. Also drop any
+    // locked gap that's fallen out of range since it was placed (see the
+    // matching comment in compute() above).
+    const locked = lockedGapsRef.current.filter((g) => g > 0 && g < blocks.length);
     setSplitGaps(computeAutoGaps(blocks, limit, locked), locked);
   }, [editor, setSplitGaps]);
 

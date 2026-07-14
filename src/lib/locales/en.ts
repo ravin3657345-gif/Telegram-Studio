@@ -305,6 +305,7 @@ export const en = {
     "publish.mapOutsideRichLink":   "Rich",
     "publish.formulaOutsideRich":     "This post has a formula — formulas only work in Rich mode. Switch to",
     "publish.formulaOutsideRichLink": "Rich",
+    "publish.tooManyRichBlocks":    "Too many blocks in one message (Telegram's limit is {n}) — split the post into several messages (right-click a block → \"Split message here\").",
     "publish.mediaInSchedule":      "Polls can't be scheduled yet — remove the poll or publish this post immediately instead.",
     "publish.richNoSchedule":       "Rich posts can't be scheduled — Telegram has no way to re-send them later. Publish now, or switch to Normal mode.",
     "publish.defaultTitle":         "Post",

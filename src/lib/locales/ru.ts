@@ -316,6 +316,7 @@ export const ru = {
     "publish.mapOutsideRichLink":   "Rich",
     "publish.formulaOutsideRich":     "В посте есть формула — формулы работают только в Rich-режиме. Переключитесь на",
     "publish.formulaOutsideRichLink": "Rich",
+    "publish.tooManyRichBlocks":    "Слишком много блоков в одном сообщении (максимум {n} у Telegram) — разделите пост на несколько сообщений (правой кнопкой по блоку → «Разделить сообщение здесь»).",
     "publish.mediaInSchedule":      "Опросы пока нельзя запланировать — уберите опрос или опубликуйте пост сразу.",
     "publish.richNoSchedule":       "Rich-посты нельзя запланировать — Telegram не поддерживает их отложенное редактирование. Опубликуйте сразу или переключитесь на обычный режим.",
     "publish.defaultTitle":         "Публикация",
