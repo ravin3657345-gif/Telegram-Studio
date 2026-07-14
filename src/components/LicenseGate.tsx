@@ -47,10 +47,10 @@ export function LicenseGate({ children }: Props) {
     if (e.key === "Enter") handleActivate();
   }
 
-  // 4-byte nonce + 64-byte Ed25519 signature, base32-encoded (see
-  // src-tauri/core/src/license.rs) — always exactly 109 characters once
-  // dashes/whitespace are stripped, however the key was formatted.
-  const LICENSE_KEY_LEN = 109;
+  // 10 random bytes, base32-encoded (see src-tauri/core/src/license.rs) —
+  // always exactly 16 characters once dashes/whitespace are stripped,
+  // however the key was formatted.
+  const LICENSE_KEY_LEN = 16;
 
   function formatInput(raw: string) {
     return raw.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, LICENSE_KEY_LEN);
@@ -117,7 +117,7 @@ export function LicenseGate({ children }: Props) {
               setKey(formatInput(e.target.value));
             }}
             onKeyDown={handleKeyDown}
-            placeholder="XXXXX-XXXXX-XXXXX-…"
+            placeholder="XXXX-XXXX-XXXX-XXXX"
             // Generous headroom above LICENSE_KEY_LEN: a pasted key is often
             // dash-formatted, and those separators must survive to reach
             // formatInput's own stripping — a tight maxLength would let the

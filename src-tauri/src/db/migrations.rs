@@ -13,6 +13,7 @@ pub fn run(conn: &Connection) -> Result<()> {
     migrate_v10(conn)?;
     migrate_v11(conn)?;
     migrate_v12(conn)?;
+    migrate_v13(conn)?;
     seed_settings(conn)?;
     Ok(())
 }
@@ -209,6 +210,21 @@ fn migrate_v12(conn: &Connection) -> Result<()> {
     // rich posts after they've been queued — Telegram has no editRichMessage).
     let _ = conn.execute_batch(
         "ALTER TABLE drafts ADD COLUMN publish_mode TEXT NOT NULL DEFAULT 'normal';"
+    );
+    Ok(())
+}
+
+fn migrate_v13(conn: &Connection) -> Result<()> {
+    // Supabase-backed single-machine licensing: the local row now also
+    // caches the machine hash the key was redeemed with, so
+    // get_license_status can re-check "activated on THIS machine" fully
+    // offline, without hitting the server on every launch (see
+    // commands/license.rs). A copied/restored DB file with a stale hash
+    // just re-triggers one online redeem call, which the server accepts
+    // again for the same machine (already_this_machine) or rejects for a
+    // different one (used_elsewhere).
+    let _ = conn.execute_batch(
+        "ALTER TABLE license ADD COLUMN machine_hash TEXT NOT NULL DEFAULT '';"
     );
     Ok(())
 }

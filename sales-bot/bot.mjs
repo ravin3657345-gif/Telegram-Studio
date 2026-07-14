@@ -277,8 +277,8 @@ async function sendMediaGroup(chatId, items) {
 }
 
 // ── Логика заказа ────────────────────────────────────────────────────────
-async function generateLicenseKey() {
-  const { stdout } = await execFileAsync(KEYGEN_PATH, ["1"]);
+async function generateLicenseKey(telegramId) {
+  const { stdout } = await execFileAsync(KEYGEN_PATH, ["sell", String(telegramId)]);
   return stdout.trim();
 }
 
@@ -510,7 +510,7 @@ async function handleHelp(chatId) {
       "2. Сразу после оплаты бот присылает лицензионный ключ и установщик (.msi, Windows x64).\n" +
       "3. При первом запуске приложения вставляете ключ в окно активации — готово, дальше всё работает офлайн.\n\n" +
       "Полезно знать:\n" +
-      "• Ключ не привязан к конкретному устройству — при переустановке Windows просто введите его снова.\n" +
+      "• Ключ активируется один раз и привязывается к вашему устройству — при переустановке Windows просто введите тот же ключ снова, он подойдёт. На другом компьютере он уже не сработает.\n" +
       "• Потеряли ключ? Пришлю его снова: /mykey или кнопка «🔑 Мой ключ».\n" +
       "• Хотите увидеть Rich-режим в деле — не на скриншоте, а живым сообщением? /demo.\n" +
       "• Вышло обновление, а установщик потеряли? /update пришлёт последнюю версию (только покупателям).\n" +
@@ -550,18 +550,24 @@ async function handleSuccessfulPayment(message) {
       key = existingKey;
       log(`Повторная доставка апдейта по уже обработанной оплате (charge ${chargeId}) — переиспользую выданный ключ, новый не генерирую`);
     } else {
-      key = await generateLicenseKey();
+      key = await generateLicenseKey(message.from.id);
       log(`Ключ сгенерирован: ${key}`);
       logSale(message.from, payment.total_amount, key, chargeId);
     }
 
-    // Plain text, no parse_mode: MarkdownV2 requires escaping reserved
-    // characters ('!', '.', etc.) in the surrounding text, and a broken
-    // escape would fail the whole fulfilment message — not worth the risk
-    // for a plain, easily copy-pasteable key.
+    // HTML parse_mode (not MarkdownV2): only '<', '>', '&' need escaping,
+    // and the key is always our own alphanumeric+dash CHARSET output —
+    // never anything that needs escaping — so wrapping it in <code> is safe
+    // without the "one broken escape fails the whole message" risk
+    // MarkdownV2 would carry here. <code> also makes the key tap-to-copy.
     await api("sendMessage", {
       chat_id: chatId,
-      text: `Оплата прошла успешно. Вот ваш ключ активации:\n\n${key}\n\nВставьте его в поле активации при первом запуске приложения.`,
+      parse_mode: "HTML",
+      text:
+        "✅ <b>Оплата прошла успешно!</b>\n\n" +
+        "🔑 Ваш ключ активации:\n" +
+        `<code>${key}</code>\n\n` +
+        "Вставьте его в поле активации при первом запуске приложения — и всё готово.",
     });
 
     const installer = findLatestInstaller();

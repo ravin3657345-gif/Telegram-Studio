@@ -1,72 +1,137 @@
 use std::io::{self, Write};
-use tstudio_core::license::{decode_signing_key_hex, generate_key, generate_signing_keypair, validate_key};
+use tstudio_core::license::{generate_key, SUPABASE_ANON_KEY, SUPABASE_URL};
 
-// Never inside the git repo — the private signing key must never be
-// committed. Overridable via TSTUDIO_SIGNING_KEY for a different machine/path.
-const DEFAULT_KEY_FILE: &str = "D:/tstudio-license-signing-key.txt";
+// Full-access Supabase secret (service_role), never inside the git repo and
+// never shipped in the app — same "outside the repo" pattern as the old
+// Ed25519 signing key file. It bypasses RLS entirely, which is exactly why
+// only this offline tool (run on the seller's own machine) ever holds it.
+// Grab it from the Supabase dashboard → Project Settings → API → service_role
+// secret, and save it to this file (or set TSTUDIO_SUPABASE_SERVICE_KEY).
+const DEFAULT_SERVICE_KEY_FILE: &str = "D:/tstudio-supabase-service-key.txt";
 
-fn load_signing_key() -> Option<[u8; 32]> {
-    let hex_str = std::env::var("TSTUDIO_SIGNING_KEY")
+fn load_service_key() -> Option<String> {
+    std::env::var("TSTUDIO_SUPABASE_SERVICE_KEY")
         .ok()
-        .or_else(|| std::fs::read_to_string(DEFAULT_KEY_FILE).ok())?;
-    decode_signing_key_hex(&hex_str)
+        .or_else(|| std::fs::read_to_string(DEFAULT_SERVICE_KEY_FILE).ok())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
 }
 
 fn format_for_display(key: &str) -> String {
     key.as_bytes()
-        .chunks(5)
+        .chunks(4)
         .map(|c| std::str::from_utf8(c).unwrap())
         .collect::<Vec<_>>()
         .join("-")
 }
 
-fn run_genkey() {
-    let (seed_hex, vk_bytes) = generate_signing_keypair();
-    println!("Новая пара ключей подписи сгенерирована.\n");
-    println!("ПРИВАТНЫЙ КЛЮЧ (секрет, храните вне репозитория, без него нельзя выпускать новые лицензии):");
-    println!("{seed_hex}\n");
-    println!("ПУБЛИЧНЫЙ КЛЮЧ (вставить в PUBLIC_KEY_BYTES в src-tauri/core/src/license.rs):");
-    print!("[");
-    for (i, b) in vk_bytes.iter().enumerate() {
-        if i > 0 { print!(", "); }
-        print!("0x{b:02x}");
-    }
-    println!("]");
+fn http_client() -> reqwest::Client {
+    reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(15))
+        .build()
+        .expect("failed to build HTTP client")
 }
 
-fn run_generate(n: usize) {
-    let Some(seed) = load_signing_key() else {
-        eprintln!("Не найден приватный ключ подписи.");
-        eprintln!("Установите переменную окружения TSTUDIO_SIGNING_KEY (hex, 64 символа)");
-        eprintln!("или положите его в файл {DEFAULT_KEY_FILE}");
-        eprintln!("Чтобы сгенерировать новую пару ключей: keygen.exe genkey");
+/// Registers a freshly generated key with Supabase — a plain INSERT via the
+/// PostgREST table endpoint, authenticated with the service_role secret
+/// (bypasses RLS, unlike the anon key the shipped app uses).
+async fn register_key(service_key: &str, key: &str, buyer_telegram_id: Option<i64>) -> Result<(), String> {
+    let resp = http_client()
+        .post(format!("{SUPABASE_URL}/rest/v1/licenses"))
+        .header("apikey", service_key)
+        .header("Authorization", format!("Bearer {service_key}"))
+        .header("Content-Type", "application/json")
+        .json(&serde_json::json!({ "key": key, "buyer_telegram_id": buyer_telegram_id }))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let text = resp.text().await.unwrap_or_default();
+        return Err(format!("Supabase вернул {status}: {text}"));
+    }
+    Ok(())
+}
+
+/// Read-only status lookup — does NOT redeem the key (unlike the app's
+/// `redeem_license`, which would burn it against whatever machine calls it).
+async fn check_status(key: &str) -> Result<String, String> {
+    let resp = http_client()
+        .post(format!("{SUPABASE_URL}/rest/v1/rpc/check_license_status"))
+        .header("apikey", SUPABASE_ANON_KEY)
+        .header("Authorization", format!("Bearer {SUPABASE_ANON_KEY}"))
+        .json(&serde_json::json!({ "p_key": key }))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if !resp.status().is_success() {
+        return Err(format!("Supabase вернул {}", resp.status()));
+    }
+    resp.json::<String>().await.map_err(|e| e.to_string())
+}
+
+async fn run_sell(telegram_id: i64) {
+    let Some(service_key) = load_service_key() else {
+        eprintln!("Не найден service_role ключ Supabase.");
+        eprintln!("Установите TSTUDIO_SUPABASE_SERVICE_KEY или положите его в файл {DEFAULT_SERVICE_KEY_FILE}");
+        eprintln!("(Supabase Dashboard → Project Settings → API → service_role secret)");
+        std::process::exit(1);
+    };
+    let key = generate_key();
+    if let Err(e) = register_key(&service_key, &key, Some(telegram_id)).await {
+        eprintln!("Не удалось зарегистрировать ключ в Supabase: {e}");
+        std::process::exit(1);
+    }
+    // Only the formatted key on stdout — sales-bot captures this verbatim.
+    println!("{}", format_for_display(&key));
+}
+
+async fn run_generate(n: usize) {
+    let Some(service_key) = load_service_key() else {
+        eprintln!("Не найден service_role ключ Supabase.");
+        eprintln!("Установите TSTUDIO_SUPABASE_SERVICE_KEY или положите его в файл {DEFAULT_SERVICE_KEY_FILE}");
+        eprintln!("(Supabase Dashboard → Project Settings → API → service_role secret)");
         std::process::exit(1);
     };
     for _ in 0..n {
-        println!("{}", format_for_display(&generate_key(&seed)));
+        let key = generate_key();
+        match register_key(&service_key, &key, None).await {
+            Ok(()) => println!("{}", format_for_display(&key)),
+            Err(e) => eprintln!("Ошибка регистрации ключа в Supabase: {e}"),
+        }
     }
 }
 
-fn run_validate(key: &str) {
-    if validate_key(key) {
-        println!("ДЕЙСТВИТЕЛЕН — ключ прошёл проверку подписи.");
-    } else {
-        println!("НЕДЕЙСТВИТЕЛЕН — не проходит проверку (не тот формат, чужая подпись или опечатка).");
+async fn run_validate(key: &str) {
+    match check_status(key).await {
+        Ok(status) => match status.as_str() {
+            "unredeemed" => println!("ДЕЙСТВИТЕЛЕН — ещё не активирован ни на одном устройстве."),
+            "redeemed" => println!("УЖЕ ИСПОЛЬЗОВАН — ключ активирован на каком-то устройстве."),
+            "not_found" => println!("НЕ НАЙДЕН — такого ключа нет в базе."),
+            other => println!("Неизвестный статус от сервера: {other}"),
+        },
+        Err(e) => eprintln!("Не удалось проверить ключ: {e}"),
     }
 }
 
-fn main() {
+#[tokio::main]
+async fn main() {
     let args: Vec<String> = std::env::args().collect();
-
-    if args.get(1).map(String::as_str) == Some("genkey") {
-        run_genkey();
-        return;
-    }
 
     if args.get(1).map(String::as_str) == Some("validate") {
         match args.get(2) {
-            Some(key) => run_validate(key),
+            Some(key) => run_validate(key).await,
             None => eprintln!("Использование: keygen.exe validate <КЛЮЧ>"),
+        }
+        return;
+    }
+
+    if args.get(1).map(String::as_str) == Some("sell") {
+        match args.get(2).and_then(|s| s.parse::<i64>().ok()) {
+            Some(telegram_id) => run_sell(telegram_id).await,
+            None => eprintln!("Использование: keygen.exe sell <TELEGRAM_ID>"),
         }
         return;
     }
@@ -74,7 +139,7 @@ fn main() {
     // Если передан аргумент-число — тихий режим (только ключи, без интерактива)
     if let Some(n_str) = args.get(1) {
         if let Ok(n) = n_str.parse::<usize>() {
-            run_generate(n);
+            run_generate(n).await;
             return;
         }
     }
@@ -99,7 +164,7 @@ fn main() {
             Ok(0) => println!("Введите число больше 0.\n"),
             Ok(n) => {
                 println!();
-                run_generate(n);
+                run_generate(n).await;
                 println!();
             }
             Err(_) => println!("Введите целое число.\n"),

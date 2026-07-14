@@ -72,7 +72,7 @@ fn derive_legacy_key() -> Key<Aes256Gcm> {
     *Key::<Aes256Gcm>::from_slice(&result)
 }
 
-fn legacy_machine_id() -> String {
+pub(crate) fn legacy_machine_id() -> String {
     #[cfg(windows)]
     {
         windows_machine_guid().unwrap_or_else(|| "fallback-windows-id".to_string())

@@ -1,29 +1,29 @@
-//! License-key validation, backed by Ed25519 signatures instead of a shared
-//! secret. `validate_key` is pure and deterministic — no I/O, no Tauri.
-//!
-//! Key format: base32 (confusable-free alphabet, no 0/O/1/I) over a 4-byte
-//! random nonce followed by its 64-byte Ed25519 signature. Only the matching
-//! private key (kept offline, never shipped) can produce a signature this
-//! module's embedded public key accepts — unlike a checksum/HMAC scheme,
-//! reverse-engineering the verification code and public key does not let
-//! anyone forge new valid keys, only bypass the check in their own copy.
-
-use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
+//! License-key format: a short opaque random code (see `generate_key`).
+//! Legitimacy and single-machine redemption are enforced by a Supabase-backed
+//! ledger (the `redeem_license` Postgres RPC, called from
+//! `src-tauri/src/commands/license.rs`) — this module only knows how to
+//! shape/validate the *format* of a key, never whether it's real or already
+//! used. A stateless, I/O-free crate has no way to know that on its own:
+//! nothing here can tell if some other machine already redeemed the same
+//! code, which is exactly why single-use enforcement lives server-side.
 
 // Алфавит без визуально похожих символов: нет 0, O, 1, I
 const CHARSET: &[u8] = b"ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
-const NONCE_LEN: usize = 4;
-const SIG_LEN: usize = 64;
-const PAYLOAD_LEN: usize = NONCE_LEN + SIG_LEN;
+const KEY_BYTES: usize = 10;
+/// 10 random bytes = 80 bits, base32-encoded at 5 bits/char = exactly 16
+/// characters with no padding remainder.
+pub const KEY_LEN: usize = 16;
 
-/// Ed25519 public key used to verify license keys. Safe to ship in the
-/// binary — it's the public half of a keypair generated once with
-/// `generate_signing_keypair()`; the private half lives outside this repo.
-const PUBLIC_KEY_BYTES: [u8; 32] = [
-    0x91, 0xdc, 0x4f, 0x96, 0xe9, 0x2a, 0x8b, 0x64, 0x69, 0xa6, 0x8c, 0xdb, 0x53, 0x73, 0x7c, 0x62,
-    0x52, 0xae, 0x25, 0xe0, 0x17, 0xaa, 0xaf, 0xdc, 0x56, 0xc7, 0xae, 0x76, 0x7f, 0x8a, 0x38, 0x0d,
-];
+/// Supabase project backing license redemption/lookup (table `licenses` +
+/// the `redeem_license`/`check_license_status` RPCs). The anon key is meant
+/// to be public — RLS blocks all direct table access, and the anon role is
+/// granted EXECUTE on nothing else, so shipping it is no different from
+/// shipping the RPC endpoint URLs themselves. Shared here so the app
+/// (commands/license.rs) and the offline keygen tool reference one source
+/// of truth instead of duplicating the literals.
+pub const SUPABASE_URL: &str = "https://xhjxnyhvfyzyulzzxpsg.supabase.co";
+pub const SUPABASE_ANON_KEY: &str = "sb_publishable_rA1sW5U6cA5moy2l64Keug_ReygFLhe";
 
 fn base32_encode(data: &[u8]) -> String {
     let mut bits: u32 = 0;
@@ -59,133 +59,91 @@ fn base32_decode(s: &str) -> Option<Vec<u8>> {
     Some(out)
 }
 
-fn clean(raw: &str) -> String {
+/// Normalizes user-entered input: strips whitespace/dashes, uppercases.
+/// Used both for the client-side shape check and to canonicalize the key
+/// before it's sent to the Supabase redemption call, so `abcd-efgh-jklm-nprq`
+/// and `ABCDEFGHJKLMNPRQ` resolve to the same server-side row.
+pub fn clean(raw: &str) -> String {
     raw.chars()
         .filter(|c| !c.is_whitespace() && *c != '-')
         .collect::<String>()
         .to_uppercase()
 }
 
-fn verify_with_key(vk: &VerifyingKey, raw: &str) -> bool {
-    let Some(bytes) = base32_decode(&clean(raw)) else { return false };
-    if bytes.len() != PAYLOAD_LEN {
-        return false;
-    }
-    let (nonce, sig_bytes) = bytes.split_at(NONCE_LEN);
-    let Ok(sig) = Signature::from_slice(sig_bytes) else { return false };
-    vk.verify(nonce, &sig).is_ok()
+/// True if `raw` has the right shape to even be a license key (right length,
+/// right alphabet) once cleaned. This is a cheap pre-check to avoid spending
+/// a network round-trip on obviously-malformed input — it says nothing about
+/// whether the key is real or already redeemed, only the server knows that.
+pub fn looks_like_key(raw: &str) -> bool {
+    let cleaned = clean(raw);
+    cleaned.len() == KEY_LEN && base32_decode(&cleaned).is_some()
 }
 
-/// Checks a license key against the embedded public key.
-pub fn validate_key(raw: &str) -> bool {
-    let Ok(vk) = VerifyingKey::from_bytes(&PUBLIC_KEY_BYTES) else { return false };
-    verify_with_key(&vk, raw)
-}
-
-/// Signs a fresh random nonce with the given private key, producing a new
-/// license key string. Used only by the offline keygen tool — the shipped
-/// app never calls this (it has no private key to call it with).
-pub fn generate_key(signing_key_bytes: &[u8; 32]) -> String {
+/// Generates a brand-new opaque license key. Used only by the offline
+/// keygen tool, which then registers it with Supabase before handing it to
+/// a buyer — the shipped app never generates keys, only redeems them.
+pub fn generate_key() -> String {
     use rand_core::{OsRng, RngCore};
 
-    let signing_key = SigningKey::from_bytes(signing_key_bytes);
-    let mut nonce = [0u8; NONCE_LEN];
-    OsRng.fill_bytes(&mut nonce);
-    let sig = signing_key.sign(&nonce);
-
-    let mut payload = Vec::with_capacity(PAYLOAD_LEN);
-    payload.extend_from_slice(&nonce);
-    payload.extend_from_slice(&sig.to_bytes());
-    base32_encode(&payload)
+    let mut bytes = [0u8; KEY_BYTES];
+    OsRng.fill_bytes(&mut bytes);
+    base32_encode(&bytes)
 }
 
-/// Generates a brand-new Ed25519 keypair. Run once to bootstrap the signing
-/// key (via the keygen tool's `genkey` mode) — never called at app runtime.
-/// Returns (private_seed_hex, public_key_bytes).
-pub fn generate_signing_keypair() -> (String, [u8; 32]) {
-    use rand_core::OsRng;
+/// A stable, opaque per-machine identifier sent to the license server so it
+/// can enforce single-machine redemption. Reuses the same machine-bound
+/// value `crypto.rs` already derives its legacy token-encryption key from —
+/// the raw hardware id never leaves the machine, only its SHA-256 hash.
+pub fn machine_id_hash() -> String {
+    use sha2::{Digest, Sha256};
 
-    let signing_key = SigningKey::generate(&mut OsRng);
-    let seed_hex = hex::encode(signing_key.to_bytes());
-    let vk_bytes = signing_key.verifying_key().to_bytes();
-    (seed_hex, vk_bytes)
-}
-
-/// Decodes a hex-encoded 32-byte signing key seed (as printed by
-/// `generate_signing_keypair`/stored in the offline key file). Kept here so
-/// the `hex` dependency stays confined to this Tauri-free crate.
-pub fn decode_signing_key_hex(hex_str: &str) -> Option<[u8; 32]> {
-    hex::decode(hex_str.trim()).ok()?.try_into().ok()
+    let raw = crate::crypto::legacy_machine_id();
+    let mut hasher = Sha256::new();
+    hasher.update(raw.as_bytes());
+    hex::encode(hasher.finalize())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    // A known-good key, produced once with the real production signing key
-    // (see D:/tstudio-license-signing-key.txt, outside this repo) against
-    // the real PUBLIC_KEY_BYTES above — catches a mismatch if someone edits
-    // the constant without re-deriving it from the real private key.
-    const SAMPLE_REAL_KEY: &str =
-        "CQE8Y-ELV82-YKZTY-74ZG5-FR4WE-QXG3L-PGT8N-9CGHC-HYKW8-C2HTJ-AHLXP-5UQX9-TUX2D-Y3LS5-EJXZ5-58TB2-JA3DJ-8X5N2-AKT2J-7DMZG-TSVH2-8ZSQ";
-
     #[test]
-    fn accepts_a_key_signed_by_its_own_keypair() {
-        let (seed_hex, vk_bytes) = generate_signing_keypair();
-        let seed: [u8; 32] = hex::decode(&seed_hex).unwrap().try_into().unwrap();
-        let key = generate_key(&seed);
-        let vk = VerifyingKey::from_bytes(&vk_bytes).unwrap();
-        assert!(verify_with_key(&vk, &key), "generated key {key} should verify");
-    }
-
-    #[test]
-    fn rejects_a_key_signed_by_a_different_keypair() {
-        let (seed_hex, _vk_bytes) = generate_signing_keypair();
-        let seed: [u8; 32] = hex::decode(&seed_hex).unwrap().try_into().unwrap();
-        let key = generate_key(&seed);
-        // Verify against a *different* freshly-generated keypair's public key.
-        let (_other_seed, other_vk_bytes) = generate_signing_keypair();
-        let other_vk = VerifyingKey::from_bytes(&other_vk_bytes).unwrap();
-        assert!(!verify_with_key(&other_vk, &key));
+    fn generates_keys_of_the_expected_length_and_shape() {
+        let key = generate_key();
+        assert_eq!(key.len(), KEY_LEN);
+        assert!(looks_like_key(&key), "generated key {key} should look valid");
     }
 
     #[test]
     fn is_case_insensitive_and_ignores_dashes_and_whitespace() {
-        let (seed_hex, vk_bytes) = generate_signing_keypair();
-        let seed: [u8; 32] = hex::decode(&seed_hex).unwrap().try_into().unwrap();
-        let key = generate_key(&seed);
-        let vk = VerifyingKey::from_bytes(&vk_bytes).unwrap();
+        let key = generate_key();
         let decorated = format!("  {}  ", key.to_lowercase());
-        assert!(verify_with_key(&vk, &decorated));
-    }
-
-    #[test]
-    fn rejects_tampered_signature() {
-        let (seed_hex, vk_bytes) = generate_signing_keypair();
-        let seed: [u8; 32] = hex::decode(&seed_hex).unwrap().try_into().unwrap();
-        let mut key = generate_key(&seed).into_bytes();
-        // Flip a middle character (not the last symbol: its bottom bit is
-        // padding, discarded on decode, so tampering it can be a no-op).
-        let mid = key.len() / 2;
-        let alt = if key[mid] == CHARSET[0] { CHARSET[1] } else { CHARSET[0] };
-        key[mid] = alt;
-        let tampered = String::from_utf8(key).unwrap();
-        let vk = VerifyingKey::from_bytes(&vk_bytes).unwrap();
-        assert!(!verify_with_key(&vk, &tampered));
+        assert!(looks_like_key(&decorated));
     }
 
     #[test]
     fn rejects_garbage_and_wrong_length() {
-        assert!(!validate_key(""));
-        assert!(!validate_key("NOT-A-VALID-KEY"));
-        assert!(!validate_key(&"A".repeat(200)));
+        assert!(!looks_like_key(""));
+        assert!(!looks_like_key("NOT-A-VALID-KEY"));
+        assert!(!looks_like_key(&"A".repeat(200)));
+        // One character short of KEY_LEN.
+        assert!(!looks_like_key(&"A".repeat(KEY_LEN - 1)));
     }
 
     #[test]
     fn rejects_forbidden_charset_symbols() {
         // 0, O, 1, I are intentionally excluded from CHARSET
-        assert!(!validate_key(&format!("{}0", "A".repeat(108))));
-        assert!(!validate_key(&format!("{}I", "A".repeat(108))));
+        assert!(!looks_like_key(&format!("{}0", "A".repeat(KEY_LEN - 1))));
+        assert!(!looks_like_key(&format!("{}I", "A".repeat(KEY_LEN - 1))));
+    }
+
+    #[test]
+    fn machine_id_hash_is_stable_and_looks_like_a_sha256_hex_digest() {
+        let a = machine_id_hash();
+        let b = machine_id_hash();
+        assert_eq!(a, b, "hash should be deterministic for the same machine");
+        assert_eq!(a.len(), 64);
+        assert!(a.chars().all(|c| c.is_ascii_hexdigit()));
     }
 
     #[test]
@@ -194,16 +152,11 @@ mod tests {
             vec![],
             vec![0u8],
             vec![0xFF; 4],
-            (0..68).map(|i| i as u8).collect::<Vec<u8>>(),
+            (0..KEY_BYTES as u8).collect::<Vec<u8>>(),
         ] {
             let encoded = base32_encode(&sample);
             let decoded = base32_decode(&encoded).unwrap();
             assert_eq!(decoded, sample, "round-trip failed for {sample:?}");
         }
-    }
-
-    #[test]
-    fn real_public_key_accepts_a_key_from_the_real_signing_key() {
-        assert!(validate_key(SAMPLE_REAL_KEY));
     }
 }

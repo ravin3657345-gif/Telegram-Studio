@@ -511,7 +511,7 @@ export const ru = {
     "license.activated":   "Активировано",
     "license.checking":    "Проверка…",
     "license.activate":    "Активировать",
-    "license.localNote":   "Ключ активируется локально, без подключения к интернету",
+    "license.localNote":   "Активация выполняется один раз через интернет и привязывается к этому устройству — дальше приложение работает офлайн",
     "bots.addTitle":       "Добавить бота",
     "bots.tokenLabel":     "Токен бота",
     "bots.createHintPre":  "Создайте бота через",

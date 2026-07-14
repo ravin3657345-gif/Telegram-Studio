@@ -489,7 +489,7 @@ export const en = {
     "license.activated":   "Activated",
     "license.checking":    "Checking…",
     "license.activate":    "Activate",
-    "license.localNote":   "Key is activated locally, without internet connection",
+    "license.localNote":   "Activation happens once online and is bound to this device — the app works offline after that",
     "bots.addTitle":       "Add bot",
     "bots.tokenLabel":     "Bot token",
     "bots.createHintPre":  "Create a bot via",
