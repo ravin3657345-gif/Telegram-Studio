@@ -59,10 +59,10 @@ impl TelegramClient {
             .json(body)
             .send()
             .await
-            .map_err(|e| TelegramError::Network(e.to_string()))?;
+            .map_err(|e| TelegramError::Network(self.redact(e.to_string())))?;
 
         let status = resp.status();
-        let body_text = resp.text().await.map_err(|e| TelegramError::Network(e.to_string()))?;
+        let body_text = resp.text().await.map_err(|e| TelegramError::Network(self.redact(e.to_string())))?;
 
         log::debug!("[tg] response ({}) status={} ok={}", method, status, status.is_success());
 
@@ -95,10 +95,10 @@ impl TelegramClient {
             .multipart(form)
             .send()
             .await
-            .map_err(|e| TelegramError::Network(e.to_string()))?;
+            .map_err(|e| TelegramError::Network(self.redact(e.to_string())))?;
 
         let status = resp.status();
-        let body = resp.text().await.map_err(|e| TelegramError::Network(e.to_string()))?;
+        let body = resp.text().await.map_err(|e| TelegramError::Network(self.redact(e.to_string())))?;
 
         log::debug!("[tg] response ({}) status={} ok={}", method, status, status.is_success());
 
@@ -111,6 +111,22 @@ impl TelegramClient {
             Err(TelegramError::Api(
                 tg.description.unwrap_or_else(|| "Unknown error".to_string()),
             ))
+        }
+    }
+
+    /// Strips the bot token out of a Display'd error message. reqwest's
+    /// `Error::to_string()` appends " for url (...)" for request/connection
+    /// errors (confirmed in the vendored reqwest-0.12.28/src/error.rs:268),
+    /// and `base_url` embeds the token — so an ordinary network blip
+    /// (Telegram unreachable, timeout, DNS failure) would otherwise leak the
+    /// token straight into the returned error string, which callers persist
+    /// verbatim in `publication_history`/`scheduled_posts.error_message` and
+    /// display in the UI.
+    fn redact(&self, msg: String) -> String {
+        if self.token.is_empty() {
+            msg
+        } else {
+            msg.replace(&self.token, "***")
         }
     }
 

@@ -35,6 +35,18 @@ pub fn validate(attachments: &[DraftAttachmentPayload]) -> Result<(), String> {
     Ok(())
 }
 
+/// `owner_id`/`file_id` become raw filesystem path segments below (joined
+/// under `app_dir`), so both must be restricted to a safe allow-list before
+/// ever touching `Path::join` — an unchecked `"..\\..\\...\\Startup\\evil"`
+/// would otherwise let a crafted payload write arbitrary bytes to an
+/// arbitrary path on disk. Real ids are always client/server-generated
+/// UUIDs, which this charset accepts unchanged.
+fn is_safe_path_segment(s: &str) -> bool {
+    !s.is_empty()
+        && s.len() <= 100
+        && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+}
+
 /// Writes each attachment to `{app_dir}/draft_media/{owner_id}/` and upserts
 /// its `draft_media` row — `owner_id` is a draft id or a template id, both
 /// valid `drafts.id` values now that templates live in the same table.
@@ -44,11 +56,19 @@ pub fn persist(
     owner_id: &str,
     attachments: &[DraftAttachmentPayload],
 ) -> Result<(), String> {
+    if !is_safe_path_segment(owner_id) {
+        return Err("Недопустимый идентификатор черновика/шаблона".to_string());
+    }
+
     let media_dir = app_dir.join("draft_media").join(owner_id);
     std::fs::create_dir_all(&media_dir)
         .map_err(|e| format!("Не удалось создать директорию: {}", e))?;
 
     for att in attachments {
+        if !is_safe_path_segment(&att.file_id) {
+            return Err(format!("Недопустимый идентификатор файла «{}»", att.file_name));
+        }
+
         let raw = base64::engine::general_purpose::STANDARD
             .decode(&att.data_base64)
             .map_err(|_| format!("Ошибка декодирования файла «{}»", att.file_name))?;

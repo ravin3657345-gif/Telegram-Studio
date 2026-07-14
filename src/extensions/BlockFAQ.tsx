@@ -30,6 +30,25 @@ function FAQView({ node, updateAttributes, deleteNode, selected }: any) {
     }
   }
 
+  // The browser's native paste inserts clipboard HTML into the live DOM
+  // BEFORE React re-renders — the DOMPurify.sanitize() below (used for the
+  // initial render) only runs reactively, after the fact, so an inline
+  // event handler in pasted HTML (e.g. <img src=x onerror=...>) would
+  // already have fired by the time sanitized content replaces it. Blocking
+  // the native paste and inserting only pre-sanitized content closes that
+  // window — this is the only raw contentEditable in the app; every other
+  // editable surface goes through TipTap's schema-scoped paste handling.
+  function handlePaste(e: React.ClipboardEvent<HTMLDivElement>) {
+    e.preventDefault();
+    e.stopPropagation();
+    const html = e.clipboardData.getData("text/html");
+    if (html) {
+      document.execCommand("insertHTML", false, DOMPurify.sanitize(html, PURIFY_CONFIG));
+    } else {
+      document.execCommand("insertText", false, e.clipboardData.getData("text/plain"));
+    }
+  }
+
   return (
     <NodeViewWrapper as="div" contentEditable={false} style={{ margin: "6px 0" }}>
       <div
@@ -133,6 +152,7 @@ function FAQView({ node, updateAttributes, deleteNode, selected }: any) {
               dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(answer, PURIFY_CONFIG) }}
               onInput={() => { if (contentRef.current) updateAttributes({ answer: contentRef.current.innerHTML }); }}
               onKeyDown={handleKeyDown}
+              onPaste={handlePaste}
               style={{ outline: "none", color: "var(--text-secondary)", fontSize: 13, lineHeight: "1.6", minHeight: "2em", fontFamily: "inherit" }}
             />
             <div style={{ marginTop: 4, fontSize: 10, color: "var(--text-muted)", opacity: 0.6 }}>
