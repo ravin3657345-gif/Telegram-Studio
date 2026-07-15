@@ -196,6 +196,19 @@ button.small {
   background: var(--text-dim);
 }
 
+.status-card--warn .status-dot {
+  background: #e3b341;
+  box-shadow: 0 0 8px #e3b341;
+}
+
+.status-card--muted {
+  border-style: dashed;
+}
+
+.status-card--muted .status-dot {
+  display: none;
+}
+
 .status-title {
   font-size: 16px;
   font-weight: 600;
@@ -317,6 +330,12 @@ tr:last-child td {
   border-radius: 20px;
   font-size: 11px;
   white-space: nowrap;
+}
+
+.badge--muted {
+  background: transparent;
+  color: var(--text-dim);
+  border: 1px solid var(--border);
 }
 
 .log-viewer {

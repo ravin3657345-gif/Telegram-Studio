@@ -24,12 +24,10 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "rus
 # without blocking a worker thread. Tauri already runs on tokio internally;
 # this just gives direct access to its "time" feature.
 tokio = { version = "1", features = ["time"] }
-# Native process enumeration for the bot-status check — replaces spawning a
-# powershell.exe + WMI (Get-CimInstance Win32_Process) query every 5s, which
-# got noticeably slow on a freshly installed Windows (fresh Defender/AMSI
-# re-scans every new powershell.exe launch + WMI repository not warmed up).
-sysinfo = "0.32"
 chrono = "0.4"
+# Just for the SUPABASE_URL constant — single source of truth shared with
+# keygen.exe and the app itself, see src-tauri/core/src/license.rs.
+tstudio-core = { path = "../../../src-tauri/core" }
 
 [profile.release]
 panic = "abort"

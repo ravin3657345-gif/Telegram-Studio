@@ -7,13 +7,18 @@ function formatSize(bytes: number): string {
 
 export default function InstallersTab() {
   const [installers, setInstallers] = useState<InstallerInfo[]>([]);
+  const [published, setPublished] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [publishing, setPublishing] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      setInstallers(await api.getInstallers());
+      const [list, pub] = await Promise.all([api.getInstallers(), api.getPublishedInstallerVersion()]);
+      setInstallers(list);
+      setPublished(pub);
       setError(null);
     } catch (err) {
       setError(String(err));
@@ -26,12 +31,27 @@ export default function InstallersTab() {
     refresh();
   }, [refresh]);
 
+  async function publish(it: InstallerInfo) {
+    setPublishing(it.name);
+    setNotice(null);
+    setError(null);
+    try {
+      await api.uploadInstallerToStorage(it.name, it.version);
+      setNotice(`v${it.version} опубликована — бот теперь присылает именно её.`);
+      await refresh();
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setPublishing(null);
+    }
+  }
+
   return (
     <div className="panel">
       <h2>Установщики (D:\Релиз)</h2>
       <p className="hint">
-        Бот при каждой продаже сам находит и присылает установщик с наибольшим номером версии — это то, что
-        помечено «Последний».
+        Бот присылает покупателям только ту версию, что опубликована в Supabase — это не обязательно самая свежая
+        сборка в D:\Релиз, пока её явно не опубликуете.
       </p>
 
       <div className="button-row">
@@ -40,6 +60,7 @@ export default function InstallersTab() {
         </button>
       </div>
 
+      {notice && <div className="notice notice--ok">{notice}</div>}
       {error && <div className="notice notice--error">{error}</div>}
 
       <div className="table-wrap">
@@ -51,12 +72,13 @@ export default function InstallersTab() {
               <th>Размер</th>
               <th>Изменён</th>
               <th></th>
+              <th></th>
             </tr>
           </thead>
           <tbody>
             {installers.length === 0 && !loading && (
               <tr>
-                <td colSpan={5} className="empty-row">
+                <td colSpan={6} className="empty-row">
                   Установщики не найдены
                 </td>
               </tr>
@@ -67,7 +89,19 @@ export default function InstallersTab() {
                 <td className="mono">{it.name}</td>
                 <td className="nowrap">{formatSize(it.sizeBytes)}</td>
                 <td className="nowrap">{it.modified}</td>
-                <td>{it.isLatest && <span className="badge">Последний — отправится покупателю</span>}</td>
+                <td>
+                  {it.version === published && <span className="badge">📡 Опубликована — отправится покупателю</span>}
+                  {it.isLatest && it.version !== published && <span className="badge badge--muted">Последняя сборка</span>}
+                </td>
+                <td>
+                  <button
+                    className="ghost small"
+                    disabled={publishing !== null || it.version === published}
+                    onClick={() => publish(it)}
+                  >
+                    {publishing === it.name ? "Публикую…" : "Опубликовать"}
+                  </button>
+                </td>
               </tr>
             ))}
           </tbody>

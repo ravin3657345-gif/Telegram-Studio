@@ -1,10 +1,13 @@
 import { invoke } from "@tauri-apps/api/core";
 
 export interface BotStatus {
-  running: boolean;
-  supervisorRunning: boolean;
-  pid: number | null;
-  since: string | null;
+  functionReachable: boolean;
+  webhookUrl: string | null;
+  pendingUpdateCount: number;
+  lastErrorMessage: string | null;
+  lastErrorDate: string | null;
+  lastLogAt: string | null;
+  lastLogMessage: string | null;
 }
 
 export interface SaleRow {
@@ -46,12 +49,14 @@ export interface BroadcastResult {
 
 export const api = {
   getBotStatus: () => invoke<BotStatus>("get_bot_status"),
-  startBot: () => invoke<void>("start_bot"),
-  stopBot: () => invoke<void>("stop_bot"),
-  restartBot: () => invoke<void>("restart_bot"),
+  pauseBot: () => invoke<void>("pause_bot"),
+  resumeBot: () => invoke<void>("resume_bot"),
   getSales: () => invoke<SaleRow[]>("get_sales"),
   getLogTail: (lines: number) => invoke<string[]>("get_log_tail", { lines }),
   getInstallers: () => invoke<InstallerInfo[]>("get_installers"),
+  uploadInstallerToStorage: (name: string, version: string) =>
+    invoke<void>("upload_installer_to_storage", { name, version }),
+  getPublishedInstallerVersion: () => invoke<string | null>("get_published_installer_version"),
   getConfig: () => invoke<BotConfig>("get_config"),
   setConfig: (config: BotConfig) => invoke<void>("set_config", { config }),
   generateTestKey: () => invoke<string>("generate_test_key"),

@@ -23,8 +23,7 @@ export default function SettingsTab() {
     setError(null);
     try {
       await api.setConfig(config);
-      await api.restartBot();
-      setNotice("Настройки сохранены, бот перезапущен с новыми значениями.");
+      setNotice("Настройки сохранены — применятся со следующего обращения к боту.");
     } catch (err) {
       setError(String(err));
     } finally {
@@ -101,12 +100,11 @@ export default function SettingsTab() {
 
       <p className="hint">
         ≈{Math.round(config.starsPrice * config.rubPerStar).toLocaleString("ru-RU")} ₽ по указанному курсу.
-        Сохранение автоматически перезапускает бота, чтобы изменения применились.
       </p>
 
       <div className="button-row">
         <button disabled={saving} onClick={save}>
-          {saving ? "Сохраняю…" : "Сохранить и перезапустить бота"}
+          {saving ? "Сохраняю…" : "Сохранить"}
         </button>
       </div>
 
