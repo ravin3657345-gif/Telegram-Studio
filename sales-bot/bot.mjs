@@ -756,10 +756,20 @@ async function handleAdminLog(chatId) {
   }
   const lines = fs.readFileSync(LOG_PATH, "utf8").split("\n").filter(Boolean);
   const tail = lines.slice(-20);
+  // Telegram caps sendMessage at 4096 chars total — a single oversized log
+  // line (e.g. a raw HTML error page an upstream host dumped inline on
+  // failure) can blow that limit even with only 20 lines, silently failing
+  // the whole command every time. Cap the raw text itself, not just the
+  // line count.
+  let body = tail.join("\n");
+  const MAX_BODY = 3500; // headroom for the <b>/<pre> wrapper + header text
+  if (body.length > MAX_BODY) {
+    body = "…" + body.slice(body.length - MAX_BODY);
+  }
   await api("sendMessage", {
     chat_id: chatId,
     parse_mode: "HTML",
-    text: `<b>Хвост лога</b> (последние ${tail.length} строк)\n\n<pre>${escapeHtml(tail.join("\n"))}</pre>`,
+    text: `<b>Хвост лога</b> (последние ${tail.length} строк)\n\n<pre>${escapeHtml(body)}</pre>`,
   });
 }
 

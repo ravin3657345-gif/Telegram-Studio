@@ -61,39 +61,6 @@ function getLimit(editor: Editor, publishMode: "normal" | "rich" | "telegraph"):
   return resolveMessageLimit(publishMode, hasMedia);
 }
 
-// Small at-a-glance fill indicator — greener/calmer than a raw "4058/4096" count.
-// The exact number still lives in the parent's tooltip for anyone who wants it.
-function CapacityBar({ value, limit }: { value: number; limit: number }) {
-  const ratio = limit > 0 ? value / limit : 0;
-  const pct   = Math.max(0, Math.min(ratio, 1)) * 100;
-  const color = ratio > 1 ? "var(--danger)" : ratio > 0.8 ? "var(--warning)" : "var(--success)";
-  return (
-    <span
-      style={{
-        position: "relative",
-        display: "inline-block",
-        width: 34,
-        height: 4,
-        borderRadius: 2,
-        backgroundColor: "var(--border-default)",
-        overflow: "hidden",
-        flexShrink: 0,
-      }}
-    >
-      <span
-        style={{
-          position: "absolute",
-          inset: 0,
-          width: `${pct}%`,
-          backgroundColor: color,
-          borderRadius: 2,
-          transition: "width 0.2s ease, background-color 0.2s ease",
-        }}
-      />
-    </span>
-  );
-}
-
 export function SplitOverlay({ editor, scrollEl, wrapperEl }: Props) {
   const splitGaps    = useEditorStore((s) => s.splitGaps);
   const lockedGaps   = useEditorStore((s) => s.lockedGaps);
@@ -412,7 +379,9 @@ export function SplitOverlay({ editor, scrollEl, wrapperEl }: Props) {
               >
                 <span aria-hidden="true" style={{ opacity: 0.55 }}>↑</span>
                 {ti("split.msgLabel", { n: msgNum - 1 })}
-                <CapacityBar value={above} limit={limit} />
+                <span style={{ fontVariantNumeric: "tabular-nums", opacity: 0.75 }}>
+                  {above.toLocaleString("ru")} / {limit.toLocaleString("ru")}
+                </span>
               </span>
               <span
                 title={ti("split.charCountBelowHint", { n: msgNum }) + `: ${below.toLocaleString("ru")} / ${limit.toLocaleString("ru")}`}
@@ -429,7 +398,9 @@ export function SplitOverlay({ editor, scrollEl, wrapperEl }: Props) {
                 }}
               >
                 {ti("split.msgLabel", { n: msgNum })}
-                <CapacityBar value={below} limit={limit} />
+                <span style={{ fontVariantNumeric: "tabular-nums", opacity: 0.75 }}>
+                  {below.toLocaleString("ru")} / {limit.toLocaleString("ru")}
+                </span>
                 <span aria-hidden="true" style={{ opacity: 0.55 }}>↓</span>
               </span>
             </div>
@@ -515,23 +486,28 @@ export function SplitOverlay({ editor, scrollEl, wrapperEl }: Props) {
                   flexShrink: 0,
                   display: "flex",
                   alignItems: "center",
+                  justifyContent: "center",
+                  width: 22,
+                  height: 22,
                   background: "none",
                   border: "none",
                   cursor: "pointer",
-                  padding: 2,
-                  borderRadius: 4,
+                  padding: 0,
+                  borderRadius: 6,
                   color: "var(--text-muted)",
                   opacity: hovered ? 1 : 0,
-                  transition: "opacity 0.15s ease, color 0.15s ease",
+                  transition: "opacity 0.15s ease, color 0.15s ease, background-color 0.15s ease",
                 }}
-                onMouseEnter={(e) =>
-                  ((e.currentTarget as HTMLElement).style.color = "var(--danger)")
-                }
-                onMouseLeave={(e) =>
-                  ((e.currentTarget as HTMLElement).style.color = "var(--text-muted)")
-                }
+                onMouseEnter={(e) => {
+                  (e.currentTarget as HTMLElement).style.color = "var(--danger)";
+                  (e.currentTarget as HTMLElement).style.backgroundColor = "var(--danger-subtle)";
+                }}
+                onMouseLeave={(e) => {
+                  (e.currentTarget as HTMLElement).style.color = "var(--text-muted)";
+                  (e.currentTarget as HTMLElement).style.backgroundColor = "transparent";
+                }}
               >
-                <X size={13} />
+                <X size={16} />
               </button>
             </div>
           </div>

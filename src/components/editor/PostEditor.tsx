@@ -30,6 +30,26 @@ import {
   TELEGRAM_MAX_AUDIO_SIZE,
 } from "@/lib/constants";
 
+// `messageSplit` was a real block-level TipTap node from the pre-overlay
+// split system (MessageSplit.tsx is now a load-only compatibility stub —
+// nothing inserts these anymore). It renders invisibly (display:none,
+// height:0), but it's still a genuine top-level node that every block-index
+// calculation (SplitOverlay's divider positioning, computeAutoGaps,
+// splitJsonAtGaps) counts — a leftover one in an old draft silently shifts
+// every gap index after it by one, so the divider visually renders next to
+// the wrong line while still splitting the actual document one block off
+// from where it looks. Stripped on load so an affected draft self-heals
+// permanently the moment it's opened (the next autosave persists it clean).
+function stripLegacyMessageSplitNodes<T>(node: T): T {
+  const n = node as Record<string, unknown>;
+  if (Array.isArray(n?.content)) {
+    n.content = (n.content as Record<string, unknown>[])
+      .filter((c) => c.type !== "messageSplit")
+      .map((c) => stripLegacyMessageSplitNodes(c));
+  }
+  return node;
+}
+
 interface HistoryNavState {
   _histId?: string;
 }
@@ -226,7 +246,7 @@ export function PostEditor({ draftId: initialDraftId, onEditorReady }: PostEdito
       // Load content into TipTap
       if (json && json !== "" && json !== "{}") {
         try {
-          editor.commands.setContent(JSON.parse(json), false);
+          editor.commands.setContent(stripLegacyMessageSplitNodes(JSON.parse(json)), false);
         } catch {
           editor.commands.setContent(json, false); // HTML fallback
         }
@@ -268,8 +288,9 @@ export function PostEditor({ draftId: initialDraftId, onEditorReady }: PostEdito
 
       if (json && json !== "{}" && json !== "") {
         try {
-          editor.commands.setContent(JSON.parse(json), false);
-          setContentJson(json);
+          const parsed = stripLegacyMessageSplitNodes(JSON.parse(json));
+          editor.commands.setContent(parsed, false);
+          setContentJson(JSON.stringify(parsed));
         } catch { /* ignore */ }
       }
     }).catch(() => toast.error(t("editor.draftLoadError")));
