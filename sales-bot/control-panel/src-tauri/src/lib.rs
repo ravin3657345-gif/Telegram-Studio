@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::os::windows::process::CommandExt;
 use std::process::Command;
-use sysinfo::{ProcessesToUpdate, System};
+use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, System, UpdateKind};
 use tauri::{
     image::Image,
     menu::{Menu, MenuItem},
@@ -69,7 +69,15 @@ struct BotStatus {
 // This has no process-spawn and no WMI involved at all.
 fn get_bot_status_inner() -> Result<BotStatus, String> {
     let mut sys = System::new();
-    sys.refresh_processes(ProcessesToUpdate::All, true);
+    // Plain refresh_processes() never fetches the command line (its hardcoded
+    // ProcessRefreshKind only turns on memory/cpu/disk_usage/exe) — cmd_line
+    // below would always come back empty, so the bot.mjs match never fires.
+    // Must ask for cmd explicitly via refresh_processes_specifics.
+    sys.refresh_processes_specifics(
+        ProcessesToUpdate::All,
+        true,
+        ProcessRefreshKind::new().with_cmd(UpdateKind::Always),
+    );
 
     let self_pid = std::process::id();
     let mut bot_pid: Option<u32> = None;
