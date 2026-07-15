@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::os::windows::process::CommandExt;
 use std::process::Command;
+use sysinfo::{ProcessesToUpdate, System};
 use tauri::{
     image::Image,
     menu::{Menu, MenuItem},
@@ -59,21 +60,52 @@ struct BotStatus {
 // check — a second copy would inevitably drift (see the $PID self-match bug
 // already documented in stop_bot below, which only got caught in one of the
 // two places it originally existed).
+//
+// Native process enumeration (sysinfo) instead of spawning `powershell.exe`
+// to run a WMI query — the old approach polled every 5s (see the tray loop
+// below) and got noticeably slower on a freshly installed Windows: fresh
+// Defender/AMSI re-scanning every new powershell.exe launch, plus a cold
+// WMI repository, made "data takes a while to update" the visible symptom.
+// This has no process-spawn and no WMI involved at all.
 fn get_bot_status_inner() -> Result<BotStatus, String> {
-    let script = r#"
-$bot = @(Get-CimInstance Win32_Process -Filter "Name='node.exe'" | Where-Object { $_.CommandLine -like '*bot.mjs*' } | Select-Object ProcessId, CreationDate)
-$sup = @(Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" | Where-Object { $_.ProcessId -ne $PID -and $_.CommandLine -like '*run-forever*' })
-$pidVal = if ($bot.Count -gt 0) { $bot[0].ProcessId } else { $null }
-$sinceVal = if ($bot.Count -gt 0) { $bot[0].CreationDate.ToString("yyyy-MM-ddTHH:mm:ss") } else { $null }
-[PSCustomObject]@{
-  running = ($bot.Count -gt 0)
-  supervisorRunning = ($sup.Count -gt 0)
-  pid = $pidVal
-  since = $sinceVal
-} | ConvertTo-Json -Compress
-"#;
-    let out = run_powershell(script)?;
-    serde_json::from_str(&out).map_err(|e| format!("Не удалось разобрать статус: {e} ({out})"))
+    let mut sys = System::new();
+    sys.refresh_processes(ProcessesToUpdate::All, true);
+
+    let self_pid = std::process::id();
+    let mut bot_pid: Option<u32> = None;
+    let mut bot_since: Option<String> = None;
+    let mut supervisor_running = false;
+
+    for (pid, process) in sys.processes() {
+        let name = process.name().to_string_lossy();
+        let is_node = name.eq_ignore_ascii_case("node.exe");
+        let is_powershell = name.eq_ignore_ascii_case("powershell.exe");
+        if !is_node && !is_powershell {
+            continue;
+        }
+
+        let cmd_line = process
+            .cmd()
+            .iter()
+            .map(|s| s.to_string_lossy().to_string())
+            .collect::<Vec<_>>()
+            .join(" ");
+
+        if is_node && cmd_line.contains("bot.mjs") {
+            bot_pid = Some(pid.as_u32());
+            bot_since = chrono::DateTime::from_timestamp(process.start_time() as i64, 0)
+                .map(|dt| dt.format("%Y-%m-%dT%H:%M:%S").to_string());
+        } else if is_powershell && pid.as_u32() != self_pid && cmd_line.contains("run-forever") {
+            supervisor_running = true;
+        }
+    }
+
+    Ok(BotStatus {
+        running: bot_pid.is_some(),
+        supervisor_running,
+        pid: bot_pid,
+        since: bot_since,
+    })
 }
 
 #[tauri::command]
