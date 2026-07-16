@@ -36,6 +36,7 @@ interface EditorState {
   contentJson:       string;
   media:             MediaItem[];
   saveStatus:        SaveStatus;
+  saveErrorMessage:  string | null; // detail behind the last "error" saveStatus, shown as a tooltip/toast
   lastSavedAt:       Date | null;
   publishMode:       PublishMode;
   /** "draft" | "scheduled" | "published" — loaded from the draft row itself,
@@ -58,8 +59,9 @@ interface EditorState {
   removeMedia:  (id: string) => void;
   reorderMedia: (ids: string[]) => void;
 
-  setSaveStatus:  (status: SaveStatus) => void;
-  setLastSavedAt: (date: Date) => void;
+  setSaveStatus:      (status: SaveStatus) => void;
+  setSaveErrorMessage: (message: string | null) => void;
+  setLastSavedAt:     (date: Date) => void;
 
   resetEditor: () => void;
 }
@@ -91,6 +93,7 @@ const INITIAL_STATE = {
   contentJson:      "",
   media:            [] as MediaItem[],
   saveStatus:       "idle" as SaveStatus,
+  saveErrorMessage: null as string | null,
   lastSavedAt:      null as Date | null,
   publishMode:      "normal" as PublishMode,
   draftStatus:      "draft" as string,
@@ -159,8 +162,9 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     set({ media: reordered });
   },
 
-  setSaveStatus:  (status) => set({ saveStatus: status }),
-  setLastSavedAt: (date)   => set({ lastSavedAt: date }),
+  setSaveStatus:       (status)  => set({ saveStatus: status }),
+  setSaveErrorMessage: (message) => set({ saveErrorMessage: message }),
+  setLastSavedAt:      (date)    => set({ lastSavedAt: date }),
 
   resetEditor() {
     get().media.forEach((m) => URL.revokeObjectURL(m.previewUrl));

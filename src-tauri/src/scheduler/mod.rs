@@ -40,7 +40,7 @@ async fn process_pending(app: &AppHandle) -> Result<(), String> {
         let db = state.db.lock().map_err(|e| e.to_string())?;
         let mut stmt = db
             .prepare(
-                "SELECT id, draft_id, channel_id, bot_id, content_html, retry_count
+                "SELECT id, draft_id, channel_id, bot_id, content_html, retry_count, publish_mode
                  FROM scheduled_posts
                  WHERE status = 'pending' AND scheduled_at <= ?1",
             )
@@ -53,6 +53,7 @@ async fn process_pending(app: &AppHandle) -> Result<(), String> {
             bot_id: String,
             content_html: Option<String>,
             retry_count: i64,
+            publish_mode: String,
         }
 
         let now_ref: &str = &now_str;
@@ -65,6 +66,7 @@ async fn process_pending(app: &AppHandle) -> Result<(), String> {
                     bot_id: row.get(3)?,
                     content_html: row.get(4)?,
                     retry_count: row.get(5)?,
+                    publish_mode: row.get(6)?,
                 })
             })
             .map_err(|e| e.to_string())?
@@ -74,7 +76,9 @@ async fn process_pending(app: &AppHandle) -> Result<(), String> {
     };
 
     for row in pending {
-        let (ordered_bots, opt_chat_id, content, media) = {
+        let is_rich = row.publish_mode == "rich";
+
+        let (ordered_bots, opt_chat_id, content, media, rich_parts) = {
             let db = state.db.lock().map_err(|e| e.to_string())?;
 
             // Load all bots; put the scheduled bot first, then fallback to others
@@ -105,26 +109,43 @@ async fn process_pending(app: &AppHandle) -> Result<(), String> {
                 )
                 .ok();
 
-            let content: String = row.content_html
-                .filter(|s| !s.is_empty())
-                .or_else(|| {
-                    row.draft_id.as_deref().and_then(|did| {
-                        db.query_row(
-                            "SELECT content_text FROM drafts WHERE id = ?1",
-                            [did],
-                            |r| r.get::<_, Option<String>>(0),
-                        )
-                        .ok()
-                        .flatten()
+            if is_rich {
+                // Rich HTML still has its tg://photo|video|audio?id=… references
+                // as stored — load_scheduled_rich_media does the deferred
+                // normalize/compress step (same as publish_rich_post) and
+                // reports which attach_names failed so their placeholders can
+                // be stripped, same graceful single-photo degradation the
+                // immediate-publish path already has.
+                let raw_html = row.content_html.clone().unwrap_or_default();
+                let (parts, failed) = load_scheduled_rich_media(&db, &row.id);
+                let mut html = raw_html;
+                for attach_name in &failed {
+                    html = methods::remove_img_placeholder(&html, attach_name);
+                }
+                let html = methods::strip_empty_media_groups(html.trim());
+                (all_bots, opt_chat_id, html, Vec::new(), parts)
+            } else {
+                let content: String = row.content_html
+                    .filter(|s| !s.is_empty())
+                    .or_else(|| {
+                        row.draft_id.as_deref().and_then(|did| {
+                            db.query_row(
+                                "SELECT content_text FROM drafts WHERE id = ?1",
+                                [did],
+                                |r| r.get::<_, Option<String>>(0),
+                            )
+                            .ok()
+                            .flatten()
+                        })
                     })
-                })
-                .unwrap_or_default();
+                    .unwrap_or_default();
 
-            // Load persisted media (if any) and re-encode fresh from disk —
-            // never held in memory between schedule time and send time.
-            let media = load_scheduled_media(&db, &row.id);
+                // Load persisted media (if any) and re-encode fresh from disk —
+                // never held in memory between schedule time and send time.
+                let media = load_scheduled_media(&db, &row.id);
 
-            (all_bots, opt_chat_id, content, media)
+                (all_bots, opt_chat_id, content, media, Vec::new())
+            }
         };
 
         if ordered_bots.is_empty() {
@@ -149,7 +170,12 @@ async fn process_pending(app: &AppHandle) -> Result<(), String> {
         for bot in &ordered_bots {
             let client = TelegramClient::new(&bot.token);
 
-            let send_result = if media.is_empty() {
+            let send_result = if is_rich {
+                methods::send_rich_message(&client, &chat_id, &content, &rich_parts)
+                    .await
+                    .map(|_| ())
+                    .map_err(|e| e.to_string())
+            } else if media.is_empty() {
                 methods::send_message(&client, &chat_id, &content, "HTML", None)
                     .await
                     .map(|_| ())
@@ -238,6 +264,77 @@ fn load_scheduled_media(db: &rusqlite::Connection, post_id: &str) -> Vec<MediaIt
             }
         })
         .collect()
+}
+
+/// Rich-mode counterpart to `load_scheduled_media` — reads each attachment's
+/// bytes fresh from disk (same "never held in memory between schedule time
+/// and send time" reasoning), then applies the same deferred normalize/
+/// compress step `publish_rich_post` does at actual send time (real
+/// processing was skipped at persist time, see `persist_scheduled_rich_media`).
+/// Returns the successfully-built parts plus the `attach_name`s that failed
+/// (missing file or a decode/normalize error) so the caller can strip those
+/// specific `tg://…?id=` references from the HTML instead of failing the
+/// whole post over one bad photo.
+fn load_scheduled_rich_media(db: &rusqlite::Connection, post_id: &str) -> (Vec<methods::RichMediaPart>, Vec<String>) {
+    let mut stmt = match db.prepare(
+        "SELECT file_path, file_name, mime_type, attach_name
+         FROM scheduled_media WHERE scheduled_post_id = ?1 ORDER BY sort_order",
+    ) {
+        Ok(s) => s,
+        Err(_) => return (vec![], vec![]),
+    };
+
+    let rows: Vec<(String, String, String, Option<String>)> = stmt
+        .query_map([post_id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))
+        .map(|it| it.filter_map(|r| r.ok()).collect())
+        .unwrap_or_default();
+
+    let mut parts = Vec::new();
+    let mut failed = Vec::new();
+
+    for (file_path, file_name, mime_type, attach_name) in rows {
+        let Some(attach_name) = attach_name else { continue }; // not a rich row — shouldn't happen
+
+        let bytes = match std::fs::read(&file_path) {
+            Ok(b) => b,
+            Err(e) => {
+                log::warn!("[scheduler] missing rich media file {file_path}: {e}");
+                failed.push(attach_name);
+                continue;
+            }
+        };
+
+        let is_video = mime_type.starts_with("video/");
+        let is_audio = mime_type.starts_with("audio/");
+        let kind = if is_video { methods::RichMediaKind::Video }
+            else if is_audio { methods::RichMediaKind::Audio }
+            else { methods::RichMediaKind::Photo };
+
+        let processed = if is_video || is_audio {
+            Ok((bytes, mime_type.clone(), file_name.clone()))
+        } else {
+            crate::image_utils::normalize_to_jpeg(bytes, &file_name).map(|(jpeg, _, name)| {
+                let jpeg = crate::image_utils::compress_to_limit(jpeg, 5 * 1024 * 1024);
+                (jpeg, "image/jpeg".to_string(), name)
+            })
+        };
+
+        match processed {
+            Ok((data, mime, name)) => parts.push(methods::RichMediaPart {
+                id: attach_name,
+                kind,
+                bytes: data,
+                mime_type: mime,
+                file_name: name,
+            }),
+            Err(e) => {
+                log::warn!("[scheduler] rich media processing failed for {attach_name}: {e}");
+                failed.push(attach_name);
+            }
+        }
+    }
+
+    (parts, failed)
 }
 
 /// Best-effort: lock failures here are logged, not propagated — this is a

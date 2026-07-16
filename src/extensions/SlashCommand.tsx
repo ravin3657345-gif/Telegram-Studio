@@ -25,12 +25,18 @@ export type BlockPreviewType =
   | "list" | "orderedList" | "checklist" | "callout" | "divider"
   | "image" | "video" | "audio" | "faq" | "poll" | "table" | "map" | "formula";
 
+// Purely a grouping label for BlockPalette's collapsible sections — has no
+// effect on slash-menu search/filtering (that stays a flat filtered list,
+// grouping only matters once there's a fixed-order palette to scan).
+export type BlockGroup = "text" | "lists" | "media" | "blocks" | "interactive";
+
 export interface SlashItem {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   icon: React.ComponentType<any>;
   label: string;
   description: string;
   previewType: BlockPreviewType;
+  group: BlockGroup;
   command: (editor: import("@tiptap/core").Editor) => void;
   // True when the current app state (e.g. publish mode) means `command` will
   // just show a warning toast and bail instead of inserting anything. The
@@ -48,6 +54,7 @@ export function getSlashItems(): SlashItem[] {
       label: t("slash.paragraph"),
       description: t("slash.paragraph.desc"),
       previewType: "paragraph",
+      group: "text",
       command: (e) => e.chain().focus().setParagraph().run(),
     },
     {
@@ -55,6 +62,7 @@ export function getSlashItems(): SlashItem[] {
       label: t("slash.h1"),
       description: t("slash.h1.desc"),
       previewType: "h1",
+      group: "text",
       command: (e) => e.chain().focus().setHeading({ level: 1 }).run(),
     },
     {
@@ -62,6 +70,7 @@ export function getSlashItems(): SlashItem[] {
       label: t("slash.h2"),
       description: t("slash.h2.desc"),
       previewType: "h2",
+      group: "text",
       command: (e) => e.chain().focus().setHeading({ level: 2 }).run(),
     },
     {
@@ -69,6 +78,7 @@ export function getSlashItems(): SlashItem[] {
       label: t("slash.h3"),
       description: t("slash.h3.desc"),
       previewType: "h3",
+      group: "text",
       command: (e) => e.chain().focus().setHeading({ level: 3 }).run(),
     },
     {
@@ -76,6 +86,7 @@ export function getSlashItems(): SlashItem[] {
       label: t("slash.quote"),
       description: t("slash.quote.desc"),
       previewType: "quote",
+      group: "text",
       command: (e) => e.chain().focus().toggleBlockquote().run(),
     },
     {
@@ -83,6 +94,7 @@ export function getSlashItems(): SlashItem[] {
       label: t("slash.code"),
       description: t("slash.code.desc"),
       previewType: "code",
+      group: "text",
       command: (e) => e.chain().focus().toggleCodeBlock().run(),
     },
     {
@@ -90,6 +102,7 @@ export function getSlashItems(): SlashItem[] {
       label: t("slash.list"),
       description: t("slash.list.desc"),
       previewType: "list",
+      group: "lists",
       command: (e) => e.chain().focus().toggleBulletList().run(),
     },
     {
@@ -97,6 +110,7 @@ export function getSlashItems(): SlashItem[] {
       label: t("slash.orderedList"),
       description: t("slash.orderedList.desc"),
       previewType: "orderedList",
+      group: "lists",
       command: (e) => e.chain().focus().toggleOrderedList().run(),
     },
     {
@@ -104,6 +118,7 @@ export function getSlashItems(): SlashItem[] {
       label: t("slash.checklist"),
       description: t("slash.checklist.desc"),
       previewType: "checklist",
+      group: "lists",
       command: (e) => e.chain().focus().insertContent({ type: "checkItem", attrs: { checked: false } }).run(),
     },
     {
@@ -111,6 +126,7 @@ export function getSlashItems(): SlashItem[] {
       label: t("slash.callout"),
       description: t("slash.callout.desc"),
       previewType: "callout",
+      group: "blocks",
       command: (e) =>
         e.chain().focus().insertContent({
           type: "callout",
@@ -123,6 +139,7 @@ export function getSlashItems(): SlashItem[] {
       label: t("slash.divider"),
       description: t("slash.divider.desc"),
       previewType: "divider",
+      group: "blocks",
       command: (e) => e.chain().focus().setHorizontalRule().run(),
     },
     {
@@ -130,6 +147,7 @@ export function getSlashItems(): SlashItem[] {
       label: t("slash.image"),
       description: t("slash.image.desc"),
       previewType: "image",
+      group: "media",
       command: () => {
         document.getElementById("editor-image-input")?.click();
       },
@@ -139,6 +157,7 @@ export function getSlashItems(): SlashItem[] {
       label: t("slash.video"),
       description: t("slash.video.desc"),
       previewType: "video",
+      group: "media",
       command: () => {
         document.getElementById("editor-video-input")?.click();
       },
@@ -148,6 +167,7 @@ export function getSlashItems(): SlashItem[] {
       label: t("slash.audio"),
       description: t("slash.audio.desc"),
       previewType: "audio",
+      group: "media",
       isBlocked: () => useEditorStore.getState().publishMode !== "rich",
       command: () => {
         const mode = useEditorStore.getState().publishMode;
@@ -163,6 +183,7 @@ export function getSlashItems(): SlashItem[] {
       label: t("slash.faq"),
       description: t("slash.faq.desc"),
       previewType: "faq",
+      group: "blocks",
       command: (e) =>
         e.commands.insertContent({ type: "blockFaq", attrs: { question: "", answer: "" } }),
     },
@@ -171,6 +192,7 @@ export function getSlashItems(): SlashItem[] {
       label: t("slash.poll"),
       description: t("slash.poll.desc"),
       previewType: "poll",
+      group: "interactive",
       isBlocked: () => {
         const mode = useEditorStore.getState().publishMode;
         return mode === "rich";
@@ -192,6 +214,7 @@ export function getSlashItems(): SlashItem[] {
       label: t("slash.table"),
       description: t("slash.table.desc"),
       previewType: "table",
+      group: "interactive",
       isBlocked: () => useEditorStore.getState().publishMode !== "rich",
       command: (e) => {
         const mode = useEditorStore.getState().publishMode;
@@ -208,6 +231,7 @@ export function getSlashItems(): SlashItem[] {
       label: t("slash.map"),
       description: t("slash.map.desc"),
       previewType: "map",
+      group: "interactive",
       isBlocked: () => useEditorStore.getState().publishMode !== "rich",
       command: (e) => {
         const mode = useEditorStore.getState().publishMode;
@@ -223,6 +247,7 @@ export function getSlashItems(): SlashItem[] {
       label: t("slash.formula"),
       description: t("slash.formula.desc"),
       previewType: "formula",
+      group: "interactive",
       isBlocked: () => useEditorStore.getState().publishMode !== "rich",
       command: (e) => {
         const mode = useEditorStore.getState().publishMode;

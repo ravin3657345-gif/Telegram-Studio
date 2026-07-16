@@ -504,6 +504,17 @@ pub struct PublishRichPayload {
     pub draft_id: Option<String>,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScheduleRichPayload {
+    pub bot_id: Option<String>,
+    pub channel_ids: Vec<String>,
+    pub rich_html: String,
+    pub photos: Vec<RichPhotoPayload>,
+    pub draft_id: Option<String>,
+    pub schedule_at: String,
+}
+
 /// Опубликовать богатое сообщение (Bot API 10.1 sendRichMessage)
 #[tauri::command]
 pub async fn publish_rich_post(
@@ -1054,3 +1065,176 @@ pub async fn republish_rich_post(
 
     Ok(())
 }
+
+// ─── Rich message scheduling ─────────────────────────────────────────────────
+// Rich-mode counterpart to the normal-mode scheduling section above — same
+// scheduled_posts/scheduled_media tables, same disk-persist-then-fire-later
+// shape, distinguished by scheduled_posts.publish_mode='rich' (see migrate_v14).
+// content_html holds the Rich HTML with unresolved tg://photo|video|audio?id=
+// references as-is; media bytes are stored raw/unnormalized, same as normal
+// mode — real processing happens at actual send time in scheduler::process_pending.
+
+/// Persists Rich Message media to disk for a scheduled post — same disk-write
+/// pattern as `persist_scheduled_media`, but keyed by `attach_name` (the exact
+/// `tg://…?id=<attach_name>` reference embedded in the stored HTML) instead of
+/// positional `media_type`, so the scheduler can rebuild the right
+/// `RichMediaPart` list at fire time.
+fn persist_scheduled_rich_media(
+    db: &rusqlite::Connection,
+    app_dir: &std::path::Path,
+    scheduled_post_id: &str,
+    photos: &[RichPhotoPayload],
+    now: &str,
+) -> Result<(), String> {
+    if photos.is_empty() {
+        return Ok(());
+    }
+    use base64::Engine;
+    let media_dir = app_dir.join("scheduled_media").join(scheduled_post_id);
+    std::fs::create_dir_all(&media_dir)
+        .map_err(|e| format!("Не удалось создать директорию: {}", e))?;
+
+    for (i, item) in photos.iter().enumerate() {
+        let raw = base64::engine::general_purpose::STANDARD
+            .decode(&item.data_base64)
+            .map_err(|_| format!("Ошибка декодирования файла «{}»", item.file_name))?;
+        if raw.is_empty() { continue; }
+
+        // Cosmetic only — nothing reads scheduled_media.media_type for Rich
+        // rows, the real kind is derived from mime_type at fire time
+        // (scheduler::load_scheduled_rich_media), matching how
+        // publish_rich_post already decides Photo/Video/Audio.
+        let media_type = if item.mime_type.starts_with("video/") { "video" }
+            else if item.mime_type.starts_with("audio/") { "file" }
+            else { "image" };
+
+        let ext = item.file_name
+            .rsplit('.')
+            .next()
+            .unwrap_or("bin")
+            .chars()
+            .filter(|c| c.is_alphanumeric())
+            .take(10)
+            .collect::<String>();
+        let ext = if ext.is_empty() { "bin".to_string() } else { ext };
+
+        let file_path = media_dir.join(format!("{}.{}", i, ext));
+        std::fs::write(&file_path, &raw)
+            .map_err(|e| format!("Ошибка сохранения файла: {}", e))?;
+
+        let media_id = Uuid::new_v4().to_string();
+        let path_str = file_path.to_string_lossy().into_owned();
+        db.execute(
+            "INSERT INTO scheduled_media
+             (id, scheduled_post_id, file_path, file_name, mime_type, media_type, file_size, sort_order, attach_name, created_at)
+             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)",
+            rusqlite::params![
+                media_id, scheduled_post_id, path_str, item.file_name, item.mime_type,
+                media_type, raw.len() as i64, i as i64, item.attach_name, now,
+            ],
+        ).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+/// Schedule a Rich Message post. Mirrors `schedule_post` one for one (same
+/// "supersede existing pending rows for this draft" semantics, same
+/// per-channel INSERT loop) — the only differences are `publish_mode='rich'`
+/// and using `persist_scheduled_rich_media`/`RichPhotoPayload` instead of the
+/// normal-mode media shape.
+#[tauri::command]
+pub async fn schedule_rich_post(
+    payload: ScheduleRichPayload,
+    state: tauri::State<'_, AppState>,
+) -> Result<Vec<ScheduledPostInfo>, String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let now = Utc::now().to_rfc3339();
+
+    let bot_id = match &payload.bot_id {
+        Some(id) if !id.is_empty() => id.clone(),
+        _ => {
+            let bots = ordered_bots_from_db(&db, None)?;
+            bots.into_iter().next()
+                .map(|b| b.id)
+                .ok_or_else(|| "Нет доступных ботов".to_string())?
+        }
+    };
+
+    if let Some(draft_id) = &payload.draft_id {
+        let mut stmt = db
+            .prepare("SELECT id FROM scheduled_posts WHERE draft_id = ?1 AND status = 'pending'")
+            .map_err(|e| e.to_string())?;
+        let superseded_ids: Vec<String> = stmt
+            .query_map(rusqlite::params![draft_id], |r| r.get(0))
+            .map_err(|e| e.to_string())?
+            .filter_map(|r| r.ok())
+            .collect();
+        drop(stmt);
+
+        for old_id in &superseded_ids {
+            cleanup_scheduled_media(&db, &state.app_dir, old_id);
+        }
+
+        db.execute(
+            "UPDATE scheduled_posts SET status='cancelled', updated_at=?1 WHERE draft_id=?2 AND status='pending'",
+            rusqlite::params![now, draft_id],
+        )
+        .map_err(|e| e.to_string())?;
+    }
+
+    let mut infos = Vec::new();
+
+    for ch_id in &payload.channel_ids {
+        let channel = channels_q::find_by_id(&db, ch_id)
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| format!("Канал {} не найден", ch_id))?;
+
+        let id = Uuid::new_v4().to_string();
+        db.execute(
+            "INSERT INTO scheduled_posts
+             (id, draft_id, channel_id, bot_id, content_html, scheduled_at, status, publish_mode, created_at, updated_at)
+             VALUES (?1,?2,?3,?4,?5,?6,'pending','rich',?7,?8)",
+            rusqlite::params![
+                id,
+                payload.draft_id,
+                ch_id,
+                bot_id,
+                payload.rich_html,
+                payload.schedule_at,
+                now,
+                now,
+            ],
+        )
+        .map_err(|e| e.to_string())?;
+
+        persist_scheduled_rich_media(&db, &state.app_dir, &id, &payload.photos, &now)?;
+
+        infos.push(ScheduledPostInfo {
+            id,
+            draft_id: payload.draft_id.clone(),
+            channel_id: ch_id.clone(),
+            channel_title: channel.title.clone(),
+            bot_id: bot_id.clone(),
+            scheduled_at: payload.schedule_at.clone(),
+            status: "pending".to_string(),
+            content_preview: crate::commands::history::strip_html_preview(&payload.rich_html, 60),
+        });
+    }
+
+    if let Some(draft_id) = &payload.draft_id {
+        let _ = db.execute(
+            "UPDATE drafts SET status = 'scheduled' WHERE id = ?1 AND kind = 'draft'",
+            rusqlite::params![draft_id],
+        );
+    }
+
+    Ok(infos)
+}
+
+// Deliberately no Rich-mode counterpart to update_scheduled_post_content:
+// editing an already-scheduled (or already-published) Rich post is blocked
+// entirely at the UI layer (see EditorPage.tsx's isRichScheduledLocked and
+// HistoryPage.tsx's disabled Edit button for Rich items) — the only
+// supported paths for Rich are "compose fresh, then publish or schedule
+// once". schedule_rich_post/persist_scheduled_rich_media above are still
+// used for that initial schedule; nothing resyncs it afterward.

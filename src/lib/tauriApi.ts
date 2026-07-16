@@ -115,6 +115,23 @@ export interface PublishRichPayload {
 export const publishRichPost = (payload: PublishRichPayload): Promise<PublishResult[]> =>
   invoke("publish_rich_post", { payload });
 
+export interface ScheduleRichPayload {
+  botId?: string | null;
+  channelIds: string[];
+  richHtml: string;
+  photos: RichPhotoPayload[];
+  draftId?: string | null;
+  scheduleAt: string;
+}
+
+export const scheduleRichPost = (payload: ScheduleRichPayload): Promise<ScheduledPostInfo[]> =>
+  invoke("schedule_rich_post", { payload });
+
+// Deliberately no Rich-mode counterpart to updateScheduledPostContent —
+// editing an already-scheduled Rich post is blocked entirely (see
+// EditorPage.tsx's isRichScheduledLocked). Rich only supports "compose
+// fresh, then publish or schedule once".
+
 export interface PollPayload {
   botId?: string | null;
   channelIds: string[];

@@ -476,7 +476,7 @@ function RichBubble({ html, segments, contentJson }: { html: string; segments: C
       {parts.map((p, i) => {
         if (p.type === "img")  return p.src ? <img  key={i} src={p.src} alt="" draggable={false} style={{ width: "100%", maxHeight: 280, objectFit: "cover", display: "block" }} /> : null;
         if (p.type === "video") return p.src ? <video key={i} src={p.src} preload="metadata" style={{ width: "100%", maxHeight: 280, objectFit: "cover", display: "block" }} /> : null;
-        if (p.type === "audio") return p.src ? <audio key={i} src={p.src} controls preload="metadata" style={{ width: "100%", display: "block", margin: "8px 12px", maxWidth: "calc(100% - 24px)" }} /> : null;
+        if (p.type === "audio") return p.src ? <audio key={i} src={p.src} controls controlsList="nodownload noplaybackrate" preload="metadata" style={{ width: "100%", display: "block", margin: "8px 12px", maxWidth: "calc(100% - 24px)" }} /> : null;
         if (p.type === "table") return (
           <div key={i} style={{
             display: "flex", alignItems: "center", gap: 8,

@@ -14,6 +14,7 @@ pub fn run(conn: &Connection) -> Result<()> {
     migrate_v11(conn)?;
     migrate_v12(conn)?;
     migrate_v13(conn)?;
+    migrate_v14(conn)?;
     seed_settings(conn)?;
     Ok(())
 }
@@ -225,6 +226,21 @@ fn migrate_v13(conn: &Connection) -> Result<()> {
     // different one (used_elsewhere).
     let _ = conn.execute_batch(
         "ALTER TABLE license ADD COLUMN machine_hash TEXT NOT NULL DEFAULT '';"
+    );
+    Ok(())
+}
+
+fn migrate_v14(conn: &Connection) -> Result<()> {
+    // Rich Message scheduling: which mode a scheduled_posts row was written
+    // in (mirrors drafts.publish_mode from migrate_v12 — needed so the
+    // scheduler can tell whether to send via sendPhoto/sendVideo/sendDocument
+    // or via sendRichMessage), and which tg://…?id= a scheduled_media row
+    // corresponds to for a Rich post (NULL for normal-mode rows, unused there).
+    let _ = conn.execute_batch(
+        "ALTER TABLE scheduled_posts ADD COLUMN publish_mode TEXT NOT NULL DEFAULT 'normal';"
+    );
+    let _ = conn.execute_batch(
+        "ALTER TABLE scheduled_media ADD COLUMN attach_name TEXT;"
     );
     Ok(())
 }

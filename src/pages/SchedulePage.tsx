@@ -19,6 +19,7 @@ interface HistoryItemLite {
   postTitle: string;
   status: string;
   publishedAt: string;
+  publishMode: string;
 }
 
 // ── Calendar entries ─────────────────────────────────────────────────────────
@@ -40,6 +41,7 @@ interface CalendarEntry {
   scheduledPostId?: string;
   draftId?: string;
   historyId?: string;
+  publishMode?: string;
 }
 
 function chipStyle(kind: CalendarKind) {
@@ -140,6 +142,7 @@ export function SchedulePage() {
         time,
         title: h.postTitle || t("editor.untitled"),
         historyId: h.id,
+        publishMode: h.publishMode,
       });
     }
 
@@ -328,6 +331,14 @@ export function SchedulePage() {
                                   onMouseLeave={() => setHoveredId(null)}
                                   onClick={() => {
                                     if (entry.kind === "published") {
+                                      // Editing an already-published Rich post is blocked
+                                      // entirely (see HistoryPage.tsx's disabled Edit button —
+                                      // this is the same entry point, just reached from the
+                                      // calendar instead of the History list).
+                                      if (entry.publishMode === "rich") {
+                                        toast.error(t("history.editUnavailableRich"));
+                                        return;
+                                      }
                                       // Same pattern HistoryPage's "open in editor" uses —
                                       // PostEditor fetches the full post via _histId, no
                                       // separate draft record needed for a published post.

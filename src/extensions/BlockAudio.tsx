@@ -30,7 +30,13 @@ function AudioNodeView({ node, deleteNode, selected }: any) {
             {fileName}
           </div>
           {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
-          <audio src={src} controls preload="metadata" style={{ width: "100%", height: 32, display: "block" }} />
+          <audio
+            src={src}
+            controls
+            controlsList="nodownload noplaybackrate"
+            preload="metadata"
+            style={{ width: "100%", height: 32, display: "block" }}
+          />
         </div>
         <button
           onClick={(e) => {

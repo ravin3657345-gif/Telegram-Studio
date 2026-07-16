@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import type { Editor } from "@tiptap/react";
-import { Plus } from "lucide-react";
-import { getSlashItems, type SlashItem, type BlockPreviewType } from "@/extensions/SlashCommand";
+import { Plus, ChevronDown } from "lucide-react";
+import { getSlashItems, type SlashItem, type BlockPreviewType, type BlockGroup } from "@/extensions/SlashCommand";
 import {
   getNestedDropInfo, listBlocks, setGapBefore, clearGap, clearGapTransitions,
   getEditorScrollContainer, createAutoScroller, createDropIndicatorLine,
@@ -238,10 +238,48 @@ function fillGhostAsPreview(shell: HTMLDivElement, item: SlashItem): boolean {
 
 const DRAG_THRESHOLD = 4;
 
+// Fixed display order for the palette's collapsible sections — getSlashItems()
+// itself stays a flat array (unchanged for the slash-menu's search/filter use,
+// which has no concept of sections), this is purely how BlockPalette buckets
+// that array for display.
+const GROUP_ORDER: { key: BlockGroup; labelKey: "palette.group.text" | "palette.group.lists" | "palette.group.media" | "palette.group.blocks" | "palette.group.interactive" }[] = [
+  { key: "text", labelKey: "palette.group.text" },
+  { key: "lists", labelKey: "palette.group.lists" },
+  { key: "media", labelKey: "palette.group.media" },
+  { key: "blocks", labelKey: "palette.group.blocks" },
+  { key: "interactive", labelKey: "palette.group.interactive" },
+];
+
+// Collapse state is per-device UI preference, not app data — persisted to
+// localStorage (not the settings store/DB) so it survives BlockPalette
+// remounting (e.g. toggling the Telegram preview swaps it between two
+// different mount points in EditorPage) without needing a backend round-trip.
+const COLLAPSE_STORAGE_KEY = "tstudio.palette.collapsedGroups";
+
+function loadCollapsedGroups(): Set<BlockGroup> {
+  try {
+    const raw = localStorage.getItem(COLLAPSE_STORAGE_KEY);
+    return raw ? new Set(JSON.parse(raw)) : new Set();
+  } catch {
+    return new Set();
+  }
+}
+
 export function BlockPalette({ editor, fill }: BlockPaletteProps) {
   useSettingsStore((s) => s.language); // реактивность при смене языка — getSlashItems() читает t()
   const items = getSlashItems();
   const [selected, setSelected] = useState<number | null>(null);
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<BlockGroup>>(loadCollapsedGroups);
+
+  function toggleGroup(key: BlockGroup) {
+    setCollapsedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      try { localStorage.setItem(COLLAPSE_STORAGE_KEY, JSON.stringify([...next])); } catch { /* ignore */ }
+      return next;
+    });
+  }
 
   function handleInsertSelected() {
     if (selected === null) return;
@@ -409,51 +447,100 @@ export function BlockPalette({ editor, fill }: BlockPaletteProps) {
           fill (preview off, wider column) stays a 2-column grid with
           truncated labels; docked (preview on, narrow 220px column) is a
           single column so full labels always fit. Either way this scroll
-          container handles overflow at a small window height. */}
+          container handles overflow at a small window height. Items are
+          bucketed into fixed collapsible sections (GROUP_ORDER) purely for
+          display — a flat 19-item list was hard to scan at a glance. */}
       <div className="flex-1 overflow-y-auto p-2.5">
-        <div className={fill ? "grid grid-cols-2 gap-2" : "flex flex-col gap-2"}>
-          {items.map((item, i) => {
-            const isSelected = selected === i;
-            return (
-              <div
-                key={item.label}
-                onPointerDown={(e) => handleRowPointerDown(item, i, e)}
-                title={item.label}
-                className={"palette-tile flex items-center gap-2.5 px-2.5 py-2.5 rounded-xl " + (isSelected ? "soft-ui-pressed" : "soft-ui-sm")}
-                style={{
-                  // bg-elevated (not bg-surface) — the tile needs to read as
-                  // a distinct raised card by color too, not rely on the
-                  // shadow alone to separate it from an identically-colored
-                  // parent panel.
-                  backgroundColor: "var(--bg-elevated)",
-                  cursor: "grab",
-                }}
+        {GROUP_ORDER.map(({ key, labelKey }) => {
+          const entries = items
+            .map((item, i) => ({ item, i }))
+            .filter((e) => e.item.group === key);
+          if (entries.length === 0) return null;
+          const isCollapsed = collapsedGroups.has(key);
+
+          return (
+            <div key={key} className="mb-1">
+              <button
+                type="button"
+                onClick={() => toggleGroup(key)}
+                className="flex items-center gap-1.5 w-full px-1 py-1.5 text-left"
+                style={{ background: "none", border: "none", cursor: "pointer" }}
               >
-                <span
-                  className="flex items-center justify-center rounded-lg flex-shrink-0"
+                <ChevronDown
+                  size={11}
                   style={{
-                    width: 24,
-                    height: 24,
-                    backgroundColor: isSelected ? "var(--accent)" : "color-mix(in srgb, var(--accent) 12%, transparent)",
-                    transition: "background-color 0.12s",
+                    color: "var(--text-muted)",
+                    flexShrink: 0,
+                    transform: isCollapsed ? "rotate(-90deg)" : "none",
+                    transition: "transform 0.15s",
                   }}
-                >
-                  <item.icon
-                    size={12.5}
-                    strokeWidth={1.85}
-                    style={{ color: isSelected ? "#fff" : "var(--accent)" }}
-                  />
-                </span>
+                />
                 <span
-                  className={fill ? "text-2xs truncate" : "text-2xs whitespace-nowrap"}
-                  style={{ color: isSelected ? "var(--text-primary)" : "var(--text-secondary)", fontWeight: isSelected ? 600 : 500 }}
+                  className="text-2xs font-semibold uppercase tracking-wide"
+                  style={{ color: "var(--text-muted)", letterSpacing: "0.04em" }}
                 >
-                  {item.label}
+                  {t(labelKey)}
                 </span>
-              </div>
-            );
-          })}
-        </div>
+              </button>
+
+              <AnimatePresence initial={false}>
+                {!isCollapsed && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: "auto" }}
+                    exit={{ opacity: 0, height: 0 }}
+                    transition={{ duration: 0.15 }}
+                    style={{ overflow: "hidden" }}
+                  >
+                    <div className={(fill ? "grid grid-cols-2 gap-2" : "flex flex-col gap-2") + " pb-2"}>
+                      {entries.map(({ item, i }) => {
+                        const isSelected = selected === i;
+                        return (
+                          <div
+                            key={item.label}
+                            onPointerDown={(e) => handleRowPointerDown(item, i, e)}
+                            title={item.label}
+                            className={"palette-tile flex items-center gap-2.5 px-2.5 py-2.5 rounded-xl " + (isSelected ? "soft-ui-pressed" : "soft-ui-sm")}
+                            style={{
+                              // bg-elevated (not bg-surface) — the tile needs to read as
+                              // a distinct raised card by color too, not rely on the
+                              // shadow alone to separate it from an identically-colored
+                              // parent panel.
+                              backgroundColor: "var(--bg-elevated)",
+                              cursor: "grab",
+                            }}
+                          >
+                            <span
+                              className="flex items-center justify-center rounded-lg flex-shrink-0"
+                              style={{
+                                width: 24,
+                                height: 24,
+                                backgroundColor: isSelected ? "var(--accent)" : "color-mix(in srgb, var(--accent) 12%, transparent)",
+                                transition: "background-color 0.12s",
+                              }}
+                            >
+                              <item.icon
+                                size={12.5}
+                                strokeWidth={1.85}
+                                style={{ color: isSelected ? "#fff" : "var(--accent)" }}
+                              />
+                            </span>
+                            <span
+                              className={fill ? "text-2xs truncate" : "text-2xs whitespace-nowrap"}
+                              style={{ color: isSelected ? "var(--text-primary)" : "var(--text-secondary)", fontWeight: isSelected ? 600 : 500 }}
+                            >
+                              {item.label}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          );
+        })}
       </div>
 
       <AnimatePresence>

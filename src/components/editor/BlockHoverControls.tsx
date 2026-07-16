@@ -19,14 +19,16 @@ interface BlockHoverControlsProps {
 
 const DRAG_THRESHOLD = 5;
 const HIDE_DELAY = 350;
-// Caps how tall the drag ghost can render — an image/video (or a multi-image
-// collage) block clones at its full natural height otherwise, which can
-// easily span several hundred px and blot out the exact drop-target area the
-// user is trying to look at while dragging. Cropped, not scaled: shrinking a
-// wide image proportionally would also shrink its width/cursor alignment;
-// clipping keeps the ghost's width (and therefore left/cursor-X alignment)
-// matching the real block.
+// Caps how tall/wide the drag ghost can render — an image/video (or a
+// multi-image collage) block clones at its full natural size otherwise,
+// which can easily span several hundred px in both directions and blot out
+// the exact drop-target area the user is trying to look at while dragging.
+// Cropped, not scaled: shrinking a wide image proportionally would also
+// shrink its on-screen footprint unevenly (aspect ratio vs. the cap), so
+// each axis is clipped independently instead — same fade treatment on
+// whichever edge(s) actually get cut.
 const MAX_GHOST_HEIGHT = 120;
+const MAX_GHOST_WIDTH = 260;
 
 const btnStyle: React.CSSProperties = {
   display: "flex",
@@ -46,11 +48,12 @@ const btnStyle: React.CSSProperties = {
 // per-type preview logic — it's inert (contentEditable=false, no pointer
 // events) so it never fights the real document for input.
 function makeGhost(sourceEl: HTMLElement, rect: DOMRect): HTMLDivElement {
+  const ghostWidth = Math.min(rect.width, MAX_GHOST_WIDTH);
   const wrap = document.createElement("div");
   wrap.style.cssText = `
     position: fixed;
     left: ${rect.left}px;
-    width: ${rect.width}px;
+    width: ${ghostWidth}px;
     max-height: ${MAX_GHOST_HEIGHT}px;
     overflow: hidden;
     pointer-events: none;
@@ -82,6 +85,20 @@ function makeGhost(sourceEl: HTMLElement, rect: DOMRect): HTMLDivElement {
       pointer-events: none;
     `;
     wrap.appendChild(fade);
+  }
+
+  // Same soft-edge treatment as the bottom fade above, but for a block wide
+  // enough to clip horizontally (a full-width banner image, a wide table…).
+  if (rect.width > MAX_GHOST_WIDTH) {
+    const fadeRight = document.createElement("div");
+    fadeRight.style.cssText = `
+      position: absolute;
+      top: 0; right: 0; bottom: 0;
+      width: 32px;
+      background: linear-gradient(to right, transparent, var(--bg-surface));
+      pointer-events: none;
+    `;
+    wrap.appendChild(fadeRight);
   }
 
   document.body.appendChild(wrap);

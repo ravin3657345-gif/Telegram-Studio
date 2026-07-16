@@ -6,7 +6,7 @@ import { PublishConfirmDialog } from "@/components/editor/PublishConfirmDialog";
 import { useChannelsStore } from "@/store/channelsStore";
 import { usePublishStore } from "@/store/publishStore";
 import { useEditorStore } from "@/store/editorStore";
-import { publishPost, schedulePost, publishRichPost, republishRichPost, sendPoll, editPublishedPost, upsertDraft, updateScheduledPostContent } from "@/lib/tauriApi";
+import { publishPost, schedulePost, publishRichPost, republishRichPost, scheduleRichPost, sendPoll, editPublishedPost, upsertDraft, updateScheduledPostContent } from "@/lib/tauriApi";
 import { segmentDocument, splitIntoMessagesAtGaps, splitJsonAtGaps } from "@/lib/htmlConverter";
 import { TELEGRAM_MAX_RICH_BLOCKS } from "@/lib/constants";
 import type { TextSegment, PollSegment } from "@/lib/htmlConverter";
@@ -100,20 +100,15 @@ export function PublishPanel({ draftId }: PublishPanelProps) {
     !mapBlockedOutsideRich && !formulaBlockedOutsideRich && !richBlockLimitExceeded &&
     status !== "publishing" && status !== "scheduling";
 
-  // Rich messages have no editRichMessage / re-snapshot path on the Telegram
-  // side (see richOutsideSchedule warning below), and PublishPanel's own
-  // schedule flow builds its content from plain text segments only — a
-  // scheduled Rich post would silently lose tables/maps/formulas/collages.
-  // Scheduling is therefore Rich-exclusive-blocked, same shape as the
-  // Rich-only blocks being blocked outside Rich.
-  const richBlockedInSchedule = publishMode === "rich";
-  const canSchedule = canPublish && !mediaBlockedInSchedule && !richBlockedInSchedule;
+  const canSchedule = canPublish && !mediaBlockedInSchedule;
 
   // Keeps an already-scheduled post's queued content in sync with the draft.
   // scheduled_posts.content_html is a one-time snapshot taken when the post
   // was first scheduled — editing the draft afterwards never touched it, so
   // fire a best-effort resync after every autosave completes (only for
-  // normal-mode drafts; Rich can't be scheduled at all, see richBlockedInSchedule).
+  // normal-mode drafts — editing an already-scheduled Rich draft is blocked
+  // entirely, see EditorPage.tsx's isRichScheduledLocked; the only supported
+  // Rich flow is "compose fresh, then publish or schedule once").
   useEffect(() => {
     if (!draftId || draftStatus !== "scheduled" || publishMode === "rich" || !lastSavedAt) return;
 
@@ -454,6 +449,63 @@ export function PublishPanel({ draftId }: PublishPanelProps) {
     }
   }
 
+  // ── Rich message schedule ────────────────────────────────────────────────────
+  // Mirrors handleSchedule above, but builds the snapshot via tiptapToRichHtml
+  // (single-shot — no jsonChunks loop, see the resync effect's comment for why)
+  // and calls scheduleRichPost instead.
+  async function handleScheduleRich(isoDate: string) {
+    if (!canSchedule) return;
+    setShowSchedule(false);
+    reset();
+    setStatus("scheduling");
+    try {
+      let effectiveDraftId = draftId;
+      if (!effectiveDraftId) {
+        const attachments = await collectInlineAttachments(contentJson || "{}");
+        const draft = await upsertDraft({
+          title: draftTitle,
+          postTitle,
+          contentJson: contentJson || "{}",
+          attachments: attachments.length ? attachments : undefined,
+        });
+        effectiveDraftId = draft.id;
+        setDraftId(draft.id);
+      }
+
+      const { html, photos } = tiptapToRichHtml(contentJson || '{"type":"doc","content":[]}', effectiveTitle);
+      const filledPhotos = await Promise.all(
+        photos.map(async (p) => {
+          const file = fileRegistry.getFile(p.fileId);
+          if (!file) return null;
+          const isVideo = file.type.startsWith("video/");
+          const isAudio = file.type.startsWith("audio/");
+          const { base64: dataBase64, mimeType, fileName } = isVideo || isAudio
+            ? { base64: await fileToBase64(file), mimeType: file.type, fileName: file.name }
+            : await normalizeImageToJpeg(file);
+          return { attachName: p.attachName, dataBase64, mimeType, fileName };
+        })
+      );
+
+      await scheduleRichPost({
+        botId: bots[0]?.id ?? null,
+        channelIds: selectedChannelIds,
+        richHtml: html,
+        photos: filledPhotos.filter((p): p is NonNullable<typeof p> => p !== null),
+        draftId: effectiveDraftId,
+        scheduleAt: isoDate,
+      });
+      setStatus("done");
+    } catch (e) {
+      setError(String(e));
+      setStatus("error");
+    }
+  }
+
+  async function handleScheduleDispatch(isoDate: string) {
+    if (publishMode === "rich") await handleScheduleRich(isoDate);
+    else await handleSchedule(isoDate);
+  }
+
   const normalHint = segments.length > 1
     ? ti("publish.normal.hintN", { n: segments.length })
     : t("publish.normal.hint1");
@@ -740,21 +792,6 @@ export function PublishPanel({ draftId }: PublishPanelProps) {
           </div>
         )}
 
-        {/* Rich can't be scheduled — no snapshot/edit path for it later */}
-        {richBlockedInSchedule && !editingHistoryId && (
-          <div
-            className="publish-warning-box flex items-start gap-2 px-3 py-2 rounded-lg text-xs"
-            style={{
-              backgroundColor: "var(--warning-subtle)",
-              border: "1px solid color-mix(in srgb, var(--warning) 30%, transparent)",
-              color: "var(--text-secondary)",
-            }}
-          >
-            <AlertCircle size={13} style={{ color: "var(--warning)", flexShrink: 0, marginTop: 1 }} />
-            <span>{t("publish.richNoSchedule")}</span>
-          </div>
-        )}
-
         {/* Edit mode banner */}
         {editingHistoryId && (
           <div style={{
@@ -815,7 +852,7 @@ export function PublishPanel({ draftId }: PublishPanelProps) {
       </div>
       </div>
 
-      {showSchedule && <ScheduleDialog onConfirm={handleSchedule} onClose={() => setShowSchedule(false)} />}
+      {showSchedule && <ScheduleDialog onConfirm={handleScheduleDispatch} onClose={() => setShowSchedule(false)} />}
 
       {showPublishConfirm && (
         <PublishConfirmDialog

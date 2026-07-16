@@ -144,6 +144,7 @@ pub fn run() {
             commands::publish::update_scheduled_post_content,
             commands::publish::publish_rich_post,
             commands::publish::republish_rich_post,
+            commands::publish::schedule_rich_post,
             commands::publish::send_poll,
             commands::templates::get_templates,
             commands::templates::get_template,

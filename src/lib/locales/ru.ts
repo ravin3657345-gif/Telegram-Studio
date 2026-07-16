@@ -119,7 +119,7 @@ export const ru = {
     "editor.templateSaved":    "Шаблон «{name}» сохранён",
     "editor.templateError":    "Не удалось сохранить шаблон",
     "editor.scheduledRichLockedTitle":  "Редактирование недоступно",
-    "editor.scheduledRichLockedDesc":   "Этот пост в Rich-режиме уже запланирован — Telegram не поддерживает отложенное редактирование Rich-сообщений. Отмените планирование, чтобы продолжить редактирование как обычный черновик.",
+    "editor.scheduledRichLockedDesc":   "Этот пост в Rich-режиме уже запланирован — редактирование запланированных Rich-постов не поддерживается. Отмените планирование, чтобы продолжить редактирование как обычный черновик.",
     "editor.scheduledRichLockedCancel": "Отменить планирование",
     "editor.scheduledRichUnlocked":     "Планирование отменено — черновик снова доступен для редактирования",
     "editor.scheduledRichUnlockError":  "Не удалось отменить планирование",
@@ -217,6 +217,11 @@ export const ru = {
     "palette.title":  "Блоки",
     "palette.insert": "Вставить в пост",
     "palette.drag":   "Перетащить в документ",
+    "palette.group.text":        "Текст",
+    "palette.group.lists":       "Списки",
+    "palette.group.media":       "Медиа",
+    "palette.group.blocks":      "Блоки",
+    "palette.group.interactive": "Интерактив",
 
     // ── Slash команды ────────────────────────────────────────────────────────
     "slash.paragraph":         "Абзац",
@@ -307,7 +312,6 @@ export const ru = {
     "publish.formulaOutsideRichLink": "Rich",
     "publish.tooManyRichBlocks":    "Слишком много блоков в одном сообщении (максимум {n} у Telegram) — разделите пост на несколько сообщений (правой кнопкой по блоку → «Разделить сообщение здесь»).",
     "publish.mediaInSchedule":      "Опросы пока нельзя запланировать — уберите опрос или опубликуйте пост сразу.",
-    "publish.richNoSchedule":       "Rich-посты нельзя запланировать — Telegram не поддерживает их отложенное редактирование. Опубликуйте сразу или переключитесь на обычный режим.",
     "publish.defaultTitle":         "Публикация",
 
     // ── Диалог ссылки ────────────────────────────────────────────────────────
@@ -448,6 +452,7 @@ export const ru = {
     "history.deleteIn48h":   "Через 48 часов",
     "history.refresh":       "Обновить",
     "history.edit":          "Редактировать пост",
+    "history.editUnavailableRich": "Редактирование Rich-постов после публикации недоступно",
     "history.schedDelete":   "Отложенное удаление",
     "history.cancelDelete":  "Отменить удаление",
     "history.deleteAt":      "Удаление: {date}",
@@ -573,6 +578,7 @@ export const ru = {
     "block.editingHint":  "Ctrl+B жирный · Ctrl+I курсив · Ctrl+U подчёркивание",
     "block.drag":         "Перетащить блок",
     "block.actions":      "Действия с блоком",
+    "block.replaceImage": "Заменить изображение",
     "code.text":     "Текст",
     "code.language": "Язык",
     "templates.cat.other": "Остальное",

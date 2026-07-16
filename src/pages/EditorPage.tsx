@@ -31,7 +31,7 @@ export function EditorPage() {
   const showPreview = useSettingsStore((s) => s.showTelegramPreview);
   const isMobile = useIsMobileLayout();
 
-  const { draftTitle, postTitle, contentJson, saveStatus, lastSavedAt, draftId: storeDraftId, templateName,
+  const { draftTitle, postTitle, contentJson, saveStatus, saveErrorMessage, lastSavedAt, draftId: storeDraftId, templateName,
           draftStatus, publishMode, setDraftStatus } = useEditorStore();
 
   const effectiveDraftId = draftId ?? storeDraftId ?? undefined;
@@ -49,11 +49,11 @@ export function EditorPage() {
   // at 60% of the column or gets the whole thing to itself.
   const hasTopContent = showPreview || !!editorInstance;
 
-  // Defensive guard: scheduling a Rich post is blocked in PublishPanel (see
-  // richBlockedInSchedule), so this combination shouldn't be reachable going
-  // forward — kept as a fallback in case a scheduled+rich row exists anyway
-  // (e.g. leftover data). Telegram has no editRichMessage and no snapshot/
-  // resync path for a queued Rich post, so editing has to stay blocked.
+  // Editing an already-scheduled Rich draft is blocked entirely — Rich only
+  // supports "compose fresh, then publish or schedule once" (see
+  // PublishPanel.tsx's resync effect, which deliberately has no Rich branch).
+  // The only way forward is to cancel the schedule, which drops the draft
+  // back to a normal editable one.
   const isRichScheduledLocked = !!effectiveDraftId && draftStatus === "scheduled" && publishMode === "rich";
 
   async function handleUnlockScheduledRich() {
@@ -128,7 +128,7 @@ export function EditorPage() {
                 {t("editor.saveAsTemplate")}
               </button>
             )}
-            <SaveStatus status={saveStatus} lastSavedAt={lastSavedAt} />
+            <SaveStatus status={saveStatus} lastSavedAt={lastSavedAt} errorMessage={saveErrorMessage} />
           </div>
         }
       />
@@ -245,9 +245,11 @@ export function EditorPage() {
 function SaveStatus({
   status,
   lastSavedAt,
+  errorMessage,
 }: {
   status: "idle" | "saving" | "saved" | "error";
   lastSavedAt: Date | null;
+  errorMessage: string | null;
 }) {
   if (status === "idle") return null;
 
@@ -262,7 +264,8 @@ function SaveStatus({
     <span
       key={status}
       className="save-status-anim flex items-center gap-1 text-2xs"
-      style={{ color: cfg.color }}
+      style={{ color: cfg.color, cursor: status === "error" && errorMessage ? "help" : undefined }}
+      title={status === "error" && errorMessage ? errorMessage : undefined}
     >
       {cfg.icon}
       {cfg.label}
@@ -275,10 +278,10 @@ function formatTime(date: Date): string {
 }
 
 // ── ScheduledRichLockedPanel ───────────────────────────────────────────────────
-// Shown instead of the editor when a draft is somehow both scheduled and in
-// Rich mode — Telegram has no editRichMessage, so there's no safe way to
-// apply edits to an already-queued Rich post. The only way forward is to
-// cancel the schedule (the draft goes back to a normal editable draft).
+// Shown instead of the editor when a draft is scheduled and in Rich mode —
+// editing an already-scheduled Rich post is blocked entirely (no resync path
+// for it, unlike normal mode). The only way forward is to cancel the
+// schedule (the draft goes back to a normal editable draft).
 
 function ScheduledRichLockedPanel({ onUnlock, unlocking }: { onUnlock: () => void; unlocking: boolean }) {
   return (

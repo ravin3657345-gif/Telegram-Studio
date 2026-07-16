@@ -10,9 +10,9 @@ use std::path::Path;
 
 use crate::db::models::DraftAttachmentPayload;
 
-pub const MAX_ATTACHMENTS: usize = 20;
-pub const MAX_ATTACHMENT_BYTES: usize = 52_428_800; // 50 MB per file
-pub const MAX_TOTAL_BYTES: usize = 209_715_200;     // 200 MB total per post
+pub const MAX_ATTACHMENTS: usize = 60;
+pub const MAX_ATTACHMENT_BYTES: usize = 52_428_800;   // 50 MB per file
+pub const MAX_TOTAL_BYTES: usize = 524_288_000;       // 500 MB total per post
 
 /// Call before acquiring the DB lock — cheap, no I/O.
 pub fn validate(attachments: &[DraftAttachmentPayload]) -> Result<(), String> {
@@ -29,7 +29,7 @@ pub fn validate(attachments: &[DraftAttachmentPayload]) -> Result<(), String> {
         }
         total += approx;
         if total > MAX_TOTAL_BYTES {
-            return Err("Суммарный размер вложений превышает 200 МБ".to_string());
+            return Err("Суммарный размер вложений превышает 500 МБ".to_string());
         }
     }
     Ok(())

@@ -23,6 +23,7 @@ interface HistoryItem {
   publishedAt: string;
   deleteAt: string | null;
   contentPreview: string | null;
+  publishMode: string;
 }
 
 function getDeleteOptions() {
@@ -210,28 +211,44 @@ function HistoryCard({
         )}
       </div>
 
-      {/* Edit button — opens full editor */}
+      {/* Edit button — opens full editor. Rich posts can't be edited at all
+          (no resync/re-snapshot path once sent) — shown disabled with an
+          explanatory tooltip instead of hidden outright, so the restriction
+          is visible rather than silently absent. The hover target has to be
+          a non-disabled wrapper — native <button disabled> doesn't reliably
+          fire mouseenter/mouseleave in Chromium/WebView2 for a tooltip. */}
       {item.status === "published" && item.telegramMsgId && (
-        <button
-          onClick={openInEditor}
-          disabled={loadingEdit}
-          className="flex items-center gap-1 px-2 h-6 rounded flex-shrink-0 text-2xs font-medium"
-          style={{ backgroundColor: "var(--bg-elevated)", color: "var(--text-muted)" }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.color = "var(--accent)";
-            e.currentTarget.style.borderColor = "var(--accent)";
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.color = "var(--text-muted)";
-            e.currentTarget.style.borderColor = "transparent";
-          }}
-          title={t("history.edit")}
-        >
-          {loadingEdit
-            ? <Loader size={11} style={{ animation: "spin 1s linear infinite" }} />
-            : <Pencil size={11} />}
-          {t("history.edit")}
-        </button>
+        item.publishMode === "rich" ? (
+          <span
+            className="flex items-center gap-1 px-2 h-6 rounded flex-shrink-0 text-2xs font-medium"
+            style={{ backgroundColor: "var(--bg-elevated)", color: "var(--text-muted)", opacity: 0.5, cursor: "not-allowed" }}
+            title={t("history.editUnavailableRich")}
+          >
+            <Pencil size={11} />
+            {t("history.edit")}
+          </span>
+        ) : (
+          <button
+            onClick={openInEditor}
+            disabled={loadingEdit}
+            className="flex items-center gap-1 px-2 h-6 rounded flex-shrink-0 text-2xs font-medium"
+            style={{ backgroundColor: "var(--bg-elevated)", color: "var(--text-muted)" }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.color = "var(--accent)";
+              e.currentTarget.style.borderColor = "var(--accent)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.color = "var(--text-muted)";
+              e.currentTarget.style.borderColor = "transparent";
+            }}
+            title={t("history.edit")}
+          >
+            {loadingEdit
+              ? <Loader size={11} style={{ animation: "spin 1s linear infinite" }} />
+              : <Pencil size={11} />}
+            {t("history.edit")}
+          </button>
+        )
       )}
 
       {/* Delete schedule button */}

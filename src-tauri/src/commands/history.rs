@@ -23,6 +23,7 @@ pub struct HistoryItem {
     pub published_at: String,
     pub delete_at: Option<String>,
     pub content_preview: Option<String>,
+    pub publish_mode: String,
 }
 
 pub(crate) fn strip_html_preview(html: &str, max_len: usize) -> Option<String> {
@@ -63,7 +64,8 @@ pub async fn get_history(
                     h.telegram_msg_id, c.telegram_id,
                     h.status, h.error_message, h.published_at, h.delete_at,
                     COALESCE(h.content_json, '') as raw_html,
-                    COALESCE(d.post_title, '') as post_title
+                    COALESCE(d.post_title, '') as post_title,
+                    COALESCE(h.publish_mode, 'normal') as publish_mode
              FROM publication_history h
              LEFT JOIN channels c ON c.id = h.channel_id
              LEFT JOIN drafts d ON d.id = h.draft_id
@@ -89,6 +91,7 @@ pub async fn get_history(
                 published_at:     row.get(8)?,
                 delete_at:        row.get(9)?,
                 content_preview:  preview,
+                publish_mode:     row.get(12)?,
             })
         })
         .map_err(|e| e.to_string())?;

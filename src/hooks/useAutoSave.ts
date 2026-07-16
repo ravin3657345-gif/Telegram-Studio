@@ -5,6 +5,8 @@ import { useSettingsStore } from "@/store/settingsStore";
 import { fileRegistry } from "@/lib/fileRegistry";
 import { upsertDraft } from "@/lib/tauriApi";
 import { collectInlineAttachments } from "@/lib/attachmentRestore";
+import { t } from "@/lib/i18n";
+import { toast } from "@/store/uiStore";
 import type { DraftAttachment } from "@/types/draft";
 
 function extractPlainText(json: string): string {
@@ -26,6 +28,7 @@ function extractPlainText(json: string): string {
 
 export function useAutoSave() {
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastErrorShownRef = useRef<string | null>(null);
 
   // Subscribe only to trigger changes — actual values read from store at fire time
   const contentJson = useEditorStore((s) => s.contentJson);
@@ -43,7 +46,7 @@ export function useAutoSave() {
       const {
         draftId, draftTitle, postTitle: latestPostTitle,
         contentJson: latestContentJson, publishMode,
-        setSaveStatus, setLastSavedAt, setDraftId,
+        setSaveStatus, setSaveErrorMessage, setLastSavedAt, setDraftId,
       } = useEditorStore.getState();
 
       if (!latestContentJson && !latestPostTitle) return;
@@ -85,9 +88,22 @@ export function useAutoSave() {
         });
         if (!draftId) setDraftId(draft.id);
         setSaveStatus("saved");
+        setSaveErrorMessage(null);
         setLastSavedAt(new Date());
-      } catch {
+        lastErrorShownRef.current = null;
+      } catch (e) {
+        // Tauri commands return Result<T, String> — the reject value is
+        // already the human-readable Rust error string (e.g. attachment
+        // count/size limits from attachments::validate), not a stack trace.
+        const msg = e instanceof Error ? e.message : String(e);
         setSaveStatus("error");
+        setSaveErrorMessage(msg);
+        // Autosave retries on every content change, so only toast once per
+        // distinct error instead of spamming on every keystroke-triggered retry.
+        if (lastErrorShownRef.current !== msg) {
+          lastErrorShownRef.current = msg;
+          toast.error(t("editor.saveError"), msg);
+        }
       }
     }, autosaveInterval);
 

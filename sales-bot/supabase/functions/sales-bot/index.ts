@@ -74,8 +74,18 @@ async function setPendingBroadcast(text: string | null) {
   });
 }
 
+// admin_chat_id может содержать несколько ID через запятую (несколько
+// администраторов) — CSV-строка вместо схемы, чтобы не трогать колонку/
+// control-panel (там обычное текстовое поле, спокойно принимает "id1,id2").
+function adminChatIds(config: BotConfig): string[] {
+  return (config.admin_chat_id || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
 function isAdmin(config: BotConfig, chatId: number | string): boolean {
-  return Boolean(config.admin_chat_id) && String(chatId) === String(config.admin_chat_id);
+  return adminChatIds(config).includes(String(chatId));
 }
 
 // ── Лог (public.bot_log) — консоль (видна в Dashboard → Functions → Logs) +
@@ -475,11 +485,12 @@ async function handleSuccessfulPayment(message: SuccessfulPaymentMessage, config
 }
 
 async function notifyAdmin(config: BotConfig, text: string) {
-  if (!config.admin_chat_id) return;
-  try {
-    await api("sendMessage", { chat_id: config.admin_chat_id, text });
-  } catch (err) {
-    await logError("notifyAdmin failed:", err);
+  for (const chatId of adminChatIds(config)) {
+    try {
+      await api("sendMessage", { chat_id: chatId, text });
+    } catch (err) {
+      await logError("notifyAdmin failed:", err);
+    }
   }
 }
 
@@ -559,7 +570,7 @@ async function handleAdminGetBuild(chatId: number, config: BotConfig) {
   await sendInstallerDocument(chatId, config.latest_installer_version, `Тестовая сборка: v${config.latest_installer_version}`);
 }
 
-// Ключ без оплаты — только для admin_chat_id (например, чтобы выдать себе
+// Ключ без оплаты — только для администраторов (например, чтобы выдать себе
 // лицензию на второй компьютер). Сознательно НЕ пишет строку в sales_ledger:
 // это не продажа, а sales_ledger — источник правды для /mykey и статистики.
 // Ключ всё равно попадает в public.licenses и активируется как обычно.
