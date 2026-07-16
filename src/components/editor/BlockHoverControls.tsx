@@ -19,6 +19,14 @@ interface BlockHoverControlsProps {
 
 const DRAG_THRESHOLD = 5;
 const HIDE_DELAY = 350;
+// Caps how tall the drag ghost can render — an image/video (or a multi-image
+// collage) block clones at its full natural height otherwise, which can
+// easily span several hundred px and blot out the exact drop-target area the
+// user is trying to look at while dragging. Cropped, not scaled: shrinking a
+// wide image proportionally would also shrink its width/cursor alignment;
+// clipping keeps the ghost's width (and therefore left/cursor-X alignment)
+// matching the real block.
+const MAX_GHOST_HEIGHT = 120;
 
 const btnStyle: React.CSSProperties = {
   display: "flex",
@@ -43,6 +51,8 @@ function makeGhost(sourceEl: HTMLElement, rect: DOMRect): HTMLDivElement {
     position: fixed;
     left: ${rect.left}px;
     width: ${rect.width}px;
+    max-height: ${MAX_GHOST_HEIGHT}px;
+    overflow: hidden;
     pointer-events: none;
     z-index: 9999;
     opacity: 0.92;
@@ -55,6 +65,25 @@ function makeGhost(sourceEl: HTMLElement, rect: DOMRect): HTMLDivElement {
   clone.contentEditable = "false";
   clone.style.pointerEvents = "none";
   wrap.appendChild(clone);
+
+  // A hard clip (via overflow:hidden above) looks like the content is
+  // abruptly cut off mid-block for anything taller than the cap — a soft
+  // fade at the bottom reads as "there's more below" instead of "this is
+  // broken", and costs nothing when the block is already shorter than the
+  // cap (rect.height <= MAX_GHOST_HEIGHT just leaves empty space it fades
+  // into).
+  if (rect.height > MAX_GHOST_HEIGHT) {
+    const fade = document.createElement("div");
+    fade.style.cssText = `
+      position: absolute;
+      left: 0; right: 0; bottom: 0;
+      height: 32px;
+      background: linear-gradient(to bottom, transparent, var(--bg-surface));
+      pointer-events: none;
+    `;
+    wrap.appendChild(fade);
+  }
+
   document.body.appendChild(wrap);
   return wrap;
 }
@@ -165,7 +194,12 @@ export function BlockHoverControls({ editor, onOpenMenu }: BlockHoverControlsPro
     if (!originEl) return;
 
     const originRect = originEl.getBoundingClientRect();
-    const grabOffsetY = e.clientY - originRect.top;
+    // Clamped to the ghost's own visual cap (see makeGhost/MAX_GHOST_HEIGHT)
+    // — grabbing low on a tall image and using the UNCLAMPED offset would
+    // position the now-shorter ghost far from the cursor instead of under it.
+    // draggedHeight stays the block's real height: it drives the reflow gap
+    // opened elsewhere in this drag, which must match what's actually moving.
+    const grabOffsetY = Math.min(e.clientY - originRect.top, MAX_GHOST_HEIGHT);
     const draggedHeight = originRect.height;
     const draggedNode = view.state.doc.nodeAt(fromPos);
     const endPos = fromPos + (draggedNode?.nodeSize ?? 0);
