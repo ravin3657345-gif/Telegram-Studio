@@ -29,7 +29,9 @@ export function NewPostChooserDialog({ onClose }: Props) {
 
   function handleFromScratch() {
     onClose();
-    navigate("/editor");
+    // _newPost tells PostEditor this is a genuinely blank post, not a return
+    // trip to whatever was already open — see PostEditor's isFreshSession.
+    navigate("/editor", { state: { _newPost: true } });
   }
 
   async function handleUse(tmpl: Template) {

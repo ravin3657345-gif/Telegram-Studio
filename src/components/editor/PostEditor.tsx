@@ -52,6 +52,8 @@ function stripLegacyMessageSplitNodes<T>(node: T): T {
 
 interface HistoryNavState {
   _histId?: string;
+  _newPost?: boolean;
+  _createTemplate?: boolean;
 }
 
 const ALLOWED_IMAGE = ["image/jpeg", "image/png", "image/webp", "image/gif"];
@@ -298,16 +300,25 @@ export function PostEditor({ draftId: initialDraftId, onEditorReady }: PostEdito
   }, [editor, initialDraftId]);
 
   // ── Init & cleanup ─────────────────────────────────────────────────────────
+  // Only reset when the mount actually represents a DIFFERENT thing to edit
+  // (a specific draft/history post by id, an explicit "new post", or "new
+  // template") — plain re-mounts of bare /editor (e.g. clicking the Editor
+  // sidebar tab after visiting Settings) must resume whatever was already in
+  // the store, not wipe it. Resetting unconditionally on every unmount used
+  // to mean navigating away and back always lost the in-progress post,
+  // sometimes even before autosave's debounce had a chance to persist it.
+  const isFreshSession = Boolean(initialDraftId) || Boolean(histState._histId) ||
+    Boolean(histState._newPost) || Boolean(histState._createTemplate);
   useEffect(() => {
+    if (!isFreshSession) return;
+    resetEditor();
+    clearAttachments();
+    fileRegistry.clear();
+    draftLoadedRef.current   = false;
+    historyLoadedRef.current = false;
     setDraftId(initialDraftId ?? null);
-    return () => {
-      resetEditor();
-      clearAttachments();
-      fileRegistry.clear();
-      draftLoadedRef.current    = false;
-      historyLoadedRef.current  = false;
-    };
-  }, [initialDraftId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialDraftId, histState._histId, histState._newPost, histState._createTemplate]);
 
   // ── Auto-save ──────────────────────────────────────────────────────────────
   useAutoSave();
