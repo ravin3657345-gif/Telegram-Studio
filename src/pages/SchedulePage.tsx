@@ -8,6 +8,7 @@ import { getScheduledPosts, cancelScheduledPost, getDrafts, getHistory } from "@
 import { t } from "@/lib/i18n";
 import { useSettingsStore } from "@/store/settingsStore";
 import { useDraftsStore } from "@/store/draftsStore";
+import { useEditorStore } from "@/store/editorStore";
 import type { ScheduledPostInfo } from "@/types/publish";
 import { WEEKDAY_BASE_DATES, buildCalendarGrid, sameDay } from "@/lib/calendarGrid";
 
@@ -58,6 +59,7 @@ export function SchedulePage() {
   const language = useSettingsStore((s) => s.language) ?? "ru";
   const drafts    = useDraftsStore((s) => s.drafts);
   const setDrafts = useDraftsStore((s) => s.setDrafts);
+  const resetEditor = useEditorStore((s) => s.resetEditor);
 
   const today      = new Date();
   const [viewYear, setViewYear]   = useState(today.getFullYear());
@@ -325,7 +327,14 @@ export function SchedulePage() {
                                   onMouseEnter={() => setHoveredId(entry.key)}
                                   onMouseLeave={() => setHoveredId(null)}
                                   onClick={() => {
-                                    if (entry.kind === "published") { navigate("/history"); return; }
+                                    if (entry.kind === "published") {
+                                      // Same pattern HistoryPage's "open in editor" uses —
+                                      // PostEditor fetches the full post via _histId, no
+                                      // separate draft record needed for a published post.
+                                      resetEditor();
+                                      navigate("/editor", { state: { _histId: entry.historyId } });
+                                      return;
+                                    }
                                     if (entry.draftId) navigate(`/editor/${entry.draftId}`);
                                     else navigate("/editor");
                                   }}
