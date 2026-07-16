@@ -45,14 +45,6 @@ pub struct TgPhotoSize {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct TgFile {
-    pub file_id: String,
-    pub file_unique_id: String,
-    pub file_size: Option<i64>,
-    pub file_path: Option<String>,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct TgMessage {
     pub message_id: i64,
     pub chat: TgChat,

@@ -1,5 +1,5 @@
 /// Detect real image format by magic bytes (ignores MIME/extension).
-/// Converts anything non-JPEG/PNG/GIF to JPEG so Telegraph and Telegram accept it.
+/// Converts anything non-JPEG/PNG/GIF to JPEG so the Telegram Bot API accepts it.
 /// Returns (bytes, mime_type, file_name).
 pub fn normalize_image(
     bytes: Vec<u8>,
@@ -8,7 +8,7 @@ pub fn normalize_image(
     let fmt = detect_format(&bytes);
 
     match fmt {
-        // Already supported natively by both Telegraph and Telegram Bot API
+        // Already supported natively by the Telegram Bot API
         ImgFmt::Jpeg => {
             let name = ensure_ext(original_name, "jpg");
             Ok((bytes, "image/jpeg", name))
@@ -62,7 +62,7 @@ fn decode_and_encode_jpeg(bytes: &[u8]) -> Result<Vec<u8>, String> {
     Ok(out.into_inner())
 }
 
-/// Like normalize_image but forces JPEG output for PNG too (Telegraph doesn't accept all PNGs).
+/// Like normalize_image but forces JPEG output for PNG too.
 /// Only GIF stays as GIF to preserve animation.
 pub fn normalize_to_jpeg(
     bytes: Vec<u8>,

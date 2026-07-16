@@ -19,9 +19,4 @@ describe("resolveMessageLimit", () => {
   it("normal mode without media uses the plain text limit", () => {
     expect(resolveMessageLimit("normal", false)).toBe(TELEGRAM_MAX_TEXT_LENGTH);
   });
-
-  it("telegraph mode behaves like normal mode (media -> caption, else text)", () => {
-    expect(resolveMessageLimit("telegraph", true)).toBe(TELEGRAM_MAX_CAPTION_LENGTH);
-    expect(resolveMessageLimit("telegraph", false)).toBe(TELEGRAM_MAX_TEXT_LENGTH);
-  });
 });

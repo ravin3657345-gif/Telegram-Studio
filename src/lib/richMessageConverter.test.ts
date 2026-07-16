@@ -24,12 +24,12 @@ describe("tiptapToRichHtml", () => {
     expect(html).toContain("<h2>T &amp; &lt;script&gt;</h2>");
   });
 
-  it("renders images as attach placeholders and records photos", () => {
+  it("renders images as tg://photo?id= references and records photos", () => {
     const { html, photos } = tiptapToRichHtml(
       doc({ type: "blockImage", attrs: { fileId: "f9", fileName: "p.jpg", mimeType: "image/jpeg" } }),
     );
     expect(photos).toHaveLength(1);
-    expect(html).toContain(`<img src="attach://${photos[0].attachName}"/>`);
+    expect(html).toContain(`<img src="tg://photo?id=${photos[0].attachName}"/>`);
   });
 
   it("renders subscript/superscript/highlight as <sub>/<sup>/<mark> — confirmed supported by the Rich HTML style docs, unlike regular sendMessage", () => {
@@ -48,9 +48,9 @@ describe("tiptapToRichHtml", () => {
     );
     expect(photos).toHaveLength(3);
     expect(html).toBe(
-      `<tg-collage><img src="attach://${photos[0].attachName}"/>` +
-      `<img src="attach://${photos[1].attachName}"/>` +
-      `<video src="attach://${photos[2].attachName}"/></tg-collage>`,
+      `<tg-collage><img src="tg://photo?id=${photos[0].attachName}"/>` +
+      `<img src="tg://photo?id=${photos[1].attachName}"/>` +
+      `<video src="tg://video?id=${photos[2].attachName}"/></tg-collage>`,
     );
   });
 
@@ -62,8 +62,8 @@ describe("tiptapToRichHtml", () => {
       ),
     );
     expect(html).toBe(
-      `<tg-slideshow><img src="attach://${photos[0].attachName}"/>` +
-      `<img src="attach://${photos[1].attachName}"/></tg-slideshow>`,
+      `<tg-slideshow><img src="tg://photo?id=${photos[0].attachName}"/>` +
+      `<img src="tg://photo?id=${photos[1].attachName}"/></tg-slideshow>`,
     );
   });
 

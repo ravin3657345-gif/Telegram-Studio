@@ -2,7 +2,7 @@ use base64::{Engine as _, engine::general_purpose};
 use serde::{Deserialize, Serialize};
 use crate::telegram::{
     client::{TelegramClient, TelegramError},
-    types::{InlineKeyboardMarkup, TgChat, TgFile, TgMessage, TgUser},
+    types::{InlineKeyboardMarkup, TgChat, TgMessage, TgUser},
 };
 
 // ─── Payload structs ─────────────────────────────────────────────────────────
@@ -47,16 +47,6 @@ pub async fn get_chat(
     chat_id: &str,
 ) -> Result<TgChat, TelegramError> {
     client.call("getChat", &GetChatBody { chat_id }).await
-}
-
-/// getFile — resolve a file_id to a temporary downloadable file_path
-pub async fn get_file(
-    client: &TelegramClient,
-    file_id: &str,
-) -> Result<TgFile, TelegramError> {
-    client
-        .call("getFile", &serde_json::json!({ "file_id": file_id }))
-        .await
 }
 
 /// deleteMessage — remove a message the bot posted (best-effort)
@@ -121,56 +111,6 @@ pub async fn edit_message_caption(
             }),
         )
         .await
-}
-
-/// Re-host a local JPEG on Telegram's own CDN and return a public HTTPS URL
-/// suitable as `<img src=...>` inside a rich message, together with the staging
-/// message id (so the caller can delete it AFTER the rich message is sent — the
-/// file must stay alive until Telegram fetches it).
-///
-/// Flow (entirely server-side, the bot token never reaches JS):
-/// 1. sendPhoto (silent) to a staging chat → get the largest photo's file_id
-/// 2. getFile → file_path → build the public api.telegram.org/file URL
-///
-/// When this URL is placed in a rich message, Telegram re-fetches the media
-/// server-side and serves it from its own CDN, so the token URL is not exposed
-/// to recipients.
-pub async fn stage_photo_url(
-    client: &TelegramClient,
-    staging_chat: &str,
-    jpeg_bytes: Vec<u8>,
-) -> Result<(String, i64), TelegramError> {
-    let part = reqwest::multipart::Part::bytes(jpeg_bytes)
-        .file_name("photo.jpg")
-        .mime_str("image/jpeg")
-        .map_err(|e| TelegramError::Network(e.to_string()))?;
-
-    let form = reqwest::multipart::Form::new()
-        .text("chat_id", staging_chat.to_string())
-        .text("disable_notification", "true")
-        .part("photo", part);
-
-    let msg: TgMessage = client.call_multipart("sendPhoto", form).await?;
-
-    let file_id = msg
-        .photo
-        .as_ref()
-        .and_then(|sizes| sizes.last())
-        .map(|s| s.file_id.clone())
-        .ok_or_else(|| TelegramError::Api("sendPhoto не вернул photo".to_string()))?;
-
-    let file = get_file(client, &file_id).await?;
-
-    let path = file
-        .file_path
-        .ok_or_else(|| TelegramError::Api("getFile вернул пустой file_path".to_string()))?;
-
-    let url = format!(
-        "https://api.telegram.org/file/bot{}/{}",
-        client.token(),
-        path
-    );
-    Ok((url, msg.message_id))
 }
 
 /// sendMessage — plain text with optional inline keyboard
@@ -300,35 +240,108 @@ pub async fn send_document(
     client.call_multipart("sendDocument", form).await
 }
 
-/// sendRichMessage — Bot API 10.1.
-/// HTML must contain real public HTTPS URLs for images (Telegraph CDN).
-/// All photo uploading and placeholder replacement happens before this call.
+/// Kind of a `RichMediaPart` — maps directly to `InputMedia*`'s `type` field
+/// (Bot API 10.2's `InputRichMessageMedia.media`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RichMediaKind {
+    Photo,
+    Video,
+    Audio,
+}
+
+impl RichMediaKind {
+    fn api_type(self) -> &'static str {
+        match self {
+            RichMediaKind::Photo => "photo",
+            RichMediaKind::Video => "video",
+            RichMediaKind::Audio => "audio",
+        }
+    }
+}
+
+/// One media attachment for `send_rich_message` — `id` is both the
+/// `tg://{photo,video,audio}?id=` reference used in the HTML and the
+/// multipart form field name the raw bytes are attached under (matching
+/// `attach://{id}` in the generated `InputRichMessageMedia.media.media`).
+#[derive(Debug, Clone)]
+pub struct RichMediaPart {
+    pub id: String,
+    pub kind: RichMediaKind,
+    pub bytes: Vec<u8>,
+    pub mime_type: String,
+    pub file_name: String,
+}
+
+/// sendRichMessage — Bot API 10.2.
+/// Media is attached directly via multipart/form-data (Bot API 10.2's
+/// `InputRichMessageMedia`/`media` field) instead of needing a public URL:
+/// the HTML references each attachment as `tg://photo?id=…`/`tg://video?id=…`/
+/// `tg://audio?id=…`, and `media` maps each such id to an `attach://{id}`
+/// multipart part carrying the actual bytes — the same convention already
+/// used by `send_media_group` below, just wrapped in `rich_message` instead
+/// of a bare `media` array. This replaced an earlier design where photos had
+/// to be uploaded to a public host first (external anonymous hosts, or a
+/// throwaway sendPhoto-then-delete trick) purely because `sendRichMessage`
+/// used to accept only HTTP(S) URLs for media.
 pub async fn send_rich_message(
     client: &TelegramClient,
     chat_id: &str,
     html: &str,
+    media: &[RichMediaPart],
 ) -> Result<TgMessage, TelegramError> {
     if html.is_empty() {
         return Err(TelegramError::Api("Rich message HTML пустой".to_string()));
     }
-    log::debug!("[rich] sending html len={}", html.len());
-    let body = serde_json::json!({
-        "chat_id": chat_id,
-        "rich_message": { "html": html }
-    });
-    client.call("sendRichMessage", &body).await
+    log::debug!("[rich] sending html len={} media={}", html.len(), media.len());
+
+    let media_json: Vec<serde_json::Value> = media
+        .iter()
+        .map(|m| {
+            serde_json::json!({
+                "id": m.id,
+                "media": {
+                    "type": m.kind.api_type(),
+                    "media": format!("attach://{}", m.id),
+                },
+            })
+        })
+        .collect();
+
+    let mut rich_message = serde_json::json!({ "html": html });
+    if !media_json.is_empty() {
+        rich_message["media"] = serde_json::Value::Array(media_json);
+    }
+
+    let form = reqwest::multipart::Form::new()
+        .text("chat_id", chat_id.to_string())
+        .text(
+            "rich_message",
+            serde_json::to_string(&rich_message).map_err(|e| TelegramError::Json(e.to_string()))?,
+        );
+
+    let form = media.iter().try_fold(form, |form, m| {
+        let part = reqwest::multipart::Part::bytes(m.bytes.clone())
+            .file_name(m.file_name.clone())
+            .mime_str(&m.mime_type)
+            .map_err(|e| TelegramError::Network(e.to_string()))?;
+        Ok::<_, TelegramError>(form.part(m.id.clone(), part))
+    })?;
+
+    client.call_multipart("sendRichMessage", form).await
 }
 
-/// Remove a failed-upload `<img src="PLACEHOLDER"/>`/`<video src="PLACEHOLDER"/>`
-/// tag from Rich HTML when the placeholder never got resolved to a real URL —
-/// same self-closing shape whether the tag is standalone or inside a
-/// `<tg-collage>` group (a dedicated content-based `<photo>URL</photo>` form
-/// was tried and confirmed broken: Telegram doesn't recognize it, strips the
-/// tag, and auto-links the bare URL text left behind).
-pub fn remove_img_placeholder(html: &str, placeholder: &str) -> String {
+/// Remove a failed-processing `<img src="tg://photo?id=ID"/>`/
+/// `<video src="tg://video?id=ID"/>`/`<audio src="tg://audio?id=ID"></audio>`
+/// tag from Rich HTML when `id` never made it into the `media` list (e.g. the
+/// image failed to decode/normalize) — same shape whether the tag is
+/// standalone or inside a `<tg-collage>` group (a dedicated content-based
+/// `<photo>URL</photo>` form was tried and confirmed broken: Telegram doesn't
+/// recognize it, strips the tag, and auto-links the bare URL text left behind).
+pub fn remove_img_placeholder(html: &str, id: &str) -> String {
     let candidates = [
-        format!("<img src=\"{placeholder}\"/>"),
-        format!("<video src=\"{placeholder}\"/>"),
+        format!("<img src=\"tg://photo?id={id}\"/>"),
+        format!("<video src=\"tg://video?id={id}\"/>"),
+        format!("<audio src=\"tg://audio?id={id}\"></audio>"),
     ];
     for candidate in &candidates {
         if let Some(pos) = html.find(candidate.as_str()) {

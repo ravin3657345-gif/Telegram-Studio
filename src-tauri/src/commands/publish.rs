@@ -523,12 +523,12 @@ pub async fn publish_rich_post(
         (bots, channels)
     };
 
-    // Photos are uploaded to an external host (catbox.moe) — no Telegram token needed.
+    // Media is attached directly (Bot API 10.2 InputRichMessageMedia) — no
+    // external host involved, see methods::send_rich_message's doc comment.
     use base64::Engine;
     let mut html = payload.rich_html.clone();
+    let mut media_parts: Vec<methods::RichMediaPart> = Vec::new();
     for p in &payload.photos {
-        let placeholder = format!("attach://{}", p.attach_name);
-
         // ~67 MB base64 ≈ 50 MB raw — защита от OOM
         if p.data_base64.len() > 67_000_000 {
             return Err(format!("Файл {} слишком большой (лимит 50 МБ)", p.file_name));
@@ -539,35 +539,45 @@ pub async fn publish_rich_post(
 
         let is_video = p.mime_type.starts_with("video/");
         let is_audio = p.mime_type.starts_with("audio/");
-        let (upload_bytes, upload_mime, upload_name) = if is_video || is_audio {
-            (raw, p.mime_type.clone(), p.file_name.clone())
+        let kind = if is_video {
+            methods::RichMediaKind::Video
+        } else if is_audio {
+            methods::RichMediaKind::Audio
         } else {
-            let (jpeg, _, _) = crate::image_utils::normalize_to_jpeg(raw, &p.file_name)
-                .map_err(|e| format!("normalize: {}", e))?;
-            let jpeg = crate::image_utils::compress_to_limit(jpeg, 5 * 1024 * 1024);
-            (jpeg, "image/jpeg".to_string(), p.file_name.replace(|c: char| !c.is_ascii_alphanumeric() && c != '.', "_") + ".jpg")
+            methods::RichMediaKind::Photo
         };
 
-        match with_retry(|| {
-            let bytes = upload_bytes.clone();
-            let mime  = upload_mime.clone();
-            let name  = upload_name.clone();
-            async move { crate::hosting::upload_file(bytes, &mime, &name).await }
-        }).await {
-            Ok(url) => {
-                log::debug!("[rich] {} → {}", p.attach_name, &url[..url.len().min(60)]);
-                html = html.replace(&placeholder, &url);
+        let processed = if is_video || is_audio {
+            Ok((raw, p.mime_type.clone(), p.file_name.clone()))
+        } else {
+            crate::image_utils::normalize_to_jpeg(raw, &p.file_name).map(|(jpeg, _, _)| {
+                let jpeg = crate::image_utils::compress_to_limit(jpeg, 5 * 1024 * 1024);
+                let name = p.file_name.replace(|c: char| !c.is_ascii_alphanumeric() && c != '.', "_") + ".jpg";
+                (jpeg, "image/jpeg".to_string(), name)
+            })
+        };
+
+        match processed {
+            Ok((bytes, mime, name)) => {
+                media_parts.push(methods::RichMediaPart {
+                    id: p.attach_name.clone(),
+                    kind,
+                    bytes,
+                    mime_type: mime,
+                    file_name: name,
+                });
             }
             Err(e) => {
-                log::warn!("[rich] photo host failed for {}: {}", p.attach_name, e);
-                html = methods::remove_img_placeholder(&html, &placeholder);
+                log::warn!("[rich] media processing failed for {}: {}", p.attach_name, e);
+                html = methods::remove_img_placeholder(&html, &p.attach_name);
             }
         }
     }
 
-    // A group can lose every photo in it (host down for the whole batch)
-    // while other groups/text uploaded fine — an empty <tg-collage>/
-    // <tg-slideshow> makes Telegram reject the whole message, so drop it.
+    // A group can lose every photo in it (rare local decode failure across
+    // the whole batch) while other groups/text are fine — an empty
+    // <tg-collage>/<tg-slideshow> makes Telegram reject the whole message,
+    // so drop it.
     let html = methods::strip_empty_media_groups(html.trim());
     let mut results = Vec::new();
 
@@ -579,14 +589,16 @@ pub async fn publish_rich_post(
             let client = TelegramClient::new(&bot.token);
             let cid   = channel.telegram_id.clone();
             let h     = html.clone();
+            let media = media_parts.clone();
             let result = with_retry(|| {
                 let c  = &client;
                 let id = cid.clone();
                 let h2 = h.clone();
+                let media2 = media.clone();
                 async move {
-                    methods::send_rich_message(c, &id, &h2)
+                    methods::send_rich_message(c, &id, &h2, &media2)
                         .await
-                        .map(|m| m.message_id)
+                        .map(|msg| msg.message_id)
                         .map_err(|e| e.to_string())
                 }
             }).await;
@@ -958,11 +970,11 @@ pub async fn republish_rich_post(
             .ok_or_else(|| "Бот не найден".to_string())?
     };
 
-    // Upload photos and replace placeholders
+    // Media is attached directly (Bot API 10.2 InputRichMessageMedia) — no
+    // external host involved, see methods::send_rich_message's doc comment.
     let mut html = rich_html.clone();
+    let mut media_parts: Vec<methods::RichMediaPart> = Vec::new();
     for p in &photos {
-        let placeholder = format!("attach://{}", p.attach_name);
-
         if p.data_base64.len() > 67_000_000 {
             return Err(format!("Файл {} слишком большой (лимит 50 МБ)", p.file_name));
         }
@@ -972,29 +984,37 @@ pub async fn republish_rich_post(
 
         let is_video = p.mime_type.starts_with("video/");
         let is_audio = p.mime_type.starts_with("audio/");
-        let (upload_bytes, upload_mime, upload_name) = if is_video || is_audio {
-            (raw, p.mime_type.clone(), p.file_name.clone())
+        let kind = if is_video {
+            methods::RichMediaKind::Video
+        } else if is_audio {
+            methods::RichMediaKind::Audio
         } else {
-            let (jpeg, _, _) = crate::image_utils::normalize_to_jpeg(raw, &p.file_name)
-                .map_err(|e| format!("normalize: {}", e))?;
-            let jpeg = crate::image_utils::compress_to_limit(jpeg, 5 * 1024 * 1024);
-            (jpeg, "image/jpeg".to_string(),
-             p.file_name.replace(|c: char| !c.is_ascii_alphanumeric() && c != '.', "_") + ".jpg")
+            methods::RichMediaKind::Photo
         };
 
-        match with_retry(|| {
-            let bytes = upload_bytes.clone();
-            let mime  = upload_mime.clone();
-            let name  = upload_name.clone();
-            async move { crate::hosting::upload_file(bytes, &mime, &name).await }
-        }).await {
-            Ok(url) => {
-                log::debug!("[republish_rich] {} → {}", p.attach_name, &url[..url.len().min(60)]);
-                html = html.replace(&placeholder, &url);
+        let processed = if is_video || is_audio {
+            Ok((raw, p.mime_type.clone(), p.file_name.clone()))
+        } else {
+            crate::image_utils::normalize_to_jpeg(raw, &p.file_name).map(|(jpeg, _, _)| {
+                let jpeg = crate::image_utils::compress_to_limit(jpeg, 5 * 1024 * 1024);
+                let name = p.file_name.replace(|c: char| !c.is_ascii_alphanumeric() && c != '.', "_") + ".jpg";
+                (jpeg, "image/jpeg".to_string(), name)
+            })
+        };
+
+        match processed {
+            Ok((bytes, mime, name)) => {
+                media_parts.push(methods::RichMediaPart {
+                    id: p.attach_name.clone(),
+                    kind,
+                    bytes,
+                    mime_type: mime,
+                    file_name: name,
+                });
             }
             Err(e) => {
-                log::warn!("[republish_rich] photo host failed for {}: {}", p.attach_name, e);
-                html = methods::remove_img_placeholder(&html, &placeholder);
+                log::warn!("[republish_rich] media processing failed for {}: {}", p.attach_name, e);
+                html = methods::remove_img_placeholder(&html, &p.attach_name);
             }
         }
     }
@@ -1003,7 +1023,7 @@ pub async fn republish_rich_post(
     let client = TelegramClient::new(&token);
 
     // Send new rich message
-    let new_msg = methods::send_rich_message(&client, &chat_id, &html)
+    let new_msg = methods::send_rich_message(&client, &chat_id, &html, &media_parts)
         .await
         .map_err(|e| e.to_string())?;
     let new_msg_id = new_msg.message_id;

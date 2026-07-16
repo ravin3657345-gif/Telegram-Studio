@@ -40,7 +40,7 @@ export interface Draft {
   contentText?: string | null;
   parseMode: ParseMode;
   status: DraftStatus;
-  /** "normal" | "rich" | "telegraph" — mode the post was composed in. */
+  /** "normal" | "rich" — mode the post was composed in. */
   publishMode: string;
   templateId?: string | null;
   templateName?: string | null;

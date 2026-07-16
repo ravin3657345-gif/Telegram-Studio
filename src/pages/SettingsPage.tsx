@@ -5,7 +5,6 @@ import { getVersion } from "@tauri-apps/api/app";
 
 import { TopBar } from "@/components/layout/TopBar";
 import { useSettingsStore } from "@/store/settingsStore";
-import { telegraphOpenLogin } from "@/lib/tauriApi";
 import { EmojiPicker } from "@/components/editor/EmojiPicker";
 import { t, setI18nLanguage, type TranslationKey } from "@/lib/i18n";
 import { useIsMobileLayout } from "@/hooks/useIsMobileLayout";
@@ -101,12 +100,7 @@ export function SettingsPage() {
         <div className="flex-1 overflow-y-auto">
           <div className="page-content max-w-2xl space-y-8">
             {activeSection === "appearance" && <AppearanceSection />}
-            {activeSection === "publish" && (
-              <>
-                <PublishSection />
-                <TelegraphSection />
-              </>
-            )}
+            {activeSection === "publish" && <PublishSection />}
             {activeSection === "profile"  && <ProfileStub />}
             {activeSection === "notifications" && <NotificationsStub />}
             <AboutSection />
@@ -479,51 +473,6 @@ function PublishSection() {
       <Field label={t("settings.confirmPublish")}>
         <Toggle checked={confirmBeforePublish} onChange={setConfirmBeforePublish} />
       </Field>
-    </Section>
-  );
-}
-
-// ── Telegraph section ─────────────────────────────────────────────────────────
-
-function TelegraphSection() {
-  const [loading, setLoading] = useState(false);
-  const [status, setStatus]   = useState<string | null>(null);
-
-  const handleLogin = async () => {
-    setLoading(true);
-    setStatus(null);
-    try {
-      await telegraphOpenLogin();
-      setStatus(t("settings.telegraphOpened"));
-    } catch (e) {
-      setStatus(`${t("common.error")}: ${e}`);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <Section title={t("settings.telegraph")}>
-      <Field label={t("settings.telegraphLogin")}>
-        <div className="flex items-center gap-3">
-          {status && (
-            <span className="text-xs" style={{ color: "var(--text-muted)" }}>{status}</span>
-          )}
-          <button
-            onClick={handleLogin}
-            disabled={loading}
-            className="h-8 px-3 rounded-md text-sm font-medium transition-colors disabled:opacity-50"
-            style={{ backgroundColor: "var(--accent)", color: "#fff" }}
-          >
-            {loading ? t("settings.telegraphLoading") : t("settings.telegraphConnect")}
-          </button>
-        </div>
-      </Field>
-      <div className="px-4 py-2">
-        <p className="text-xs" style={{ color: "var(--text-muted)" }}>
-          {t("settings.telegraphNote")}
-        </p>
-      </div>
     </Section>
   );
 }

@@ -32,7 +32,7 @@ function AnchorPointView() {
 
 // Invisible marker (`<a name="top"></a>` in Rich HTML output) that a
 // "⬆ Наверх" link elsewhere in the post can jump back to. Only meaningful in
-// Rich publish mode — Telegram's regular/Telegraph HTML don't support it.
+// Rich publish mode — Telegram's regular HTML doesn't support it.
 export const BlockAnchor = Node.create({
   name: "anchorPoint",
   group: "block",

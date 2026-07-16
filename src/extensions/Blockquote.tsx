@@ -28,7 +28,7 @@ import { useEditorStore } from "@/store/editorStore";
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function BlockquoteView({ node, updateAttributes }: any) {
   const expandable: boolean = node.attrs.expandable ?? false;
-  // Neither Rich messages nor Telegraph articles support expandable quotes — only normal mode does.
+  // Rich messages don't support expandable quotes — only normal mode does.
   const canToggleExpandable = useEditorStore((s) => s.publishMode) === "normal";
 
   return (

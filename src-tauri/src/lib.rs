@@ -3,12 +3,10 @@ pub mod commands;
 pub mod crypto;
 pub mod db;
 pub mod fs;
-pub mod hosting;
 pub mod image_utils;
 pub mod rate_limit;
 pub mod scheduler;
 pub mod telegram;
-pub mod telegraph;
 
 use db::AppState;
 use rate_limit::RateLimiter;
@@ -62,8 +60,6 @@ pub fn run() {
                 db: std::sync::Mutex::new(conn),
                 app_dir,
             });
-
-            app.manage(commands::telegraph::TelegraphWebviewState::default());
 
             // Rate limiter: max 5 bot token validations per 60 seconds
             app.manage(RateLimiter::new(5, 60));
@@ -149,9 +145,6 @@ pub fn run() {
             commands::publish::publish_rich_post,
             commands::publish::republish_rich_post,
             commands::publish::send_poll,
-            commands::telegraph::telegraph_publish,
-            commands::telegraph::telegraph_webview_result,
-            commands::telegraph::telegraph_open_login,
             commands::templates::get_templates,
             commands::templates::get_template,
             commands::templates::save_template,

@@ -174,8 +174,8 @@ function applyMarks(text: string, marks: TiptapMark[]): string {
       // <mark> (confirmed against the official "Formatting options" section,
       // which lists the tags supported here and doesn't include them; sending
       // an unsupported tag makes Telegram reject the whole message). Drop the
-      // mark and keep the plain text, same graceful-degradation the
-      // Telegraph converter already does for marks it can't represent.
+      // mark and keep the plain text — graceful degradation for marks this
+      // mode can't represent.
       case "link": {
         const href = mark.attrs?.href as string | undefined;
         if (href && /^https?:\/\//i.test(href)) {

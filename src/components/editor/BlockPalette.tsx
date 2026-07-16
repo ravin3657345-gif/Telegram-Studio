@@ -26,7 +26,7 @@ interface BlockPaletteProps {
 // item (toggle-based like headings/quotes, or insertContent-based like
 // polls/FAQ) behaves the same way here as it does from the "/" menu.
 function insertBlockAt(editor: Editor, pos: number, item: SlashItem) {
-  // Blocked items (audio/table in non-Rich mode, poll in Rich/Telegraph) only
+  // Blocked items (audio/table in non-Rich mode, poll in Rich mode) only
   // show a warning toast and insert nothing — run the command as-is, WITHOUT
   // the placeholder paragraph below, so a blocked drop never leaves a blank
   // line behind with nothing to show for it.

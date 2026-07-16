@@ -54,7 +54,7 @@ function segmentChars(
   return { above, below };
 }
 
-function getLimit(editor: Editor, publishMode: "normal" | "rich" | "telegraph"): number {
+function getLimit(editor: Editor, publishMode: "normal" | "rich"): number {
   let hasMedia = false;
   editor.state.doc.forEach((n) => {
     if (n.type.name === "blockImage" || n.type.name === "blockVideo") hasMedia = true;

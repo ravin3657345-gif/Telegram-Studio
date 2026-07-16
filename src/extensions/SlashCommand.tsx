@@ -173,11 +173,11 @@ export function getSlashItems(): SlashItem[] {
       previewType: "poll",
       isBlocked: () => {
         const mode = useEditorStore.getState().publishMode;
-        return mode === "rich" || mode === "telegraph";
+        return mode === "rich";
       },
       command: (e) => {
         const mode = useEditorStore.getState().publishMode;
-        if (mode === "rich" || mode === "telegraph") {
+        if (mode === "rich") {
           useUiStore.getState().toast("warning", t("slash.pollWarning"), t("slash.pollHint"));
           return;
         }

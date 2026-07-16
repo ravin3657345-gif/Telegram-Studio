@@ -11,7 +11,7 @@ import {
 
 export type SaveStatus    = "idle" | "saving" | "saved" | "error";
 export type MediaType     = "image" | "video" | "gif" | "file";
-export type PublishMode   = "normal" | "rich" | "telegraph";
+export type PublishMode   = "normal" | "rich";
 
 export interface MediaItem {
   id: string;

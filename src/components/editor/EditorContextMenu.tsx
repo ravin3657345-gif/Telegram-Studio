@@ -56,7 +56,7 @@ function insertVideoAt(editor: Editor, pos: number) {
 
 function insertPollAt(editor: Editor, pos: number) {
   const mode = useEditorStore.getState().publishMode;
-  if (mode === "rich" || mode === "telegraph") {
+  if (mode === "rich") {
     useUiStore.getState().toast("warning", t("context.pollWarning"), t("context.pollHint"));
     return;
   }

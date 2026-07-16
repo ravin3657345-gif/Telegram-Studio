@@ -4,10 +4,10 @@ import { X, Music } from "lucide-react";
 import { fileRegistry } from "@/lib/fileRegistry";
 
 // Rich Messages only (Bot API 10.1's RichBlockAudio/RichBlockVoiceNote, both
-// the HTML tag <audio> — see richMessageConverter.ts). Normal/Telegraph modes
-// have no equivalent "real playable audio" concept (attach as a generic file
-// there instead), so this block converts to nothing outside Rich mode — see
-// htmlConverter.ts / telegraphConverter.ts.
+// the HTML tag <audio> — see richMessageConverter.ts). Normal mode has no
+// equivalent "real playable audio" concept (attach as a generic file there
+// instead), so this block converts to nothing outside Rich mode — see
+// htmlConverter.ts.
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function AudioNodeView({ node, deleteNode, selected }: any) {

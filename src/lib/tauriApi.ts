@@ -95,26 +95,6 @@ export const updateScheduledPostContent = (payload: UpdateScheduledContentPayloa
 export const getTodayStats = (): Promise<TodayStats> =>
   invoke("get_today_stats");
 
-// ── Telegraph ─────────────────────────────────────────────────────────────────
-
-export interface TelegraphImagePayload {
-  fileId: string;
-  dataBase64: string;
-  mimeType: string;
-  fileName: string;
-}
-
-export interface TelegraphPublishPayload {
-  title: string;
-  nodesJson: string;
-  images: TelegraphImagePayload[];
-}
-
-export interface TelegraphPublishResult {
-  url: string;
-  path: string;
-}
-
 // ── Rich message (Bot API 10.1) ───────────────────────────────────────────────
 
 export interface RichPhotoPayload {
@@ -146,14 +126,6 @@ export interface PollPayload {
 
 export const sendPoll = (payload: PollPayload): Promise<PublishResult[]> =>
   invoke("send_poll", { payload });
-
-export const telegraphPublish = (
-  payload: TelegraphPublishPayload
-): Promise<TelegraphPublishResult> =>
-  invoke("telegraph_publish", { payload });
-
-export const telegraphOpenLogin = (): Promise<void> =>
-  invoke("telegraph_open_login");
 
 // ── История публикаций ────────────────────────────────────────────────────────
 

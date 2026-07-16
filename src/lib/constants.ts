@@ -25,7 +25,7 @@ export const CHAR_COUNTER_DANGER_THRESHOLD  = 3900;
 // shorter 1024-char caption. Mode must be checked before hasMedia, or a Rich
 // post with any image/video block would wrongly inherit the caption limit.
 export function resolveMessageLimit(
-  mode: "normal" | "rich" | "telegraph",
+  mode: "normal" | "rich",
   hasMedia: boolean,
 ): number {
   if (mode === "rich") return TELEGRAM_MAX_RICH_LENGTH;

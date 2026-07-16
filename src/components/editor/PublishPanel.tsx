@@ -1,16 +1,15 @@
 import { useEffect, useState } from "react";
-import { Send, Clock, CheckCircle2, AlertCircle, Loader2, ExternalLink, FileText, Layers, Pencil } from "lucide-react";
+import { Send, Clock, CheckCircle2, AlertCircle, Loader2, Layers, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { ScheduleDialog } from "@/components/editor/ScheduleDialog";
 import { PublishConfirmDialog } from "@/components/editor/PublishConfirmDialog";
 import { useChannelsStore } from "@/store/channelsStore";
 import { usePublishStore } from "@/store/publishStore";
 import { useEditorStore } from "@/store/editorStore";
-import { publishPost, schedulePost, telegraphPublish, publishRichPost, republishRichPost, sendPoll, editPublishedPost, upsertDraft, updateScheduledPostContent } from "@/lib/tauriApi";
+import { publishPost, schedulePost, publishRichPost, republishRichPost, sendPoll, editPublishedPost, upsertDraft, updateScheduledPostContent } from "@/lib/tauriApi";
 import { segmentDocument, splitIntoMessagesAtGaps, splitJsonAtGaps } from "@/lib/htmlConverter";
 import { TELEGRAM_MAX_RICH_BLOCKS } from "@/lib/constants";
 import type { TextSegment, PollSegment } from "@/lib/htmlConverter";
-import { tiptapToTelegraphNodes } from "@/lib/telegraphConverter";
 import { tiptapToRichHtml } from "@/lib/richMessageConverter";
 import { fileRegistry } from "@/lib/fileRegistry";
 import { collectInlineAttachments } from "@/lib/attachmentRestore";
@@ -37,7 +36,6 @@ export function PublishPanel({ draftId }: PublishPanelProps) {
 
   const [showSchedule, setShowSchedule] = useState(false);
   const [showPublishConfirm, setShowPublishConfirm] = useState(false);
-  const [telegraphUrl, setTelegraphUrl] = useState<string | null>(null);
 
   const splitGaps      = useEditorStore((s) => s.splitGaps);
   const effectiveTitle = includeTitle ? postTitle : "";
@@ -49,10 +47,10 @@ export function PublishPanel({ draftId }: PublishPanelProps) {
   const segments = messages.flat();
   const hasAttachments = attachedFiles.length > 0;
   // Tables are Rich Messages only (Bot API 10.1's RichBlockTable) — normal
-  // HTML and Telegraph articles have no table concept at all, and the
-  // segments above (built from the normal-mode converter) never see one, so
-  // a Rich post consisting of nothing but a table would otherwise register
-  // as "no content" and get its publish button disabled outright.
+  // HTML has no table concept at all, and the segments above (built from
+  // the normal-mode converter) never see one, so a Rich post consisting of
+  // nothing but a table would otherwise register as "no content" and get
+  // its publish button disabled outright.
   const hasTable = (contentJson ?? "").includes('"type":"blockTable"');
   // Same reasoning as hasTable — audio is also Rich-only (Bot API 10.1's
   // <audio> tag), invisible to the normal-mode segments below.
@@ -83,15 +81,6 @@ export function PublishPanel({ draftId }: PublishPanelProps) {
   );
   const hasFiles = hasAttachments || segments.some((s) => s.type === "file");
   const fileBlockedInRich = publishMode === "rich" && hasFiles;
-  // Telegraph articles embed inline images directly (tiptapToTelegraphNodes
-  // uploads them), but bottom-panel attachments (documents) have no place in an
-  // article and would otherwise be silently discarded on publish.
-  const fileBlockedInTelegraph = publishMode === "telegraph" && hasAttachments;
-  // Telegraph does NOT support video at all — telegraphConverter.ts's
-  // blockVideo case is a deliberate no-op (`return []`), so without this
-  // check a video would silently vanish from the published article with no
-  // warning anywhere.
-  const videoBlockedInTelegraph = publishMode === "telegraph" && segments.some((s) => s.type === "video");
   const tableBlockedOutsideRich = publishMode !== "rich" && hasTable;
   const audioBlockedOutsideRich = publishMode !== "rich" && hasAudio;
   const mapBlockedOutsideRich = publishMode !== "rich" && hasMap;
@@ -106,7 +95,7 @@ export function PublishPanel({ draftId }: PublishPanelProps) {
 
   const canPublish =
     hasBots && selectedChannelIds.length > 0 && hasContent &&
-    !fileBlockedInRich && !fileBlockedInTelegraph && !videoBlockedInTelegraph &&
+    !fileBlockedInRich &&
     !tableBlockedOutsideRich && !audioBlockedOutsideRich &&
     !mapBlockedOutsideRich && !formulaBlockedOutsideRich && !richBlockLimitExceeded &&
     status !== "publishing" && status !== "scheduling";
@@ -323,65 +312,6 @@ export function PublishPanel({ draftId }: PublishPanelProps) {
     return allResults;
   }
 
-  // ── Telegraph publish ───────────────────────────────────────────────────────
-
-  async function publishViaTelegraph(): Promise<PublishResult[]> {
-    const { nodes, fileIds } = tiptapToTelegraphNodes(
-      contentJson || '{"type":"doc","content":[]}',
-      effectiveTitle
-    );
-
-    const images = await Promise.all(
-      fileIds.map(async (fileId) => {
-        const file = fileRegistry.getFile(fileId);
-        if (!file) return null;
-        const { base64: dataBase64, mimeType, fileName } = await normalizeImageToJpeg(file);
-        return { fileId, dataBase64, mimeType, fileName };
-      })
-    );
-
-    const tgResult = await telegraphPublish({
-      title: effectiveTitle.trim() || t("publish.defaultTitle"),
-      nodesJson: JSON.stringify(nodes),
-      images: images.filter((i): i is NonNullable<typeof i> => i !== null),
-    });
-
-    setTelegraphUrl(tgResult.url);
-
-    const allResults: PublishResult[] = [];
-    for (const channelId of selectedChannelIds) {
-      const channel = channels.find((c) => c.id === channelId);
-      try {
-        const res = await publishPost({
-          botId: null,
-          channelIds: [channelId],
-          contentHtml: tgResult.url,
-          media: [],
-          buttons: [],
-          draftId: draftId ?? null,
-          scheduleAt: null,
-        });
-        allResults.push({
-          channelId,
-          channelTitle: channel?.title ?? channelId,
-          success: res[0]?.success ?? false,
-          telegramMsgId: res[0]?.telegramMsgId ?? null,
-          errorMessage: res[0]?.errorMessage ?? null,
-        });
-      } catch (e) {
-        allResults.push({
-          channelId,
-          channelTitle: channel?.title ?? channelId,
-          success: false,
-          telegramMsgId: null,
-          errorMessage: String(e),
-        });
-      }
-    }
-
-    return allResults;
-  }
-
   // ── Edit published post handler ──────────────────────────────────────────────
 
   const [updating, setUpdating] = useState(false);
@@ -437,12 +367,10 @@ export function PublishPanel({ draftId }: PublishPanelProps) {
   async function handlePublish() {
     if (!canPublish) return;
     reset();
-    setTelegraphUrl(null);
     setStatus("publishing");
     try {
       let res: PublishResult[];
       if (publishMode === "rich") res = await publishViaRichMessage();
-      else if (publishMode === "telegraph") res = await publishViaTelegraph();
       else res = await publishAllSegments();
       setResults(res);
       setStatus("done");
@@ -598,9 +526,8 @@ export function PublishPanel({ draftId }: PublishPanelProps) {
             <p className="text-2xs mb-1.5" style={{ color: "var(--text-muted)" }}>{t("publish.format")}</p>
             <div className="flex flex-col gap-1">
               {([
-                { id: "normal",    icon: <Send size={11}/>,     label: t("publish.normal"),     hint: normalHint },
-                { id: "rich",      icon: <Layers size={11}/>,   label: t("publish.rich"),        hint: t("publish.rich.hint") },
-                { id: "telegraph", icon: <FileText size={11}/>, label: t("publish.telegraph"),   hint: t("publish.telegraph.hint") },
+                { id: "normal", icon: <Send size={11}/>,   label: t("publish.normal"), hint: normalHint },
+                { id: "rich",   icon: <Layers size={11}/>, label: t("publish.rich"),   hint: t("publish.rich.hint") },
               ] as const).map(({ id, icon, label, hint }) => (
                 <label
                   key={id}
@@ -630,24 +557,10 @@ export function PublishPanel({ draftId }: PublishPanelProps) {
           <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-md" style={{ background: "color-mix(in srgb, var(--accent) 6%, transparent)", border: "1px solid color-mix(in srgb, var(--accent) 20%, transparent)" }}>
             {publishMode === "rich" ? <Layers size={11} style={{ color: "var(--accent)" }}/> : <Send size={11} style={{ color: "var(--accent)" }}/>}
             <span className="text-xs" style={{ color: "var(--accent)" }}>
-              {publishMode === "rich" ? t("publish.rich") : publishMode === "telegraph" ? t("publish.telegraph") : t("publish.normal")}
+              {publishMode === "rich" ? t("publish.rich") : t("publish.normal")}
             </span>
             <span className="text-2xs" style={{ color: "var(--text-muted)" }}>— {t("publish.modeLocked")}</span>
           </div>
-        )}
-
-        {/* Telegraph URL after publish */}
-        {telegraphUrl && (
-          <a
-            href={telegraphUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="flex items-center gap-1.5 text-2xs px-2 py-1.5 rounded-md"
-            style={{ color: "var(--accent)", backgroundColor: "color-mix(in srgb, var(--accent) 8%, transparent)", textDecoration: "none" }}
-          >
-            <ExternalLink size={10} />
-            <span className="truncate">{telegraphUrl}</span>
-          </a>
         )}
 
         {/* Results */}
@@ -713,45 +626,6 @@ export function PublishPanel({ draftId }: PublishPanelProps) {
           >
             <AlertCircle size={13} style={{ color: "var(--warning)", flexShrink: 0, marginTop: 1 }} />
             <span>{ti("publish.tooManyRichBlocks", { n: TELEGRAM_MAX_RICH_BLOCKS })}</span>
-          </div>
-        )}
-
-        {/* File warning in Telegraph mode — attached documents have no place in an article */}
-        {fileBlockedInTelegraph && (
-          <div
-            className="publish-warning-box flex items-start gap-2 px-3 py-2 rounded-lg text-xs"
-            style={{
-              backgroundColor: "var(--warning-subtle)",
-              border: "1px solid color-mix(in srgb, var(--warning) 30%, transparent)",
-              color: "var(--text-secondary)",
-            }}
-          >
-            <AlertCircle size={13} style={{ color: "var(--warning)", flexShrink: 0, marginTop: 1 }} />
-            <span>{t("publish.fileInTelegraph")}</span>
-          </div>
-        )}
-
-        {/* Video warning in Telegraph mode — telegraphConverter.ts silently drops video entirely */}
-        {videoBlockedInTelegraph && (
-          <div
-            className="publish-warning-box flex items-start gap-2 px-3 py-2 rounded-lg text-xs"
-            style={{
-              backgroundColor: "var(--warning-subtle)",
-              border: "1px solid color-mix(in srgb, var(--warning) 30%, transparent)",
-              color: "var(--text-secondary)",
-            }}
-          >
-            <AlertCircle size={13} style={{ color: "var(--warning)", flexShrink: 0, marginTop: 1 }} />
-            <span>
-              {t("publish.videoOutsideTelegraph")}&nbsp;
-              <button
-                style={{ color: "var(--accent)", textDecoration: "underline", background: "none", border: "none", cursor: "pointer", padding: 0, font: "inherit" }}
-                onClick={() => setPublishMode("normal")}
-              >
-                {t("publish.fileInRichLink")}
-              </button>
-              .
-            </span>
           </div>
         )}
 
@@ -852,7 +726,7 @@ export function PublishPanel({ draftId }: PublishPanelProps) {
         )}
 
         {/* Media/poll warning for scheduled posts — scheduler only carries text */}
-        {mediaBlockedInSchedule && !fileBlockedInRich && !fileBlockedInTelegraph && (
+        {mediaBlockedInSchedule && !fileBlockedInRich && (
           <div
             className="publish-warning-box flex items-start gap-2 px-3 py-2 rounded-lg text-xs"
             style={{
@@ -927,9 +801,7 @@ export function PublishPanel({ draftId }: PublishPanelProps) {
               leftIcon={status === "publishing" ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
               onClick={() => setShowPublishConfirm(true)}
             >
-              {status === "publishing"
-                ? (publishMode === "telegraph" ? t("publish.publishingTelegraph") : t("publish.publishing"))
-                : t("publish.button")}
+              {status === "publishing" ? t("publish.publishing") : t("publish.button")}
             </Button>
 
             <Button variant="ghost" size="sm" fullWidth disabled={!canSchedule}

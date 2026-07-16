@@ -3,7 +3,7 @@ use crate::db::{models::AppSettings, queries::settings as settings_q, AppState};
 const ALLOWED_SETTING_KEYS: &[&str] = &[
     "theme", "language", "autosave_interval", "default_parse_mode",
     "default_bot_id", "default_channel_id", "show_char_counter",
-    "confirm_before_publish", "telegraph_access_token",
+    "confirm_before_publish",
     "accent_color", "large_font_editor", "show_telegram_preview",
 ];
 

@@ -26,9 +26,14 @@ export interface RichPhotoItem {
   fileId: string;
 }
 
-// Renders one blockImage/blockVideo node as an attach:// placeholder tag and
-// records it in `photos` for upload — shared by lone media and <tg-collage> runs.
-// Confirmed by live test: <photo>URL</photo>/<video>URL</video> (content-based,
+// Renders one blockImage/blockVideo node as a tg://photo?id=/tg://video?id=
+// reference and records it in `photos` for attachment — shared by lone media
+// and <tg-collage> runs. Bot API 10.2's InputRichMessageMedia lets media be
+// specified this way instead of a public HTTP(S) URL: `attachName` doubles as
+// both the tg://…?id= value and the multipart form field name the raw bytes
+// get attached under (see publishViaRichMessage in PublishPanel.tsx and
+// send_rich_message in src-tauri/src/telegram/methods.rs). Confirmed by an
+// earlier live test: <photo>URL</photo>/<video>URL</video> (content-based,
 // per docs) is NOT recognized — Telegram strips the tag and keeps the bare URL
 // text, which then auto-links instead of rendering as media. Always use the
 // self-closing <img src="..."/>/<video src="..."/> form that's confirmed to
@@ -48,8 +53,8 @@ function renderRichMediaTag(
     fileName: (node.attrs?.fileName as string) ?? (isVideo ? "video.mp4" : "image.jpg"),
     fileId:   (node.attrs?.fileId   as string) ?? "",
   });
-  const placeholder = `attach://${attachName}`;
-  return isVideo ? `<video src="${placeholder}"/>` : `<img src="${placeholder}"/>`;
+  const ref = `tg://${isVideo ? "video" : "photo"}?id=${attachName}`;
+  return isVideo ? `<video src="${ref}"/>` : `<img src="${ref}"/>`;
 }
 
 // Converts a list of sibling TipTap block nodes to concatenated Rich HTML.
@@ -176,7 +181,7 @@ function convertSingleNode(
       return rows ? `<table bordered>${rows}</table>` : "";
     }
     case "blockAudio": {
-      // Same attach:// placeholder + upload-queue mechanism as blockImage/
+      // Same tg://audio?id= reference + attachment mechanism as blockImage/
       // blockVideo (renderRichMediaTag) — kept separate since audio is never
       // grouped into a <tg-collage>/<tg-slideshow> the way photos/videos are.
       const attachName = `aud_${counter.n++}`;
@@ -187,7 +192,7 @@ function convertSingleNode(
         fileName: (node.attrs?.fileName as string) ?? "audio.mp3",
         fileId:   (node.attrs?.fileId   as string) ?? "",
       });
-      return `<audio src="attach://${attachName}"></audio>`;
+      return `<audio src="tg://audio?id=${attachName}"></audio>`;
     }
     case "blockMap": {
       // <tg-map lat long zoom> — undocumented, confirmed by a live send

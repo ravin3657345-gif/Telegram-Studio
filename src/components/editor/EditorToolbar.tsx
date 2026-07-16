@@ -17,8 +17,8 @@ import { ANCHOR_TOP_NAME } from "@/extensions/BlockAnchor";
 // Inserts (once) an invisible anchor marker at the very start of the post,
 // then drops a jump-back link at the current cursor position — text is
 // whatever the user set in Settings (settings.anchorLinkText), defaulting to
-// the translated "👆 Лифт". Rich-message-only — Telegram's regular/Telegraph
-// HTML don't support in-document anchors (Bot API 10.1, June 2026).
+// the translated "👆 Лифт". Rich-message-only — Telegram's regular HTML
+// doesn't support in-document anchors (Bot API 10.1, June 2026).
 function insertJumpToTopLink(editor: Editor, linkText: string) {
   const { state, view } = editor;
   const { schema } = state;
@@ -156,7 +156,7 @@ export function EditorToolbar({
         disabled={!editor.can().toggleCode()}
       />
       <ToolbarButton
-        title={withHint(t("toolbar.spoiler"), publishMode === "telegraph" ? t("toolbar.spoilerUnavailTelegraph") : null)}
+        title={t("toolbar.spoiler")}
         icon={EyeOff}
         isActive={editor.isActive("spoiler")} onClick={() => editor.chain().focus().toggleSpoiler().run()}
         disabled={!editor.can().toggleMark("spoiler")}
@@ -186,8 +186,8 @@ export function EditorToolbar({
       {editor.isActive("blockquote") && (
         <ToolbarButton
           title={
-            // Neither Telegraph articles nor Rich messages support the `expandable`
-            // attribute — only the normal publish mode does.
+            // Rich messages don't support the `expandable` attribute —
+            // only the normal publish mode does.
             publishMode !== "normal"
               ? t("toolbar.collapsibleUnavail")
               : editor.getAttributes("blockquote").expandable
@@ -255,23 +255,7 @@ export function EditorToolbar({
       <ToolbarSeparator />
 
       <ToolbarButton title={t("toolbar.image")} icon={Image} isActive={false} onClick={() => onMediaClick("image")} />
-      <ToolbarButton
-        title={
-          publishMode === "telegraph"
-            ? `${t("toolbar.video")} — ${t("toolbar.videoWarning")}`
-            : t("toolbar.video")
-        }
-        icon={Film}
-        isActive={false}
-        disabled={publishMode === "telegraph"}
-        onClick={() => {
-          if (publishMode === "telegraph") {
-            toast("warning", t("toolbar.videoWarning"), t("toolbar.videoHint"));
-            return;
-          }
-          onMediaClick("video");
-        }}
-      />
+      <ToolbarButton title={t("toolbar.video")} icon={Film} isActive={false} onClick={() => onMediaClick("video")} />
       <ToolbarButton
         title={
           publishMode !== "normal"

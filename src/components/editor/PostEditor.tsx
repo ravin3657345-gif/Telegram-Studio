@@ -181,8 +181,8 @@ export function PostEditor({ draftId: initialDraftId, onEditorReady }: PostEdito
     return atPos + (editor.state.doc.content.size - sizeBefore);
   }, [editor, publishMode]);
 
-  // Neither Rich nor Telegraph support expandable (collapsible) quotes — force any
-  // already-expandable blockquotes back to normal the moment either is selected,
+  // Rich doesn't support expandable (collapsible) quotes — force any
+  // already-expandable blockquotes back to normal the moment it's selected,
   // so stale data from a mode switch can't silently break on publish.
   useEffect(() => {
     if (!editor || publishMode === "normal") return;
@@ -211,7 +211,7 @@ export function PostEditor({ draftId: initialDraftId, onEditorReady }: PostEdito
 
     getHistoryForEdit(histState._histId).then((data) => {
       setEditingHistoryId(data.historyId);
-      if (data.publishMode) setPublishMode(data.publishMode as "normal" | "rich" | "telegraph");
+      if (data.publishMode) setPublishMode(data.publishMode as "normal" | "rich");
       if (data.postTitle) setPostTitle(data.postTitle);
 
       // Restore each file into fileRegistry → get fresh blob URLs
@@ -282,7 +282,7 @@ export function PostEditor({ draftId: initialDraftId, onEditorReady }: PostEdito
       setPostTitle(draft.postTitle ?? "");
       if (draft.title) setDraftTitle(draft.title);
       setTemplateName(draft.templateName ?? null);
-      if (draft.publishMode) setPublishMode(draft.publishMode as "normal" | "rich" | "telegraph");
+      if (draft.publishMode) setPublishMode(draft.publishMode as "normal" | "rich");
       setDraftStatus(draft.status);
 
       // Восстанавливаем вложения в fileRegistry и патчим blob-URL в contentJson

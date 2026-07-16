@@ -15,9 +15,8 @@ interface PublishConfirmDialogProps {
 
 function modeLabel(mode: PublishMode) {
   switch (mode) {
-    case "rich":      return t("publish.rich");
-    case "telegraph": return t("publish.telegraph");
-    default:          return t("publish.normal");
+    case "rich": return t("publish.rich");
+    default:     return t("publish.normal");
   }
 }
 

@@ -10,8 +10,8 @@ import { TableSizePicker } from "@/components/editor/TableSizePicker";
 import { t } from "@/lib/i18n";
 
 // Rich Messages only (Bot API 10.1's RichBlockTable/RichBlockTableCell) —
-// normal/Telegraph publish modes have no table concept at all and drop this
-// block on convert (see htmlConverter.ts / telegraphConverter.ts).
+// normal publish mode has no table concept at all and drops this block on
+// convert (see htmlConverter.ts).
 
 function cellContentAt(table: PMNode | undefined, r: number, c: number) {
   if (!table || r >= table.childCount) return undefined;
