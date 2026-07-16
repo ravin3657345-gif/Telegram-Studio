@@ -563,7 +563,6 @@ export const en = {
     "block.formulaPlaceholder": "LaTeX expression, e.g. \\frac{a}{b}",
     "block.formulaError":     "Error",
     "block.editingHint":  "Ctrl+B bold · Ctrl+I italic · Ctrl+U underline",
-    "block.addBelow":     "Add block below",
     "block.drag":         "Drag block",
     "block.actions":      "Block actions",
     "code.text":     "Text",

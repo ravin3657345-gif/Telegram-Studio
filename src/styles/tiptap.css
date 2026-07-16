@@ -14,6 +14,14 @@
   background: var(--text-muted);
 }
 
+/* ─── Block drag-reflow gap (BlockHoverControls / BlockPalette) ──────────────────
+   Applied only while a block-reorder/insert drag is in progress, so opening/
+   closing the reflow gap reads as blocks visibly sliding apart instead of an
+   instant snap — see setGapBefore/clearGapTransitions in blockGeometry.ts. */
+.tstudio-drag-gap {
+  transition: margin-top 140ms ease, margin-bottom 140ms ease;
+}
+
 /* ─── EditorContent root ──────────────────────────────────────────────────────── */
 
 .tiptap-editor-root {

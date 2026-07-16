@@ -564,7 +564,6 @@ export const pl = {
     "block.formulaPlaceholder": "Wyrażenie LaTeX, np. \\frac{a}{b}",
     "block.formulaError":     "Błąd",
     "block.editingHint":  "Ctrl+B pogrubienie · Ctrl+I kursywa · Ctrl+U podkreślenie",
-    "block.addBelow":     "Dodaj blok poniżej",
     "block.drag":         "Przeciągnij blok",
     "block.actions":      "Akcje bloku",
     "code.text":     "Tekst",

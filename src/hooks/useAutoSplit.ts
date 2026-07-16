@@ -161,15 +161,22 @@ export function useAutoSplit(
     if (!editor) return;
 
     const { $from } = editor.state.selection;
-    if ($from.depth < 1) return;
 
-    const blockStart = $from.before(1);
+    // depth 0 happens for a NodeSelection anchored on a top-level atom/leaf
+    // block (image, video, poll, table, divider, spoiler/FAQ, …) — those have
+    // no interior position, so $from resolves to the block-boundary position
+    // right before the node rather than somewhere inside it. This used to
+    // bail out here, so hitting the split button while such a block was
+    // selected silently did nothing — see the matching fix in
+    // SplitOverlay.tsx's onUp() for the drag-and-drop path of the same bug.
+    const atBlockGap = $from.depth < 1;
+    const blockStart = atBlockGap ? $from.pos : $from.before(1);
     let blockIdx = 0;
     editor.state.doc.forEach((_, off) => { if (off < blockStart) blockIdx++; });
 
-    const offsetInBlock = $from.parentOffset;
-    const blockLen = $from.parent.textContent.length;
-    const isLeaf = $from.parent.isLeaf;
+    const offsetInBlock = atBlockGap ? 0 : $from.parentOffset;
+    const blockLen = atBlockGap ? 0 : $from.parent.textContent.length;
+    const isLeaf = atBlockGap ? true : $from.parent.isLeaf;
 
     const currGaps = splitGapsRef.current;
     const currLocked = lockedGapsRef.current;

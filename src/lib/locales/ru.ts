@@ -585,7 +585,6 @@ export const ru = {
     "block.formulaPlaceholder": "LaTeX-выражение, например \\frac{a}{b}",
     "block.formulaError":     "Ошибка",
     "block.editingHint":  "Ctrl+B жирный · Ctrl+I курсив · Ctrl+U подчёркивание",
-    "block.addBelow":     "Добавить блок ниже",
     "block.drag":         "Перетащить блок",
     "block.actions":      "Действия с блоком",
     "code.text":     "Текст",

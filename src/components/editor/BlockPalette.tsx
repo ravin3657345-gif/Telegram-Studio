@@ -4,7 +4,7 @@ import type { Editor } from "@tiptap/react";
 import { Plus } from "lucide-react";
 import { getSlashItems, type SlashItem, type BlockPreviewType } from "@/extensions/SlashCommand";
 import {
-  getNestedDropInfo, listBlocks, setGapBefore, clearGap,
+  getNestedDropInfo, listBlocks, setGapBefore, clearGap, clearGapTransitions,
   getEditorScrollContainer, createAutoScroller, createDropIndicatorLine,
   createContainerHighlighter, snapshotBlockRects, type NestedDropInfo, type GapRef,
 } from "@/lib/blockGeometry";
@@ -261,7 +261,12 @@ export function BlockPalette({ editor, fill }: BlockPaletteProps) {
     const rowRect = rowEl.getBoundingClientRect();
     const grabOffsetX = startX - rowRect.left;
     const grabOffsetY = startY - rowRect.top;
-    const ghostHeight = rowRect.height;
+    // Reflow gap should match what's actually about to land, not the small
+    // palette chip being dragged — reassigned below once the ghost switches
+    // to its real-block preview (a table/poll/callout preview is much taller
+    // than its palette row), so the gap opens to the right size instead of a
+    // sliver that doesn't match the block that then drops into it.
+    let ghostHeight = rowRect.height;
 
     const shell = makeGhostShell(rowRect.width);
     fillGhostAsRow(shell, rowEl);
@@ -291,9 +296,11 @@ export function BlockPalette({ editor, fill }: BlockPaletteProps) {
       // look for block types with no simple CSS-only equivalent).
       if (overEditor && !usingPreview) {
         usingPreview = fillGhostAsPreview(shell, item);
+        if (usingPreview) ghostHeight = shell.getBoundingClientRect().height;
       } else if (!overEditor && usingPreview) {
         fillGhostAsRow(shell, rowEl);
         usingPreview = false;
+        ghostHeight = rowRect.height;
       }
 
       if (!overEditor) {
@@ -317,7 +324,11 @@ export function BlockPalette({ editor, fill }: BlockPaletteProps) {
       }
       dropInfo = info;
       containerHighlighter.update(info.container?.el ?? null);
-      dropLine.update(info);
+      // Mutually exclusive signals: the line means "between these two
+      // top-level blocks", the container ring means "inside this one" —
+      // showing both at once for a container drop was exactly what made it
+      // unclear which one would actually happen.
+      dropLine.update(info.container ? null : info);
       positionGhost(clientX, clientY, info.container !== null);
       const blocks = listBlocks(view, info.scope).map((b) => b.el);
       const beforeEl = blocks[info.gapIndex] ?? null;
@@ -340,6 +351,7 @@ export function BlockPalette({ editor, fill }: BlockPaletteProps) {
       scroller.stop();
       shell.remove();
       clearGap(gapRef);
+      clearGapTransitions();
       gapRef = null;
       containerHighlighter.update(null);
       dropLine.remove();

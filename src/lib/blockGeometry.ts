@@ -336,6 +336,11 @@ function resolveNestedDrop(
  */
 export interface GapRef { el: HTMLElement; side: "marginTop" | "marginBottom" }
 
+/** CSS class (defined in tiptap.css) that animates margin-top/-bottom — added
+ * to whichever block currently carries the drag-reflow gap so opening/closing
+ * it reads as the block visibly sliding away rather than snapping instantly. */
+const GAP_TRANSITION_CLASS = "tstudio-drag-gap";
+
 /**
  * Opens a single gap of `amount` px right before `beforeEl` (or after the
  * last of `blocks` when `beforeEl` is null — dropping at the very end of the
@@ -347,19 +352,27 @@ export function setGapBefore(
 ): GapRef | null {
   if (prev) prev.el.style[prev.side] = "";
   if (amount <= 0) return null;
-  if (beforeEl) {
-    beforeEl.style.marginTop = `${amount}px`;
-    return { el: beforeEl, side: "marginTop" };
-  }
-  const last = blocks[blocks.length - 1];
-  if (!last) return null;
-  last.style.marginBottom = `${amount}px`;
-  return { el: last, side: "marginBottom" };
+  const target = beforeEl ?? blocks[blocks.length - 1];
+  if (!target) return null;
+  const side: GapRef["side"] = beforeEl ? "marginTop" : "marginBottom";
+  target.classList.add(GAP_TRANSITION_CLASS);
+  target.style[side] = `${amount}px`;
+  return { el: target, side };
 }
 
 /** Instantly removes a gap opened by `setGapBefore` — call once on drop/cancel. */
 export function clearGap(prev: GapRef | null) {
   if (prev) prev.el.style[prev.side] = "";
+}
+
+/**
+ * Call once when a drag ends (alongside the final `clearGap`) — strips the
+ * transition class off every block it was ever added to during this drag, so
+ * a later, unrelated margin change (if any) never inherits an animation it
+ * didn't ask for. Safe to call even if nothing was ever tagged.
+ */
+export function clearGapTransitions() {
+  document.querySelectorAll(`.${GAP_TRANSITION_CLASS}`).forEach((el) => el.classList.remove(GAP_TRANSITION_CLASS));
 }
 
 /**
@@ -472,6 +485,13 @@ export function createDropIndicatorLine() {
  * currently hovering over, so dropping *inside* it reads as an intentional
  * choice rather than a coincidence of cursor height — shared by the palette's
  * insert-new-block drag and the grip's reorder-existing-block drag.
+ *
+ * Deliberately NOT a background-color swap: a callout's own resting
+ * background is already `var(--accent-subtle)` (see BlockCallout.tsx), so
+ * tinting it the same color on hover was indistinguishable from "just a
+ * callout sitting there" — impossible to tell "will drop inside" from "not
+ * hovering it at all". A solid ring + drop shadow reads as an overlay on top
+ * of whatever the block already looks like, regardless of its own colors.
  */
 export function createContainerHighlighter() {
   let highlighted: HTMLElement | null = null;
@@ -481,13 +501,17 @@ export function createContainerHighlighter() {
       if (highlighted) {
         highlighted.style.outline = "";
         highlighted.style.outlineOffset = "";
-        highlighted.style.backgroundColor = "";
+        highlighted.style.boxShadow = "";
       }
       if (el) {
-        el.style.transition = "outline-color 120ms ease, background-color 120ms ease";
-        el.style.outline = "2px solid var(--accent)";
-        el.style.outlineOffset = "2px";
-        el.style.backgroundColor = "var(--accent-subtle)";
+        // Outline/box-shadow only — a transform here would blur any live
+        // text inside the container (see collapseBlockFootprint's doc
+        // comment for the same antialiasing issue), and this box isn't
+        // being repositioned, just marked.
+        el.style.transition = "outline-color 120ms ease, box-shadow 120ms ease";
+        el.style.outline = "2.5px solid var(--accent)";
+        el.style.outlineOffset = "3px";
+        el.style.boxShadow = "0 0 0 6px color-mix(in srgb, var(--accent) 16%, transparent)";
       }
       highlighted = el;
     },

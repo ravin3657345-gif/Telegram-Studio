@@ -1,16 +1,16 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
-import { TextSelection } from "@tiptap/pm/state";
 import type { Editor } from "@tiptap/react";
 import { GripVertical, Plus, MoreHorizontal } from "lucide-react";
 import {
   getBlockAtY, getBlockEl, getBlockRect, getBlockEndRect, getNestedDropInfo,
-  listBlocks, setGapBefore, clearGap, collapseBlockFootprint, restoreBlockFootprint,
+  listBlocks, setGapBefore, clearGap, clearGapTransitions, collapseBlockFootprint, restoreBlockFootprint,
   getEditorScrollContainer, createAutoScroller, createDropIndicatorLine,
   createContainerHighlighter, snapshotBlockRects, type GapRef, type NestedDropInfo,
 } from "@/lib/blockGeometry";
 import { t } from "@/lib/i18n";
+import { Tooltip } from "@/components/ui/Tooltip";
 
 interface BlockHoverControlsProps {
   editor: Editor;
@@ -134,18 +134,17 @@ export function BlockHoverControls({ editor, onOpenMenu }: BlockHoverControlsPro
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editor]);
 
-  // ── "+" — insert an empty paragraph right after this block ─────────────
+  // ── "+" — duplicate this block, inserting the copy right after it ──────
+  // Was "insert an empty paragraph below"; same insertion point, but now
+  // clones the hovered block's own content instead (matches the "⋯" menu's
+  // duplicateBlock in EditorContextMenu.tsx).
   function handleAddClick() {
     if (hoverPos === null) return;
     const view = editor.view;
     const node = view.state.doc.nodeAt(hoverPos);
     if (!node) return;
     const insertAt = hoverPos + node.nodeSize;
-    const paragraph = view.state.schema.nodes.paragraph.create();
-    const tr = view.state.tr.insert(insertAt, paragraph);
-    tr.setSelection(TextSelection.near(tr.doc.resolve(insertAt + 1)));
-    view.dispatch(tr);
-    view.focus();
+    editor.chain().focus().insertContentAt(insertAt, node.toJSON()).run();
   }
 
   // ── "⋯" — open the block actions menu (replaces the old right-click trigger) ─
@@ -198,7 +197,11 @@ export function BlockHoverControls({ editor, onOpenMenu }: BlockHoverControlsPro
 
     function applyShift(clientX: number, clientY: number) {
       const info = getNestedDropInfo(view, clientX, clientY, snapshot, excludeRange);
-      dropLine.update(info);
+      // Mutually exclusive signals: the line means "between these two
+      // top-level blocks", the container ring means "inside this one" —
+      // showing both at once for a container drop was exactly what made it
+      // unclear which one would actually happen.
+      dropLine.update(info?.container ? null : info);
       containerHighlighter.update(info?.container?.el ?? null);
       if (!info || info.pos === fromPos || info.pos === endPos) {
         clearGap(gapRef);
@@ -212,6 +215,7 @@ export function BlockHoverControls({ editor, onOpenMenu }: BlockHoverControlsPro
 
     function clearShifts() {
       clearGap(gapRef);
+      clearGapTransitions();
       gapRef = null;
       dropLine.update(null);
       containerHighlighter.update(null);
@@ -294,15 +298,16 @@ export function BlockHoverControls({ editor, onOpenMenu }: BlockHoverControlsPro
               zIndex: 200,
             }}
           >
-            <button
-              type="button"
-              title={t("block.addBelow")}
-              style={btnStyle}
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={handleAddClick}
-            >
-              <Plus size={13} />
-            </button>
+            <Tooltip content={t("context.duplicate")} delay={300}>
+              <button
+                type="button"
+                style={btnStyle}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={handleAddClick}
+              >
+                <Plus size={13} />
+              </button>
+            </Tooltip>
             <button
               type="button"
               title={t("block.drag")}

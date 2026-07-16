@@ -564,7 +564,6 @@ export const es = {
     "block.formulaPlaceholder": "Expresión LaTeX, ej. \\frac{a}{b}",
     "block.formulaError":     "Error",
     "block.editingHint":  "Ctrl+B negrita · Ctrl+I cursiva · Ctrl+U subrayado",
-    "block.addBelow":     "Añadir bloque debajo",
     "block.drag":         "Arrastrar bloque",
     "block.actions":      "Acciones del bloque",
     "code.text":     "Texto",

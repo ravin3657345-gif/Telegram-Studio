@@ -5,6 +5,7 @@ import { ti, t } from "@/lib/i18n";
 import { useEditorStore } from "@/store/editorStore";
 import { resolveMessageLimit } from "@/lib/constants";
 import { useSettingsStore } from "@/store/settingsStore";
+import { getDropInfo } from "@/lib/blockGeometry";
 
 interface Props {
   editor: Editor | null;
@@ -149,6 +150,10 @@ export function SplitOverlay({ editor, scrollEl, wrapperEl }: Props) {
 
     // Track last valid hit during drag for use in onUp
     let lastDocPos: number | null = null;
+    // Raw pointer Y (clamped to the editor), independent of any character
+    // resolution — see onUp's boundary branch for why this is now the
+    // source of truth for "which gap", not a text position.
+    let lastClientY = startY;
 
     // Direct reference to this divider's DOM element for smooth animation
     const divEl = divRefs.current.get(gap) ?? null;
@@ -164,23 +169,33 @@ export function SplitOverlay({ editor, scrollEl, wrapperEl }: Props) {
       }
 
       const clampY = Math.max(editorRect.top + 2, Math.min(me.clientY, editorRect.bottom - 2));
+      lastClientY = clampY;
 
-      // Find the document character position at the cursor's Y (line-level precision)
+      // Character position — kept only to detect "hovering inside a
+      // paragraph's own text" for the mid-paragraph-split feature in onUp.
+      // No longer used to decide which side of a block boundary the drop
+      // lands on (see below).
       const hit = editor!.view.posAtCoords({
         left: editorRect.left + editorRect.width / 2,
         top:  clampY,
       });
-      if (!hit) return;
+      if (hit) lastDocPos = hit.pos;
 
-      lastDocPos = hit.pos;
-
-      // Get the visual Y of that text line and update divider DOM directly (no React re-render)
+      // Live divider position while dragging: the same block-boundary
+      // geometry used for block reorder/insert elsewhere (getDropInfo) — a
+      // single deterministic threshold per block (its own vertical
+      // midpoint), not a character position. The character-based line
+      // position this replaced was ambiguous for short/single-line blocks
+      // (a couple of pixels of mouse movement could flip between "before"
+      // and "after" the very same block — reported as "I can drop it in two
+      // different-looking spots that are actually the same gap") and simply
+      // undefined for atom blocks (image/poll/spoiler/…) with no interior
+      // position for posAtCoords to resolve into at all.
       if (divEl) {
-        const coords = editor!.view.coordsAtPos(hit.pos);
-        const wr     = wrapperElRef.current?.getBoundingClientRect();
-        if (wr) {
-          const lineY = (coords.top + coords.bottom) / 2 - wr.top;
-          divEl.style.top = `${lineY}px`;
+        const info = getDropInfo(editor!.view, clampY);
+        const wr   = wrapperElRef.current?.getBoundingClientRect();
+        if (info && wr) {
+          divEl.style.top = `${info.lineY - wr.top}px`;
         }
       }
     }
@@ -190,67 +205,78 @@ export function SplitOverlay({ editor, scrollEl, wrapperEl }: Props) {
       document.removeEventListener("mouseup", onUp);
       setDraggingGap(null);
 
-      if (!dragging || lastDocPos === null) return;
-
-      const docSize = editor!.state.doc.content.size;
-      const safePos = Math.min(lastDocPos, docSize - 1);
-      const $p      = editor!.state.doc.resolve(safePos);
-
-      if ($p.depth < 1) return;
-
-      const blockStart = $p.before(1);
-      let blockIdx = 0;
-      editor!.state.doc.forEach((_, off) => { if (off < blockStart) blockIdx++; });
-
-      const offsetInBlock = $p.parentOffset;
-      const blockLen      = $p.parent.textContent.length;
-      const isLeaf        = $p.parent.isLeaf;
+      if (!dragging) return;
 
       const currGaps   = splitGapsRef.current;
       const currLocked = lockedGapsRef.current;
 
-      if (!isLeaf && offsetInBlock > 0 && offsetInBlock < blockLen) {
-        // ── Dropped mid-paragraph → split the block at this exact character ──
-        //
-        // After splitBlock() the doc gains one more block; all gap indices
-        // >= (blockIdx+1) shift right by 1.
-        const newGapIdx = blockIdx + 1;
+      // ── Mid-paragraph split ── only when the last resolved character
+      // position sits strictly inside a single text block's own content
+      // (not at its edges, and never true for an atom block, which has no
+      // interior at all — $p.parent.isLeaf covers that).
+      if (lastDocPos !== null) {
+        const docSize = editor!.state.doc.content.size;
+        const safePos = Math.min(lastDocPos, docSize - 1);
+        const $p      = editor!.state.doc.resolve(safePos);
 
-        const otherGaps = currGaps
-          .filter((g) => g !== gap)
-          .map((g) => (g >= newGapIdx ? g + 1 : g));
-        const newLocked = currLocked
-          .filter((g) => g !== gap)
-          .map((g) => (g >= newGapIdx ? g + 1 : g));
-        if (!newLocked.includes(newGapIdx)) newLocked.push(newGapIdx);
+        if ($p.depth >= 1 && !$p.parent.isLeaf) {
+          const offsetInBlock = $p.parentOffset;
+          const blockLen      = $p.parent.textContent.length;
 
-        const allGaps = [...new Set([...otherGaps, newGapIdx])].sort((a, b) => a - b);
+          if (offsetInBlock > 0 && offsetInBlock < blockLen) {
+            const blockStart = $p.before(1);
+            let blockIdx = 0;
+            editor!.state.doc.forEach((_, off) => { if (off < blockStart) blockIdx++; });
 
-        // splitBlock fires "update" → compute() runs (with briefly stale refs).
-        // We call setSplitGaps immediately after, and React batches both state
-        // updates into a single render, so the final visible state is correct.
-        editor!.chain().setTextSelection(safePos).splitBlock().run();
-        setSplitRef.current(allGaps, newLocked);
-      } else {
-        // ── Dropped at a block boundary (or on a leaf block) ──
-        let newGapIdx = offsetInBlock <= 0 ? blockIdx : blockIdx + 1;
+            // After splitBlock() the doc gains one more block; all gap
+            // indices >= (blockIdx+1) shift right by 1.
+            const newGapIdx = blockIdx + 1;
 
-        let totalBlocks = 0;
-        editor!.state.doc.forEach(() => totalBlocks++);
-        newGapIdx = Math.max(1, Math.min(newGapIdx, totalBlocks - 1));
+            const otherGaps = currGaps
+              .filter((g) => g !== gap)
+              .map((g) => (g >= newGapIdx ? g + 1 : g));
+            const newLocked = currLocked
+              .filter((g) => g !== gap)
+              .map((g) => (g >= newGapIdx ? g + 1 : g));
+            if (!newLocked.includes(newGapIdx)) newLocked.push(newGapIdx);
 
-        if (newGapIdx === gap) {
-          // No change — restore rendered position via recompute
-          recompute();
-          return;
+            const allGaps = [...new Set([...otherGaps, newGapIdx])].sort((a, b) => a - b);
+
+            // splitBlock fires "update" → compute() runs (with briefly stale
+            // refs). We call setSplitGaps immediately after, and React
+            // batches both state updates into a single render, so the final
+            // visible state is correct.
+            editor!.chain().setTextSelection(safePos).splitBlock().run();
+            setSplitRef.current(allGaps, newLocked);
+            return;
+          }
         }
-
-        const newGaps   = currGaps.map((g) => (g === gap ? newGapIdx : g)).sort((a, b) => a - b);
-        const newLocked = currLocked.filter((g) => g !== gap);
-        if (!newLocked.includes(newGapIdx)) newLocked.push(newGapIdx);
-
-        setSplitRef.current(newGaps, newLocked);
       }
+
+      // ── Dropped at/near a block boundary (including directly over an atom
+      // block) ── resolve via the same block-midpoint geometry the drag
+      // preview itself used, so the divider ends up exactly where it was
+      // last shown — one deterministic gap per pointer position, not a
+      // character-offset guess that could resolve to either side of the
+      // same short block depending on a couple of pixels.
+      const info = getDropInfo(editor!.view, lastClientY);
+      if (!info) return;
+
+      let totalBlocks = 0;
+      editor!.state.doc.forEach(() => totalBlocks++);
+      const newGapIdx = Math.max(1, Math.min(info.gapIndex, totalBlocks - 1));
+
+      if (newGapIdx === gap) {
+        // No change — restore rendered position via recompute
+        recompute();
+        return;
+      }
+
+      const newGaps   = currGaps.map((g) => (g === gap ? newGapIdx : g)).sort((a, b) => a - b);
+      const newLocked = currLocked.filter((g) => g !== gap);
+      if (!newLocked.includes(newGapIdx)) newLocked.push(newGapIdx);
+
+      setSplitRef.current(newGaps, newLocked);
     }
 
     document.addEventListener("mousemove", onMove);
