@@ -52,8 +52,13 @@ export function LicenseGate({ children }: Props) {
   // however the key was formatted.
   const LICENSE_KEY_LEN = 16;
 
+  // Re-inserts dashes every 4 characters (XXXX-XXXX-XXXX-XXXX) — the same
+  // grouping format_for_display() in keygen/src/main.rs uses when the bot
+  // hands the key to a buyer, so a pasted key looks the same here as it did
+  // in Telegram instead of collapsing into one unbroken run of characters.
   function formatInput(raw: string) {
-    return raw.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, LICENSE_KEY_LEN);
+    const stripped = raw.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, LICENSE_KEY_LEN);
+    return stripped.replace(/(.{4})(?=.)/g, "$1-");
   }
 
   return (
