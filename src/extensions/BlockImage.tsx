@@ -9,7 +9,12 @@ import { MediaGroupLayoutToggle } from "./MediaGroupLayoutToggle";
 function ImageNodeView({ node, deleteNode, selected, editor, getPos }: any) {
   const { src, alt, groupLayout } = node.attrs;
   const publishMode = useEditorStore((s) => s.publishMode);
-  const pos = typeof getPos === "function" ? getPos() : null;
+  // getPos() can return undefined (not just be absent) when the node's
+  // position is transiently unresolvable mid-transaction — `!== null` let
+  // that slip through into isInMediaGroup, which then crashed on
+  // doc.resolve(undefined). See mediaGroupLayout.ts for the matching guard.
+  const rawPos = typeof getPos === "function" ? getPos() : null;
+  const pos = typeof rawPos === "number" ? rawPos : null;
   const inGroup = publishMode === "rich" && pos !== null && isInMediaGroup(editor, pos);
 
   return (
