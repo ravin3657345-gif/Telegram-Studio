@@ -15,6 +15,9 @@ import { t } from "@/lib/i18n";
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type IconType = React.ComponentType<any>;
 
+const MAX_STAGGER_ITEMS = 14;
+const STAGGER_STEP = 0.015;
+
 interface MenuItem {
   icon: IconType;
   label: string;
@@ -186,6 +189,12 @@ export function EditorContextMenu({ editor, x, y, blockPos, onClose }: EditorCon
 
   const sections = buildSections(editor, blockPos);
 
+  // Running index across ALL sections (not per-section) so the stagger reads
+  // as one continuous reveal down the whole menu — capped so a 25+-item menu
+  // still finishes appearing in ~200ms instead of visibly crawling; items
+  // past the cap all animate at the same (max) delay, appearing together.
+  let staggerIndex = 0;
+
   // With ~25+ items across three sections, this menu is routinely taller
   // than the viewport — it always scrolls internally (maxHeight+overflow
   // below), so positioning must never try to fit the WHOLE menu on screen by
@@ -234,10 +243,14 @@ export function EditorContextMenu({ editor, x, y, blockPos, onClose }: EditorCon
   return createPortal(
     <motion.div
       ref={menuRef}
-      initial={{ opacity: 0, scale: 0.94, y: -4 }}
-      animate={{ opacity: 1, scale: 1, y: 0 }}
-      exit={{ opacity: 0, scale: 0.94, y: -4 }}
-      transition={{ duration: 0.12, ease: "easeOut" }}
+      // Spring (not flat ease) to match floating-disclosure's character —
+      // AnimatePresence in PostEditor.tsx already keeps this mounted long
+      // enough for `exit` to play, so open and close now share the same
+      // springy, slightly blurred motion instead of a flat cubic ease.
+      initial={{ opacity: 0, scale: 0.94, y: -4, filter: "blur(4px)" }}
+      animate={{ opacity: 1, scale: 1, y: 0, filter: "blur(0px)" }}
+      exit={{ opacity: 0, scale: 0.96, y: -4, filter: "blur(4px)" }}
+      transition={{ type: "spring", stiffness: 280, damping: 26 }}
       style={{
         position: "fixed",
         left: coords.left,
@@ -277,11 +290,23 @@ export function EditorContextMenu({ editor, x, y, blockPos, onClose }: EditorCon
           </div>
           {section.items.map((item, i) => {
             const Icon = item.icon;
+            // Adapted from Watermelon UI's floating-disclosure.tsx (staggered
+            // blur+fade+slide item reveal) — kept just the per-item entrance
+            // motion, not its bounds-measuring/morphing container or FAB
+            // trigger, neither of which fits a 25+-item sectioned menu.
+            const delay = Math.min(staggerIndex, MAX_STAGGER_ITEMS) * STAGGER_STEP;
+            staggerIndex++;
             return (
-              <button
+              <motion.button
                 key={i}
-                className="w-full flex items-center gap-2.5 px-3 py-1.5 text-sm text-left transition-colors"
-                style={{ color: "var(--text-secondary)" }}
+                initial={{ opacity: 0, filter: "blur(3px)", y: 3 }}
+                animate={{ opacity: 1, filter: "blur(0px)", y: 0 }}
+                transition={{ delay, duration: 0.16, ease: "easeOut" }}
+                className="w-full flex items-center gap-2.5 px-3 py-1.5 text-sm text-left"
+                style={{
+                  color: "var(--text-secondary)",
+                  transition: "background-color var(--motion-duration-fast) var(--motion-ease-standard), color var(--motion-duration-fast) var(--motion-ease-standard)",
+                }}
                 onMouseEnter={(e) => {
                   e.currentTarget.style.backgroundColor = "var(--bg-hover)";
                   e.currentTarget.style.color = "var(--text-primary)";
@@ -297,7 +322,7 @@ export function EditorContextMenu({ editor, x, y, blockPos, onClose }: EditorCon
               >
                 <Icon size={14} strokeWidth={1.75} style={{ flexShrink: 0, color: "var(--text-muted)" }} />
                 {item.label}
-              </button>
+              </motion.button>
             );
           })}
         </div>
