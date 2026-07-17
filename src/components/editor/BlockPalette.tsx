@@ -6,7 +6,7 @@ import { getSlashItems, type SlashItem, type BlockPreviewType, type BlockGroup }
 import {
   getNestedDropInfo, listBlocks, setGapBefore, clearGap, clearGapTransitions,
   getEditorScrollContainer, createAutoScroller, createDropIndicatorLine,
-  createContainerHighlighter, snapshotBlockRects, type NestedDropInfo, type GapRef,
+  createContainerHighlighter, snapshotBlockRects, createGhostFollower, flipSettle, type NestedDropInfo, type GapRef,
 } from "@/lib/blockGeometry";
 import { useSettingsStore } from "@/store/settingsStore";
 import { t } from "@/lib/i18n";
@@ -316,9 +316,17 @@ export function BlockPalette({ editor, fill }: BlockPaletteProps) {
     const snapshot = snapshotBlockRects(view);
     let dropInfo: NestedDropInfo | null = null;
 
+    // Ghost chases the cursor with a slight lag instead of snapping 1:1 —
+    // see createGhostFollower's doc comment. The `nested` hover-scale stays
+    // a direct, instant style toggle (independent of position chase).
+    const ghostFollower = createGhostFollower(
+      (x, y) => { shell.style.left = `${x}px`; shell.style.top = `${y}px`; },
+      { x: startX - grabOffsetX, y: startY - grabOffsetY },
+    );
+    ghostFollower.start();
+
     function positionGhost(x: number, y: number, nested: boolean) {
-      shell.style.left = `${x - grabOffsetX + (nested ? 10 : 0)}px`;
-      shell.style.top = `${y - grabOffsetY}px`;
+      ghostFollower.setTarget(x - grabOffsetX + (nested ? 10 : 0), y - grabOffsetY);
       shell.style.transform = nested ? "scale(0.96)" : "";
     }
     positionGhost(startX, startY, false);
@@ -387,13 +395,15 @@ export function BlockPalette({ editor, fill }: BlockPaletteProps) {
       window.removeEventListener("pointermove", onPointerMove);
       window.removeEventListener("pointerup", onPointerUp);
       scroller.stop();
+      ghostFollower.stop();
       shell.remove();
       clearGap(gapRef);
       clearGapTransitions();
       gapRef = null;
       containerHighlighter.update(null);
       dropLine.remove();
-      if (dropInfo !== null) insertBlockAt(editor, dropInfo.pos, item);
+      const finalDropInfo = dropInfo;
+      if (finalDropInfo !== null) flipSettle(view, () => insertBlockAt(editor, finalDropInfo.pos, item));
     }
 
     scroller.start();

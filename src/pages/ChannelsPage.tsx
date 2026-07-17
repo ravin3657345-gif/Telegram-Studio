@@ -14,6 +14,7 @@ import { t, ti } from "@/lib/i18n";
 import { useSettingsStore } from "@/store/settingsStore";
 import type { Channel } from "@/types/channel";
 import { Dialog, DialogTitle, DialogDescription } from "@/components/ui/Dialog";
+import { useListKeyboardNav } from "@/hooks/useListKeyboardNav";
 
 
 interface ChannelStats {
@@ -187,7 +188,7 @@ function AddChannelModal({ onClose, onAdded }: AddChannelModalProps) {
 
 // ─── Channel card ─────────────────────────────────────────────────────────────
 
-function ChannelCard({ channel, onDelete }: { channel: Channel; onDelete: () => void }) {
+function ChannelCard({ channel, selected, onDelete }: { channel: Channel; selected: boolean; onDelete: () => void }) {
   const [open,        setOpen]        = useState(false);
   const [stats,       setStats]       = useState<ChannelStats | null>(null);
   const [loading,     setLoading]     = useState(false);
@@ -261,10 +262,15 @@ function ChannelCard({ channel, onDelete }: { channel: Channel; onDelete: () => 
     : null;
 
   return (
-    <div style={{
-      borderRadius: 12, border: "1px solid var(--border-subtle)",
-      backgroundColor: "var(--bg-surface)", overflow: "hidden",
-    }}>
+    <div
+      data-nav-id={channel.id}
+      style={{
+        borderRadius: 12,
+        border: "1px solid " + (selected ? "var(--accent)" : "var(--border-subtle)"),
+        boxShadow: selected ? "0 0 0 1.5px var(--accent)" : "none",
+        backgroundColor: "var(--bg-surface)", overflow: "hidden",
+      }}
+    >
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "14px 16px" }}>
         <div style={{
@@ -441,6 +447,30 @@ export function ChannelsPage() {
       .catch(() => {});
   }, []);
 
+  // Standalone rather than reusing ChannelCard's own handleDelete (that one
+  // also drives a per-card "deleting" spinner, which a keyboard-triggered
+  // delete has no natural place to show) — same confirm+delete sequence.
+  async function handleDeleteChannel(ch: Channel) {
+    if (!confirm(ti("channels.confirmDelete", { title: ch.title }))) return;
+    try {
+      await deleteChannel(ch.id);
+      removeChannel(ch.id);
+      toast.success(ti("channels.deletedMsg", { title: ch.title }));
+    } catch (e) {
+      toast.error(String(e));
+    }
+  }
+
+  // No Enter binding here — a channel row has no navigation/detail target,
+  // only a local "expand stats" toggle owned by each ChannelCard's own
+  // state, not cleanly triggerable from outside without lifting that state
+  // up. ↑/↓ selection + Delete still work.
+  const listNav = useListKeyboardNav(
+    channels,
+    (ch) => ch.id,
+    { onDelete: handleDeleteChannel },
+  );
+
   return (
     <>
       <TopBar
@@ -463,11 +493,17 @@ export function ChannelsPage() {
         {channels.length === 0 ? (
           <EmptyState icon={Radio} title={t("channels.empty")} description={t("channels.emptyDesc")} />
         ) : (
-          <div className="space-y-3">
+          <div
+            className="space-y-3"
+            ref={listNav.containerRef}
+            {...listNav.containerProps}
+            style={{ outline: "none" }}
+          >
             {channels.map((ch) => (
               <ChannelCard
                 key={ch.id}
                 channel={ch}
+                selected={listNav.selectedId === ch.id}
                 onDelete={() => removeChannel(ch.id)}
               />
             ))}

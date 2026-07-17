@@ -9,6 +9,7 @@ import { t, ti } from "@/lib/i18n";
 import { useSettingsStore } from "@/store/settingsStore";
 import type { Bot as BotType } from "@/types/bot";
 import { Dialog, DialogTitle, DialogDescription } from "@/components/ui/Dialog";
+import { useListKeyboardNav } from "@/hooks/useListKeyboardNav";
 
 
 // ─── Add-bot modal ────────────────────────────────────────────────────────────
@@ -184,7 +185,7 @@ function AddBotModal({ onClose, onAdded }: AddBotModalProps) {
 
 // ─── Bot card ─────────────────────────────────────────────────────────────────
 
-function BotCard({ bot, onDelete }: { bot: BotType; onDelete: () => void }) {
+function BotCard({ bot, selected, onDelete }: { bot: BotType; selected: boolean; onDelete: () => void }) {
   const [showToken, setShowToken] = useState(false);
   const [deleting, setDeleting]   = useState(false);
   const masked = bot.token.replace(/:.+/, ":••••••••••••••••••••");
@@ -204,10 +205,15 @@ function BotCard({ bot, onDelete }: { bot: BotType; onDelete: () => void }) {
   }
 
   return (
-    <div style={{
-      borderRadius: 12, border: "1px solid var(--border-subtle)",
-      backgroundColor: "var(--bg-surface)", overflow: "hidden",
-    }}>
+    <div
+      data-nav-id={bot.id}
+      style={{
+        borderRadius: 12,
+        border: "1px solid " + (selected ? "var(--accent)" : "var(--border-subtle)"),
+        boxShadow: selected ? "0 0 0 1.5px var(--accent)" : "none",
+        backgroundColor: "var(--bg-surface)", overflow: "hidden",
+      }}
+    >
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 16px" }}>
         <div style={{
@@ -292,6 +298,30 @@ export function BotsPage() {
     getBots().then(setBots).catch(() => {});
   }, []);
 
+  // Standalone rather than reusing BotCard's own handleDelete (that one also
+  // drives a per-card "deleting" spinner, which a keyboard-triggered delete
+  // has no natural place to show) — same confirm+delete sequence.
+  async function handleDeleteBot(bot: BotType) {
+    if (!confirm(ti("bots.confirmDelete", { username: bot.username }))) return;
+    try {
+      await deleteBot(bot.id);
+      removeBot(bot.id);
+      toast.success(ti("bots.deletedMsg", { username: bot.username }));
+    } catch (e) {
+      toast.error(String(e));
+    }
+  }
+
+  // No Enter binding — a bot row has no navigation/detail target, only a
+  // local "reveal token" toggle owned by each BotCard's own state, not
+  // cleanly triggerable from outside without lifting that state up. ↑/↓
+  // selection + Delete still work.
+  const listNav = useListKeyboardNav(
+    bots,
+    (bot) => bot.id,
+    { onDelete: handleDeleteBot },
+  );
+
   return (
     <>
       <TopBar
@@ -314,11 +344,17 @@ export function BotsPage() {
         {bots.length === 0 ? (
           <EmptyState icon={Bot} title={t("bots.empty")} description={t("bots.emptyDesc")} />
         ) : (
-          <div className="space-y-3">
+          <div
+            className="space-y-3"
+            ref={listNav.containerRef}
+            {...listNav.containerProps}
+            style={{ outline: "none" }}
+          >
             {bots.map((bot) => (
               <BotCard
                 key={bot.id}
                 bot={bot}
+                selected={listNav.selectedId === bot.id}
                 onDelete={() => removeBot(bot.id)}
               />
             ))}

@@ -22,6 +22,8 @@ import { BlockAnchor } from "@/extensions/BlockAnchor";
 import { MediaPasteHandler } from "@/extensions/MediaPasteHandler";
 import { SlashCommand } from "@/extensions/SlashCommand";
 import { BlockMoveShortcuts } from "@/extensions/BlockMoveShortcuts";
+import { AtomBlockNavigation } from "@/extensions/AtomBlockNavigation";
+import { EditorJumpShortcuts } from "@/extensions/EditorJumpShortcuts";
 import { MultiBlockSelection } from "@/extensions/MultiBlockSelection";
 import { Blockquote } from "@/extensions/Blockquote";
 import { MessageSplit } from "@/extensions/MessageSplit";
@@ -51,7 +53,13 @@ export function createTiptapExtensions() {
       bulletList:  { HTMLAttributes: { class: "tiptap-bullet-list" } },
       orderedList: { HTMLAttributes: { class: "tiptap-ordered-list" } },
       dropcursor:  { color: "var(--accent)", width: 2 },
-      gapcursor:   false,
+      // Was `false` with no rationale on record — re-enabled so there's
+      // always a place for the caret to land next to an atom block (a lone
+      // image, two media blocks back to back, an atom at doc start/end).
+      // Without it, arrowing toward one of those spots has nowhere valid to
+      // go and gets stuck instead of the Word-style "cursor glides past the
+      // object" feel. Styled in tiptap.css (.ProseMirror-gapcursor) to match
+      // the app's accent color instead of PM's default plain black line.
     }),
 
     // Overrides StarterKit's bundled ListItem (same `name`, later entry wins)
@@ -115,6 +123,8 @@ export function createTiptapExtensions() {
     MediaPasteHandler,
     SlashCommand,
     BlockMoveShortcuts,
+    AtomBlockNavigation,
+    EditorJumpShortcuts,
     MultiBlockSelection,
     MessageSplit,
   ];

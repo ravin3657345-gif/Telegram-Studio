@@ -479,6 +479,7 @@ export const fr = {
     "sched.legend.published": "publié",
     "sched.legend.scheduled": "planifié",
     "sched.legend.draft":     "brouillon",
+    "sched.dayMore":          "+{count} de plus",
     "license.subtitle":    "Entrez votre clé d'activation pour continuer",
     "license.keyLabel":    "Clé d'activation",
     "license.emptyError":  "Entrez votre clé d'activation",

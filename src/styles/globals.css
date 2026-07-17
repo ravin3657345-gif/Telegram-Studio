@@ -11,6 +11,20 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ── Motion tokens ─────────────────────────────────────────
+   Shared timing/easing so drag reflow, block insert/hover, and existing
+   micro-interactions (chips, save-status badge) read as one consistent
+   motion language instead of each feature picking its own numbers.
+   --motion-ease-spring reuses the exact curve already proven on
+   chipSlideIn/saveStatusBounceIn below, not a new untested value. */
+:root {
+  --motion-ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+  --motion-ease-spring:   cubic-bezier(0.34, 1.56, 0.64, 1);
+  --motion-duration-fast: 120ms;
+  --motion-duration-base: 200ms;
+  --motion-duration-slow: 320ms;
+}
+
 /* ── Reset ─────────────────────────────────────────────── */
 *,
 *::before,

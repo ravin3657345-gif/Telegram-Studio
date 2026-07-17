@@ -18,6 +18,7 @@ import {
 } from "@/lib/draftsFilter";
 import { DRAFT_MAX_COUNT } from "@/lib/constants";
 import { NewPostChooserDialog } from "@/components/drafts/NewPostChooserDialog";
+import { useListKeyboardNav } from "@/hooks/useListKeyboardNav";
 
 const DRAFT_LIMIT = DRAFT_MAX_COUNT;
 
@@ -103,6 +104,15 @@ export function DraftsPage() {
     [drafts, statusFilter, sortBy, search],
   );
 
+  const listNav = useListKeyboardNav(
+    visibleDrafts,
+    (d) => d.id,
+    {
+      onOpen: (d) => navigate(`/editor/${d.id}`),
+      onDelete: (d) => deleteDraftById(d.id),
+    },
+  );
+
   function toggleStatus(s: DraftStatus) {
     setStatusFilter((prev) => {
       const next = new Set(prev);
@@ -139,6 +149,13 @@ export function DraftsPage() {
 
   function handleDelete(e: React.MouseEvent, id: string) {
     e.stopPropagation();
+    deleteDraftById(id);
+  }
+
+  // Split out from handleDelete so the keyboard Delete-key path (no mouse
+  // event to stopPropagation on) can call the same optimistic-remove +
+  // undo-window logic without needing a fake event.
+  function deleteDraftById(id: string) {
     const draft = drafts.find((d) => d.id === id);
     if (!draft) return;
 
@@ -371,6 +388,9 @@ export function DraftsPage() {
                 onDelete={handleDelete}
                 onCancelSchedule={handleCancelSchedule}
                 onNew={() => setShowChooser(true)}
+                selectedId={listNav.selectedId}
+                containerRef={listNav.containerRef}
+                containerProps={listNav.containerProps}
               />
             )}
           </div>
@@ -400,17 +420,23 @@ function DraftsTable({
   onDelete,
   onCancelSchedule,
   onNew,
+  selectedId,
+  containerRef,
+  containerProps,
 }: {
   drafts: DraftRow[];
   onOpen: (id: string) => void;
   onDelete: (e: React.MouseEvent, id: string) => void;
   onCancelSchedule: (e: React.MouseEvent, id: string) => void;
   onNew: () => void;
+  selectedId: string | null;
+  containerRef: React.RefObject<HTMLDivElement>;
+  containerProps: { tabIndex: number; onKeyDown: (e: React.KeyboardEvent) => void };
 }) {
   useSettingsStore((s) => s.language);
 
   return (
-    <div style={{ width: "100%" }}>
+    <div ref={containerRef} {...containerProps} style={{ width: "100%", outline: "none" }}>
       {/* Header row */}
       <div
         className="flex items-center px-6 border-b"
@@ -440,6 +466,8 @@ function DraftsTable({
         return (
           <DraftTableRow
             key={d.id}
+            navId={d.id}
+            selected={selectedId === d.id}
             title={title}
             status={status}
             schedDate={schedDate}
@@ -478,6 +506,8 @@ function DraftsTable({
 }
 
 function DraftTableRow({
+  navId,
+  selected,
   title,
   status,
   schedDate,
@@ -486,6 +516,8 @@ function DraftTableRow({
   onDelete,
   onCancelSchedule,
 }: {
+  navId: string;
+  selected: boolean;
   title: string;
   status: DraftStatus;
   schedDate: string;
@@ -498,11 +530,14 @@ function DraftTableRow({
 
   return (
     <div
+      data-nav-id={navId}
       className="flex items-center px-6 border-b relative cursor-pointer"
       style={{
         height: 42,
         borderColor: "var(--border-subtle)",
-        backgroundColor: hovered ? "var(--bg-hover)" : "transparent",
+        backgroundColor: selected ? "var(--bg-active)" : hovered ? "var(--bg-hover)" : "transparent",
+        outline: selected ? "1.5px solid var(--accent)" : "none",
+        outlineOffset: -1.5,
         transition: "background-color 0.1s",
       }}
       onClick={onClick}

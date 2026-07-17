@@ -1,0 +1,174 @@
+<title>Telegram Studio — Журнал изменений</title>
+<style>
+  :root {
+    --bg:        #f7f7f5;
+    --surface:   #ffffff;
+    --elevated:  #f1f0ee;
+    --border:    #e4e2df;
+    --border-strong: #d6d3ce;
+    --text:      #2c2b28;
+    --text-muted:#7c7972;
+    --text-faint:#a9a69e;
+    --accent:    #2c87c9;
+    --accent-soft: rgba(44,135,201,0.10);
+    --success:   #2f8f5b;
+
+    --font-display: "Segoe UI Variable Display", "Segoe UI Semibold", "Segoe UI", ui-sans-serif, system-ui, sans-serif;
+    --font-body:    "Segoe UI Variable Text", "Segoe UI", ui-sans-serif, system-ui, sans-serif;
+    --font-mono:    "Cascadia Code", "Cascadia Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #18181a; --surface: #202022; --elevated: #27272a;
+      --border: #333335; --border-strong: #3f3f42;
+      --text: #dcdbd8; --text-muted: #93918b; --text-faint: #6c6a65;
+      --accent: #4a9fdb; --accent-soft: rgba(74,159,219,0.14); --success: #4bab77;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #18181a; --surface: #202022; --elevated: #27272a;
+    --border: #333335; --border-strong: #3f3f42;
+    --text: #dcdbd8; --text-muted: #93918b; --text-faint: #6c6a65;
+    --accent: #4a9fdb; --accent-soft: rgba(74,159,219,0.14); --success: #4bab77;
+  }
+  :root[data-theme="light"] {
+    --bg: #f7f7f5; --surface: #ffffff; --elevated: #f1f0ee;
+    --border: #e4e2df; --border-strong: #d6d3ce;
+    --text: #2c2b28; --text-muted: #7c7972; --text-faint: #a9a69e;
+    --accent: #2c87c9; --accent-soft: rgba(44,135,201,0.10); --success: #2f8f5b;
+  }
+
+  * { box-sizing: border-box; }
+  body { background: var(--bg); color: var(--text); font-family: var(--font-body); font-size: 15px; line-height: 1.55; -webkit-font-smoothing: antialiased; }
+  .page { max-width: 720px; margin: 0 auto; padding: 56px 24px 80px; }
+
+  .masthead { padding-bottom: 20px; border-bottom: 1px solid var(--border); margin-bottom: 36px; }
+  .masthead .eyebrow { font-family: var(--font-mono); font-size: 11.5px; letter-spacing: 0.09em; text-transform: uppercase; color: var(--text-faint); margin: 0 0 6px; }
+  h1 { font-family: var(--font-display); font-size: 30px; font-weight: 650; letter-spacing: -0.01em; margin: 0 0 8px; text-wrap: balance; }
+  .masthead p.desc { color: var(--text-muted); font-size: 14px; max-width: 58ch; margin: 0; }
+
+  /* ── Entry ──────────────────────────────────────────────── */
+
+  .entry { padding: 28px 0; border-top: 1px solid var(--border); }
+  .entry:first-of-type { border-top: none; padding-top: 0; }
+
+  .entry-head { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; margin-bottom: 4px; }
+  .entry-version { font-family: var(--font-mono); font-size: 17px; font-weight: 600; color: var(--accent); }
+  .entry-date { font-size: 12.5px; color: var(--text-faint); font-variant-numeric: tabular-nums; }
+  .entry-status { display: flex; align-items: center; gap: 5px; font-size: 12px; color: var(--success); margin-bottom: 18px; }
+  .entry-status .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--success); flex-shrink: 0; }
+
+  .section { display: flex; gap: 16px; margin-bottom: 18px; }
+  .section:last-child { margin-bottom: 0; }
+  .section-rail { flex-shrink: 0; width: 26px; padding-top: 2px; }
+  .section-rail .glyph { width: 26px; height: 26px; border-radius: 8px; background: var(--elevated); border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; }
+  .section-rail svg { width: 13px; height: 13px; stroke: var(--accent); }
+  .section-body { flex: 1; min-width: 0; }
+  .section-title { font-family: var(--font-display); font-size: 15px; font-weight: 600; margin: 0 0 8px; }
+
+  .change-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 7px; }
+  .change-list li { position: relative; padding-left: 15px; font-size: 13.5px; color: var(--text); }
+  .change-list li::before { content: ""; position: absolute; left: 0; top: 7px; width: 4.5px; height: 4.5px; border-radius: 50%; background: var(--border-strong); }
+  .change-list b { font-weight: 600; }
+
+  code { font-family: var(--font-mono); font-size: 0.9em; background: var(--elevated); border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px; }
+
+  .entry-simple { font-size: 13.5px; color: var(--text); }
+  .entry-simple ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 7px; }
+  .entry-simple li { position: relative; padding-left: 15px; }
+  .entry-simple li::before { content: ""; position: absolute; left: 0; top: 7px; width: 4.5px; height: 4.5px; border-radius: 50%; background: var(--border-strong); }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .entry:first-of-type { animation: rise 0.35s ease-out both; }
+    @keyframes rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+  }
+</style>
+
+<div class="page">
+
+  <div class="masthead">
+    <p class="eyebrow">Telegram Studio</p>
+    <h1>Журнал изменений</h1>
+    <p class="desc">Живой журнал — новая запись после каждой сборки, опубликованной в бот. Обновляется на этой же странице.</p>
+  </div>
+
+  <!-- ═══ 1.7.8 — 2026-07-17 ═══ -->
+  <div class="entry">
+    <div class="entry-head">
+      <span class="entry-version">1.7.8</span>
+      <span class="entry-date">17 июля 2026</span>
+    </div>
+    <p class="entry-status"><span class="dot"></span>собрано и опубликовано в боте</p>
+
+    <div class="section">
+      <div class="section-rail"><div class="glyph"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h4l2-7 4 14 2-7h4"/></svg></div></div>
+      <div class="section-body">
+        <p class="section-title">Плавность редактора</p>
+        <ul class="change-list">
+          <li>Общие motion-токены вместо разрозненных чисел по коду</li>
+          <li>Разъезд блоков при drag — пружинистый easing вместо плоского</li>
+          <li>Лёгкая подсветка текстовых блоков по hover</li>
+          <li>«Призрак» блока при перетаскивании чуть отстаёт от курсора — инерция, как в Craft/Linear</li>
+          <li>FLIP-анимация «оседания» блоков после drop</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-rail"><div class="glyph"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="1.5"/><path d="M21 15l-5-5-9 9"/></svg></div></div>
+      <div class="section-body">
+        <p class="section-title">Картинки и видео</p>
+        <ul class="change-list">
+          <li>Рамка выделения — по размеру медиа, а не во всю ширину редактора</li>
+          <li>Кнопки замены/удаления переехали к углам настоящей рамки</li>
+          <li>Исправлен баг с двойной рамкой (ProseMirror ставил свой контур поверх нового)</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-rail"><div class="glyph"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 3v3M16 3v3"/></svg></div></div>
+      <div class="section-body">
+        <p class="section-title">Планировщик</p>
+        <ul class="change-list">
+          <li>Ячейка дня — максимум 4 записи, остальные сворачиваются в чип «+N ещё»</li>
+          <li>Высота строки календаря больше не зависит от числа постов на день</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-rail"><div class="glyph"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 15h2M11 15h2M15 15h2M7 11h10"/></svg></div></div>
+      <div class="section-body">
+        <p class="section-title">Клавиатурная навигация (Word/Excel-стиль)</p>
+        <ul class="change-list">
+          <li>Gap-cursor снова включён — курсор не «упирается» рядом с картинкой</li>
+          <li>Стрелки на границе абзаца проходят мимо картинок/видео/опросов, не выделяя блок целиком</li>
+          <li><code>Ctrl+Home</code>/<code>Ctrl+End</code> — прыжок в начало/конец поста</li>
+          <li><code>↑</code>/<code>↓</code>/<code>Enter</code>/<code>Delete</code> — навигация по спискам (Черновики, Шаблоны, История, Каналы, Боты)</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ 1.7.7 — 2026-07-16 ═══ -->
+  <div class="entry">
+    <div class="entry-head">
+      <span class="entry-version">1.7.7</span>
+      <span class="entry-date">16 июля 2026</span>
+    </div>
+    <p class="entry-status"><span class="dot"></span>собрано и опубликовано в боте</p>
+    <div class="entry-simple">
+      <ul>
+        <li>Декодирование реальной ошибки автосохранения вместо немой иконки (лимит вложений и т.п.)</li>
+        <li>Лимиты вложений подняты: 20→60 файлов, 200→500 МБ</li>
+        <li>Кнопка замены картинки в редакторе + компактная плашка вместо одинокого крестика</li>
+        <li>Drag-ghost блоков теперь режется и по ширине, не только по высоте</li>
+        <li>Убраны «Скачать»/«Скорость воспроизведения» из плеера аудио-блока</li>
+        <li>sales-bot: поддержка нескольких администраторов + меню админ-команд для обоих</li>
+      </ul>
+    </div>
+  </div>
+
+</div>

@@ -7,7 +7,7 @@ import {
   getBlockAtY, getBlockEl, getBlockRect, getBlockEndRect, getNestedDropInfo,
   listBlocks, setGapBefore, clearGap, clearGapTransitions, collapseBlockFootprint, restoreBlockFootprint,
   getEditorScrollContainer, createAutoScroller, createDropIndicatorLine,
-  createContainerHighlighter, snapshotBlockRects, type GapRef, type NestedDropInfo,
+  createContainerHighlighter, snapshotBlockRects, createGhostFollower, flipSettle, type GapRef, type NestedDropInfo,
 } from "@/lib/blockGeometry";
 import { t } from "@/lib/i18n";
 import { Tooltip } from "@/components/ui/Tooltip";
@@ -232,6 +232,10 @@ export function BlockHoverControls({ editor, onOpenMenu }: BlockHoverControlsPro
 
     const ghost = makeGhost(originEl, originRect);
     ghost.style.top = `${originRect.top}px`;
+    // Ghost chases the cursor with a slight lag instead of snapping 1:1 —
+    // see createGhostFollower's doc comment.
+    const ghostFollower = createGhostFollower((_x, y) => { ghost.style.top = `${y}px`; }, { x: 0, y: originRect.top });
+    ghostFollower.start();
 
     // Collapsing the origin's real footprint (not just fading it) makes every
     // later block reflow up on its own via the browser's normal layout — see
@@ -283,7 +287,7 @@ export function BlockHoverControls({ editor, onOpenMenu }: BlockHoverControlsPro
         document.body.style.cursor = "grabbing";
         scroller.start();
       }
-      ghost.style.top = `${ev.clientY - grabOffsetY}px`;
+      ghostFollower.setTarget(0, ev.clientY - grabOffsetY);
       lastClientX = ev.clientX;
       scroller.update(ev.clientY);
       applyShift(ev.clientX, ev.clientY);
@@ -295,6 +299,7 @@ export function BlockHoverControls({ editor, onOpenMenu }: BlockHoverControlsPro
       document.body.style.cursor = "";
       draggingRef.current = false;
       scroller.stop();
+      ghostFollower.stop();
 
       clearShifts();
       dropLine.remove();
@@ -311,8 +316,10 @@ export function BlockHoverControls({ editor, onOpenMenu }: BlockHoverControlsPro
             const maxInsert = view.state.doc.content.size - nodeSize;
             insertAt = Math.max(0, Math.min(insertAt, maxInsert));
             try {
-              view.dispatch(view.state.tr.delete(fromPos, endPos).insert(insertAt, node));
-              view.focus();
+              flipSettle(view, () => {
+                view.dispatch(view.state.tr.delete(fromPos, endPos).insert(insertAt, node));
+                view.focus();
+              });
             } catch { /* invalid position, doc changed mid-drag — skip */ }
           }
         }

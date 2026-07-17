@@ -479,6 +479,7 @@ export const pl = {
     "sched.legend.published": "opublikowano",
     "sched.legend.scheduled": "zaplanowano",
     "sched.legend.draft":     "szkic",
+    "sched.dayMore":          "+{count} więcej",
     "license.subtitle":    "Wprowadź klucz aktywacyjny, aby kontynuować",
     "license.keyLabel":    "Klucz aktywacyjny",
     "license.emptyError":  "Wprowadź klucz aktywacyjny",

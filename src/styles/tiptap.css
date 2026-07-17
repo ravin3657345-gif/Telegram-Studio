@@ -19,7 +19,8 @@
    closing the reflow gap reads as blocks visibly sliding apart instead of an
    instant snap — see setGapBefore/clearGapTransitions in blockGeometry.ts. */
 .tstudio-drag-gap {
-  transition: margin-top 140ms ease, margin-bottom 140ms ease;
+  transition: margin-top var(--motion-duration-base) var(--motion-ease-spring),
+              margin-bottom var(--motion-duration-base) var(--motion-ease-spring);
 }
 
 /* ─── EditorContent root ──────────────────────────────────────────────────────── */
@@ -368,6 +369,23 @@
   border-radius: 6px;
 }
 
+/* blockImage/blockVideo manage their own shrink-wrapped selection outline
+   (see the inline-block "block-image-container"/video equivalent sizing) —
+   their NodeViewWrapper stays a full-width flex row just to center a
+   possibly-narrower picture, so ProseMirror's default selectednode outline
+   on THAT outer element would double up as a second, wider box around it. */
+.tiptap-editor-root .ProseMirror-selectednode.tstudio-media-block {
+  outline: none;
+}
+
+/* ─── Gap cursor ───────────────────────────────────────────────────────────────── */
+/* PM's default is a plain black line — recolor to match the app's accent so
+   it reads as an intentional caret, not a stray rendering glitch. */
+
+.tiptap-editor-root .ProseMirror-gapcursor:after {
+  border-top-color: var(--accent) !important;
+}
+
 /* ─── Drop cursor ──────────────────────────────────────────────────────────────── */
 
 .tiptap-editor-root .ProseMirror-dropcursor {
@@ -471,6 +489,51 @@
     opacity: 0;
     transform: translateY(7px);
   }
+}
+
+/* ── Plain-text block hover affordance ───────────────────────────────────── */
+/* Boxed block types (image/video/poll/table/callout/etc.) already read as
+   distinct via their own border/background, so they're deliberately left
+   alone here — a second tint layered under an already-styled box looked like
+   a clash, not an affordance. Only the flat text-flow types (no border/
+   background of their own) get a hover tint, so hovering ANY top-level block
+   gives some visual feedback, not just the ones with a NodeView.
+   margin/padding cancel out visually (net effect on the text's own X
+   position is zero) — they only exist so the tint extends slightly past the
+   text into the editor's gutter instead of hugging the glyphs edge-to-edge. */
+.tiptap-editor-root > .tiptap > p,
+.tiptap-editor-root > .ProseMirror > p,
+.tiptap-editor-root > .tiptap > h1,
+.tiptap-editor-root > .ProseMirror > h1,
+.tiptap-editor-root > .tiptap > h2,
+.tiptap-editor-root > .ProseMirror > h2,
+.tiptap-editor-root > .tiptap > h3,
+.tiptap-editor-root > .ProseMirror > h3,
+.tiptap-editor-root > .tiptap > ul,
+.tiptap-editor-root > .ProseMirror > ul,
+.tiptap-editor-root > .tiptap > ol,
+.tiptap-editor-root > .ProseMirror > ol {
+  margin-left: -8px;
+  margin-right: -8px;
+  padding-left: 8px;
+  padding-right: 8px;
+  border-radius: 6px;
+  transition: background-color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.tiptap-editor-root > .tiptap > p:hover,
+.tiptap-editor-root > .ProseMirror > p:hover,
+.tiptap-editor-root > .tiptap > h1:hover,
+.tiptap-editor-root > .ProseMirror > h1:hover,
+.tiptap-editor-root > .tiptap > h2:hover,
+.tiptap-editor-root > .ProseMirror > h2:hover,
+.tiptap-editor-root > .tiptap > h3:hover,
+.tiptap-editor-root > .ProseMirror > h3:hover,
+.tiptap-editor-root > .tiptap > ul:hover,
+.tiptap-editor-root > .ProseMirror > ul:hover,
+.tiptap-editor-root > .tiptap > ol:hover,
+.tiptap-editor-root > .ProseMirror > ol:hover {
+  background-color: var(--bg-hover);
 }
 
 /* ── Media block entrance (React NodeViews) — slight spring ─────────────── */

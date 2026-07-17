@@ -14,6 +14,7 @@ import { useSettingsStore } from "@/store/settingsStore";
 import type { Template, TemplateCategory } from "@/types/template";
 import { EXAMPLE_TEMPLATES, type ExampleTemplate } from "@/lib/exampleTemplates";
 import { accentGradient, accentGrayGradient } from "@/lib/color";
+import { useListKeyboardNav } from "@/hooks/useListKeyboardNav";
 
 // ── Category metadata ─────────────────────────────────────────────────────────
 // Gradients are hue-rotated from the user's own accent color (Settings →
@@ -132,6 +133,13 @@ export function TemplatesPage() {
 
   function handleDelete(e: React.MouseEvent, id: string, name: string) {
     e.stopPropagation();
+    deleteTemplateById(id, name);
+  }
+
+  // Split out from handleDelete so the keyboard Delete-key path (no mouse
+  // event to stopPropagation on) can call the same optimistic-remove +
+  // undo-window logic without needing a fake event.
+  function deleteTemplateById(id: string, name: string) {
     const removed = templates.find((tpl) => tpl.id === id);
     if (!removed) return;
 
@@ -176,6 +184,17 @@ export function TemplatesPage() {
   const grouped: { cat: TemplateCategory; items: Template[] }[] = CATEGORY_ORDER
     .map((cat) => ({ cat, items: filtered.filter((tmpl) => (tmpl.category || "other") === cat) }))
     .filter(({ items }) => items.length > 0);
+
+  // Scoped to "my templates" only — the ready-made examples grid above is a
+  // fixed reference gallery, not user-manageable data, so it's left mouse-only.
+  const listNav = useListKeyboardNav(
+    grouped.flatMap((g) => g.items),
+    (tpl) => tpl.id,
+    {
+      onOpen: (tpl) => handleUse(tpl),
+      onDelete: (tpl) => deleteTemplateById(tpl.id, tpl.name),
+    },
+  );
 
   return (
     <>
@@ -263,7 +282,12 @@ export function TemplatesPage() {
                 {t("templates.noResults")}
               </div>
             ) : (
-              <div className="flex flex-col gap-8">
+              <div
+                className="flex flex-col gap-8"
+                ref={listNav.containerRef}
+                {...listNav.containerProps}
+                style={{ outline: "none" }}
+              >
                 {grouped.map(({ cat, items }) => {
                   const meta = CATEGORY_META[cat];
                   const Icon = meta.Icon;
@@ -299,6 +323,7 @@ export function TemplatesPage() {
                         {items.map((tmpl) => (
                           <TemplateCard
                             key={tmpl.id}
+                            selected={listNav.selectedId === tmpl.id}
                             template={tmpl}
                             gradient={meta.gradient}
                             Icon={meta.Icon}
@@ -376,9 +401,10 @@ function FilterChip({ label, active, onClick }: { label: string; active: boolean
 // ── Template card ─────────────────────────────────────────────────────────────
 
 function TemplateCard({
-  template, gradient, Icon, onUse, onEdit, onDelete,
+  template, selected, gradient, Icon, onUse, onEdit, onDelete,
 }: {
   template: Template;
+  selected: boolean;
   gradient: string;
   Icon: LucideIcon;
   onUse: () => void;
@@ -394,11 +420,12 @@ function TemplateCard({
 
   return (
     <div
+      data-nav-id={template.id}
       className="rounded-xl border overflow-hidden cursor-pointer relative"
       style={{
         backgroundColor: "var(--bg-surface)",
-        borderColor: hovered ? "var(--border-strong)" : "var(--border-subtle)",
-        boxShadow: hovered ? "0 4px 14px rgba(0,0,0,0.07)" : "none",
+        borderColor: selected ? "var(--accent)" : hovered ? "var(--border-strong)" : "var(--border-subtle)",
+        boxShadow: selected ? "0 0 0 1.5px var(--accent)" : hovered ? "0 4px 14px rgba(0,0,0,0.07)" : "none",
         transition: "border-color 0.15s, box-shadow 0.15s",
       }}
       onClick={onUse}

@@ -1,16 +1,23 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ChevronLeft, ChevronRight, Trash2, RefreshCw } from "lucide-react";
+import { ChevronLeft, ChevronRight, Trash2, RefreshCw, X } from "lucide-react";
 import { TopBar } from "@/components/layout/TopBar";
 import { Spinner } from "@/components/ui/Spinner";
+import { Dialog, DialogTitle, DialogDescription, VisuallyHidden } from "@/components/ui/Dialog";
 import { toast } from "@/store/uiStore";
 import { getScheduledPosts, cancelScheduledPost, getDrafts, getHistory } from "@/lib/tauriApi";
-import { t } from "@/lib/i18n";
+import { t, ti } from "@/lib/i18n";
 import { useSettingsStore } from "@/store/settingsStore";
 import { useDraftsStore } from "@/store/draftsStore";
 import { useEditorStore } from "@/store/editorStore";
 import type { ScheduledPostInfo } from "@/types/publish";
 import { WEEKDAY_BASE_DATES, buildCalendarGrid, sameDay } from "@/lib/calendarGrid";
+
+// Cells stay a fixed height regardless of how many posts land on one day —
+// past this many, the rest fold into a "+N ещё" chip that opens the full
+// list in a dialog, instead of the cell growing to fit every single entry
+// (a busy day could otherwise push the whole grid row hundreds of px tall).
+const MAX_VISIBLE_ENTRIES = 4;
 
 // getHistory() is typed Promise<unknown[]> at the call site — only the
 // fields the calendar actually reads are declared here.
@@ -58,6 +65,7 @@ export function SchedulePage() {
   const [history, setHistory]     = useState<HistoryItemLite[]>([]);
   const [loading, setLoading]     = useState(true);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
+  const [expandedDay, setExpandedDay] = useState<Date | null>(null);
   const language = useSettingsStore((s) => s.language) ?? "ru";
   const drafts    = useDraftsStore((s) => s.drafts);
   const setDrafts = useDraftsStore((s) => s.setDrafts);
@@ -113,6 +121,27 @@ export function SchedulePage() {
   function goToday() {
     setViewYear(today.getFullYear());
     setViewMonth(today.getMonth());
+  }
+
+  function handleEntryClick(entry: CalendarEntry) {
+    setExpandedDay(null);
+    if (entry.kind === "published") {
+      // Editing an already-published Rich post is blocked entirely (see
+      // HistoryPage.tsx's disabled Edit button — this is the same entry
+      // point, just reached from the calendar instead of the History list).
+      if (entry.publishMode === "rich") {
+        toast.error(t("history.editUnavailableRich"));
+        return;
+      }
+      // Same pattern HistoryPage's "open in editor" uses — PostEditor
+      // fetches the full post via _histId, no separate draft record needed
+      // for a published post.
+      resetEditor();
+      navigate("/editor", { state: { _histId: entry.historyId } });
+      return;
+    }
+    if (entry.draftId) navigate(`/editor/${entry.draftId}`);
+    else navigate("/editor");
   }
 
   function entriesForDay(day: Date): CalendarEntry[] {
@@ -311,68 +340,37 @@ export function SchedulePage() {
                             </span>
                           </div>
 
-                          {/* Post chips */}
+                          {/* Post chips — capped so one busy day can't blow
+                              up the whole grid row; the rest fold into a
+                              "+N ещё" chip that opens the full list. */}
                           <div className="flex flex-col gap-0.5">
-                            {dayEntries.map((entry) => {
-                              const cs = chipStyle(entry.kind);
-                              const time = entry.time.toLocaleTimeString("ru", { hour: "2-digit", minute: "2-digit" });
-                              return (
-                                <div
-                                  key={entry.key}
-                                  className="relative rounded px-1.5 flex items-center gap-1 group cursor-pointer"
-                                  style={{
-                                    height: 20,
-                                    backgroundColor: cs.bg,
-                                    color: cs.color,
-                                    fontSize: 10,
-                                    overflow: "hidden",
-                                  }}
-                                  onMouseEnter={() => setHoveredId(entry.key)}
-                                  onMouseLeave={() => setHoveredId(null)}
-                                  onClick={() => {
-                                    if (entry.kind === "published") {
-                                      // Editing an already-published Rich post is blocked
-                                      // entirely (see HistoryPage.tsx's disabled Edit button —
-                                      // this is the same entry point, just reached from the
-                                      // calendar instead of the History list).
-                                      if (entry.publishMode === "rich") {
-                                        toast.error(t("history.editUnavailableRich"));
-                                        return;
-                                      }
-                                      // Same pattern HistoryPage's "open in editor" uses —
-                                      // PostEditor fetches the full post via _histId, no
-                                      // separate draft record needed for a published post.
-                                      resetEditor();
-                                      navigate("/editor", { state: { _histId: entry.historyId } });
-                                      return;
-                                    }
-                                    if (entry.draftId) navigate(`/editor/${entry.draftId}`);
-                                    else navigate("/editor");
-                                  }}
-                                >
-                                  <span style={{ flexShrink: 0, fontWeight: 600 }}>{time}</span>
-                                  <span
-                                    style={{
-                                      overflow: "hidden",
-                                      whiteSpace: "nowrap",
-                                      textOverflow: "ellipsis",
-                                      flex: 1,
-                                    }}
-                                  >
-                                    {entry.title}
-                                  </span>
-                                  {entry.kind === "scheduled" && hoveredId === entry.key && (
-                                    <button
-                                      onClick={(e) => handleCancel(e, entry.scheduledPostId!)}
-                                      className="ml-auto flex-shrink-0"
-                                      style={{ color: cs.color }}
-                                    >
-                                      <Trash2 size={10} />
-                                    </button>
-                                  )}
-                                </div>
-                              );
-                            })}
+                            {dayEntries.slice(0, MAX_VISIBLE_ENTRIES).map((entry) => (
+                              <EntryChip
+                                key={entry.key}
+                                entry={entry}
+                                hovered={hoveredId === entry.key}
+                                onHover={setHoveredId}
+                                onClick={() => handleEntryClick(entry)}
+                                onCancel={(e) => handleCancel(e, entry.scheduledPostId!)}
+                              />
+                            ))}
+                            {dayEntries.length > MAX_VISIBLE_ENTRIES && (
+                              <button
+                                onClick={() => setExpandedDay(day)}
+                                className="text-left rounded px-1.5 flex-shrink-0"
+                                style={{
+                                  height: 20,
+                                  fontSize: 10,
+                                  fontWeight: 600,
+                                  color: "var(--text-muted)",
+                                  backgroundColor: "var(--bg-hover)",
+                                  border: "none",
+                                  cursor: "pointer",
+                                }}
+                              >
+                                {ti("sched.dayMore", { count: dayEntries.length - MAX_VISIBLE_ENTRIES })}
+                              </button>
+                            )}
                           </div>
                         </>
                       )}
@@ -384,7 +382,117 @@ export function SchedulePage() {
           </div>
         )}
       </div>
+
+      {/* Full day list — opened from a "+N ещё" chip when a day has more
+          entries than fit in the cell. */}
+      {expandedDay && (
+        <Dialog
+          onOpenChange={(open) => !open && setExpandedDay(null)}
+          style={{
+            width: 340,
+            maxHeight: "70vh",
+            display: "flex",
+            flexDirection: "column",
+            borderRadius: 16,
+            backgroundColor: "var(--bg-surface)",
+            border: "1px solid var(--border-default)",
+            boxShadow: "0 12px 40px rgba(0,0,0,0.4)",
+            overflow: "hidden",
+          }}
+        >
+          <div
+            style={{
+              display: "flex", alignItems: "center", justifyContent: "space-between",
+              padding: "14px 16px 10px", flexShrink: 0,
+              borderBottom: "1px solid var(--border-subtle)",
+            }}
+          >
+            <DialogTitle asChild>
+              <span style={{ fontWeight: 600, fontSize: 15, color: "var(--text-primary)" }}>
+                {expandedDay.toLocaleDateString(language, { day: "numeric", month: "long", year: "numeric" }).replace(/^./, c => c.toUpperCase())}
+              </span>
+            </DialogTitle>
+            <VisuallyHidden>
+              <DialogDescription>
+                {expandedDay.toLocaleDateString(language, { day: "numeric", month: "long", year: "numeric" })}
+              </DialogDescription>
+            </VisuallyHidden>
+            <button
+              onClick={() => setExpandedDay(null)}
+              style={{ background: "none", border: "none", cursor: "pointer", padding: 4, borderRadius: 6, color: "var(--text-muted)", lineHeight: 0 }}
+            >
+              <X size={16} />
+            </button>
+          </div>
+          <div style={{ padding: "10px 12px 14px", overflowY: "auto", display: "flex", flexDirection: "column", gap: 5 }}>
+            {entriesForDay(expandedDay).map((entry) => (
+              <EntryChip
+                key={entry.key}
+                entry={entry}
+                hovered={hoveredId === entry.key}
+                onHover={setHoveredId}
+                onClick={() => handleEntryClick(entry)}
+                onCancel={(e) => handleCancel(e, entry.scheduledPostId!)}
+                compact={false}
+              />
+            ))}
+          </div>
+        </Dialog>
+      )}
     </>
+  );
+}
+
+// Shared by the day-cell grid (compact, height-capped) and the "+N ещё"
+// dialog's full list (roomier) — same look either way, just a size variant.
+function EntryChip({
+  entry, hovered, onHover, onClick, onCancel, compact = true,
+}: {
+  entry: CalendarEntry;
+  hovered: boolean;
+  onHover: (id: string | null) => void;
+  onClick: () => void;
+  onCancel: (e: React.MouseEvent) => void;
+  compact?: boolean;
+}) {
+  const cs = chipStyle(entry.kind);
+  const time = entry.time.toLocaleTimeString("ru", { hour: "2-digit", minute: "2-digit" });
+  return (
+    <div
+      className="relative rounded px-1.5 flex items-center gap-1 group cursor-pointer"
+      style={{
+        height: compact ? 20 : 30,
+        flexShrink: 0,
+        backgroundColor: cs.bg,
+        color: cs.color,
+        fontSize: compact ? 10 : 12.5,
+        overflow: "hidden",
+      }}
+      onMouseEnter={() => onHover(entry.key)}
+      onMouseLeave={() => onHover(null)}
+      onClick={onClick}
+    >
+      <span style={{ flexShrink: 0, fontWeight: 600 }}>{time}</span>
+      <span
+        style={{
+          overflow: "hidden",
+          whiteSpace: "nowrap",
+          textOverflow: "ellipsis",
+          flex: 1,
+        }}
+      >
+        {entry.title}
+      </span>
+      {entry.kind === "scheduled" && hovered && (
+        <button
+          onClick={onCancel}
+          className="ml-auto flex-shrink-0"
+          style={{ color: cs.color }}
+        >
+          <Trash2 size={compact ? 10 : 12} />
+        </button>
+      )}
+    </div>
   );
 }
 

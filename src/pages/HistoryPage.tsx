@@ -9,6 +9,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { t, ti } from "@/lib/i18n";
 import { useSettingsStore } from "@/store/settingsStore";
 import { useEditorStore } from "@/store/editorStore";
+import { useListKeyboardNav } from "@/hooks/useListKeyboardNav";
 
 interface HistoryItem {
   id: string;
@@ -40,6 +41,26 @@ export function HistoryPage() {
   const [loading, setLoading] = useState(true);
   useSettingsStore((s) => s.language);
   const historyVersion = useUiStore((s) => s.historyVersion);
+  const navigate    = useNavigate();
+  const resetEditor = useEditorStore((s) => s.resetEditor);
+
+  // No Delete-key binding on this page — the only "removal" action is
+  // "schedule delete" (pick a time from a dropdown), not a single instant
+  // action a keypress could stand in for.
+  const listNav = useListKeyboardNav(
+    items,
+    (item) => item.id,
+    {
+      onOpen: (item) => {
+        // Mirrors HistoryCard's own Edit-button availability check below —
+        // Enter silently no-ops on rows that don't have an edit target
+        // (same as the disabled button gives no feedback on click).
+        if (item.status !== "published" || !item.telegramMsgId || item.publishMode === "rich") return;
+        resetEditor();
+        navigate("/editor", { state: { _histId: item.id } });
+      },
+    },
+  );
 
   const load = () => {
     setLoading(true);
@@ -101,11 +122,17 @@ export function HistoryPage() {
             description={t("history.emptyDesc")}
           />
         ) : (
-          <div className="flex flex-col gap-2 max-w-2xl">
+          <div
+            className="flex flex-col gap-2 max-w-2xl"
+            ref={listNav.containerRef}
+            {...listNav.containerProps}
+            style={{ outline: "none" }}
+          >
             {items.map((item) => (
               <HistoryCard
                 key={item.id}
                 item={item}
+                selected={listNav.selectedId === item.id}
                 onScheduleDelete={handleScheduleDelete}
               />
             ))}
@@ -118,9 +145,11 @@ export function HistoryPage() {
 
 function HistoryCard({
   item,
+  selected,
   onScheduleDelete,
 }: {
   item: HistoryItem;
+  selected: boolean;
   onScheduleDelete: (item: HistoryItem, hours: number | null) => void;
 }) {
   const [showMenu, setShowMenu]   = useState(false);
@@ -168,8 +197,13 @@ function HistoryCard({
 
   return (
     <div
+      data-nav-id={item.id}
       className="rounded-lg border p-3 flex items-start gap-3"
-      style={{ backgroundColor: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}
+      style={{
+        backgroundColor: "var(--bg-surface)",
+        borderColor: selected ? "var(--accent)" : "var(--border-subtle)",
+        boxShadow: selected ? "0 0 0 1.5px var(--accent)" : "none",
+      }}
     >
       <StatusIcon size={16} style={{ color: statusColor, flexShrink: 0, marginTop: 1 }} />
 

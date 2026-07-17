@@ -30,10 +30,15 @@ function VideoNodeView({ node, deleteNode, selected, editor, getPos }: any) {
   return (
     <NodeViewWrapper
       as="div"
-      style={{ display: "block", margin: "8px 0", position: "relative" }}
+      style={{ display: "flex", justifyContent: "center", margin: "8px 0" }}
     >
+      {/* Shrink-wrapped to the video's own rendered size, same as
+          BlockImage.tsx — outline hugs the actual frame instead of a
+          full-width invisible box for a narrower video. */}
       <div
         style={{
+          display: "inline-block",
+          maxWidth: "100%",
           borderRadius: 8,
           overflow: "hidden",
           outline: selected ? "2px solid var(--accent)" : "2px solid transparent",
@@ -50,7 +55,7 @@ function VideoNodeView({ node, deleteNode, selected, editor, getPos }: any) {
           loop
           playsInline
           preload="metadata"
-          style={{ width: "100%", maxHeight: 400, objectFit: "contain", display: "block" }}
+          style={{ display: "block", maxWidth: "100%", maxHeight: 400 }}
           onEnded={() => setPlaying(false)}
         />
 
@@ -130,6 +135,10 @@ export const BlockVideo = Node.create({
   },
 
   addNodeView() {
-    return ReactNodeViewRenderer(VideoNodeView);
+    // className here (NOT on NodeViewWrapper — that renders an element
+    // NESTED inside this one) lands on the actual outer DOM node TipTap
+    // toggles `.ProseMirror-selectednode` on, so the CSS override in
+    // tiptap.css can target it specifically.
+    return ReactNodeViewRenderer(VideoNodeView, { className: "tstudio-media-block" });
   },
 });

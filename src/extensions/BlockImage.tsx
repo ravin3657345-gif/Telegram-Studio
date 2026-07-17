@@ -66,10 +66,16 @@ function ImageNodeView({ node, deleteNode, selected, editor, getPos }: any) {
   return (
     <NodeViewWrapper
       as="div"
-      style={{ display: "block", margin: "8px 0", position: "relative" }}
+      style={{ display: "flex", justifyContent: "center", margin: "8px 0" }}
     >
+      {/* Shrink-wrapped to the image's own rendered size (capped at the
+          column width / 400px tall) — outline/rounded-corners hug the actual
+          picture instead of a full-width invisible box, so the selection
+          frame doesn't stretch across the editor for a narrower image. */}
       <div
         style={{
+          display: "inline-block",
+          maxWidth: "100%",
           borderRadius: 8,
           overflow: "hidden",
           outline: selected ? "2px solid var(--accent)" : "2px solid transparent",
@@ -84,10 +90,9 @@ function ImageNodeView({ node, deleteNode, selected, editor, getPos }: any) {
           alt={alt ?? ""}
           draggable={false}
           style={{
-            width: "100%",
-            maxHeight: 400,
-            objectFit: "contain",
             display: "block",
+            maxWidth: "100%",
+            maxHeight: 400,
           }}
         />
 
@@ -176,6 +181,10 @@ export const BlockImage = Node.create({
   },
 
   addNodeView() {
-    return ReactNodeViewRenderer(ImageNodeView);
+    // className here (NOT on NodeViewWrapper — that renders an element
+    // NESTED inside this one) lands on the actual outer DOM node TipTap
+    // toggles `.ProseMirror-selectednode` on, so the CSS override in
+    // tiptap.css can target it specifically.
+    return ReactNodeViewRenderer(ImageNodeView, { className: "tstudio-media-block" });
   },
 });

@@ -403,6 +403,96 @@ export function restoreBlockFootprint(el: HTMLElement) {
   el.style.borderBottomWidth = "";
 }
 
+const GHOST_CHASE_FACTOR = 0.35;
+
+/**
+ * Chases a target x/y with a lerp instead of snapping the dragged ghost
+ * element directly onto the cursor every pointermove — gives dragging a
+ * slight, deliberate "weight" (Craft/Linear/Notion-style) instead of feeling
+ * glued 1:1 to the pointer. Purely feeds the same `left`/`top` fixed-position
+ * styling the ghosts already use (see makeGhost in BlockHoverControls.tsx /
+ * makeGhostShell in BlockPalette.tsx) — no CSS transform involved, so this
+ * doesn't touch the antialiasing/compositing concerns documented on
+ * collapseBlockFootprint above (those are about transforming live editor
+ * text across many frames; a detached fixed-position clone has no such risk).
+ */
+export function createGhostFollower(apply: (x: number, y: number) => void, initial: { x: number; y: number }) {
+  let targetX = initial.x, targetY = initial.y;
+  let curX = initial.x, curY = initial.y;
+  let raf: number | null = null;
+
+  function tick() {
+    curX += (targetX - curX) * GHOST_CHASE_FACTOR;
+    curY += (targetY - curY) * GHOST_CHASE_FACTOR;
+    apply(curX, curY);
+    raf = requestAnimationFrame(tick);
+  }
+
+  return {
+    setTarget(x: number, y: number) { targetX = x; targetY = y; },
+    start() { if (raf === null) raf = requestAnimationFrame(tick); },
+    stop() { if (raf !== null) { cancelAnimationFrame(raf); raf = null; } },
+    /** Snaps current position immediately with no chase lag — use once at drag start. */
+    snap(x: number, y: number) { targetX = x; targetY = y; curX = x; curY = y; apply(x, y); },
+  };
+}
+
+/**
+ * FLIP-animates the "settle" moment right after a document mutation that
+ * moves/removes/inserts a top-level block — e.g. finishing a drag-and-drop
+ * reorder or a palette drop. The margin-based gap preview (setGapBefore)
+ * only animates the OPENING of space while a drag is in progress; the
+ * instant the real transaction lands, ProseMirror re-renders the true DOM
+ * in one synchronous snap with no animation of its own — visible as a small
+ * jump whenever the final layout doesn't match the drag preview's
+ * approximation exactly (a media block's real height vs. the ghost's capped
+ * preview height, for instance).
+ *
+ * Classic First-Last-Invert-Play, keyed by DOM element identity rather than
+ * document position (position is exactly what's changing here, so it can't
+ * be the key): `snapshotBlockRects` runs BEFORE `mutate()`; ProseMirror
+ * reliably reuses the same DOM element for any block whose own content
+ * didn't change (only unrelated siblings shifting around it) — which is
+ * exactly the set of elements this needs to smooth, since the moved block
+ * itself is what the user is already watching move. After `mutate()` runs
+ * (real reflow, always correct immediately — nothing here can leave a block
+ * in the wrong place even if the animation below is interrupted or
+ * skipped), a rAF gives React NodeViews a chance to flush before any
+ * element is re-measured, then every snapshotted element still in the
+ * document gets inverted (translateY back to its old position, no
+ * transition) and immediately released into a transition back to zero —
+ * reading as a smooth slide from old position to new.
+ *
+ * Deliberately scoped to this one-shot settle window, not any live/
+ * continuous drag — see collapseBlockFootprint's doc comment for why the
+ * two cases are NOT the same antialiasing risk (that's about transforming
+ * live, actively-edited text across many frames during interaction; this is
+ * a single brief transition landing on already-final, unfocused content).
+ */
+export function flipSettle(view: EditorView, mutate: () => void) {
+  const before = snapshotBlockRects(view);
+  mutate();
+  requestAnimationFrame(() => {
+    before.forEach((oldRect, el) => {
+      if (!el.isConnected) return;
+      const newRect = el.getBoundingClientRect();
+      const deltaY = oldRect.top - newRect.top;
+      if (Math.abs(deltaY) < 1) return;
+      el.style.transition = "none";
+      el.style.transform = `translateY(${deltaY}px)`;
+      // Forces layout so the inverted position actually applies before the
+      // next frame asks the browser to animate away from it — otherwise
+      // both style writes can coalesce into one frame and skip the transition.
+      el.getBoundingClientRect();
+      requestAnimationFrame(() => {
+        el.style.transition = "transform var(--motion-duration-base) var(--motion-ease-spring)";
+        el.style.transform = "";
+        el.addEventListener("transitionend", () => { el.style.transition = ""; }, { once: true });
+      });
+    });
+  });
+}
+
 /** The scrollable canvas around the editor content — `view.dom` itself only sizes to fit its content. */
 export function getEditorScrollContainer(view: EditorView): HTMLElement {
   return view.dom.closest<HTMLElement>('[data-tour="editor-content"]') ?? (view.dom as HTMLElement);

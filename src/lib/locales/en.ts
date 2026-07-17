@@ -423,6 +423,7 @@ export const en = {
     "sched.legend.published": "published",
     "sched.legend.scheduled": "scheduled",
     "sched.legend.draft":     "draft",
+    "sched.dayMore":          "+{count} more",
 
     "history.empty":         "History is empty",
     "history.emptyDesc":     "All published posts will appear here",

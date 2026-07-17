@@ -441,6 +441,7 @@ export const ru = {
     "sched.legend.published": "опубликовано",
     "sched.legend.scheduled": "запланировано",
     "sched.legend.draft":     "черновик",
+    "sched.dayMore":          "+{count} ещё",
 
     // ── История ──────────────────────────────────────────────────────────────
     "history.empty":         "История пуста",
