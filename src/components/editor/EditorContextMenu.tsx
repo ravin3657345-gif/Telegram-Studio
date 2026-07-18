@@ -291,16 +291,22 @@ export function EditorContextMenu({ editor, x, y, blockPos, onClose }: EditorCon
           {section.items.map((item, i) => {
             const Icon = item.icon;
             // Adapted from Watermelon UI's floating-disclosure.tsx (staggered
-            // blur+fade+slide item reveal) — kept just the per-item entrance
+            // fade+slide item reveal) — kept just the per-item entrance
             // motion, not its bounds-measuring/morphing container or FAB
             // trigger, neither of which fits a 25+-item sectioned menu.
+            // Originally also animated `filter: blur()` per item like the
+            // container below does — dropped that for the per-item case:
+            // blur can't be composited as cheaply as opacity/transform, and
+            // with 24+ items (many sharing the same capped delay, so
+            // starting on the exact same frame) that was the actual cause
+            // of the stutter, not the stagger itself.
             const delay = Math.min(staggerIndex, MAX_STAGGER_ITEMS) * STAGGER_STEP;
             staggerIndex++;
             return (
               <motion.button
                 key={i}
-                initial={{ opacity: 0, filter: "blur(3px)", y: 3 }}
-                animate={{ opacity: 1, filter: "blur(0px)", y: 0 }}
+                initial={{ opacity: 0, y: 3 }}
+                animate={{ opacity: 1, y: 0 }}
                 transition={{ delay, duration: 0.16, ease: "easeOut" }}
                 className="w-full flex items-center gap-2.5 px-3 py-1.5 text-sm text-left"
                 style={{
