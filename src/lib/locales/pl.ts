@@ -9,6 +9,9 @@ export const pl = {
     "nav.bots":       "Boty",
     "nav.settings":   "Ustawienia",
     "nav.more":       "Więcej",
+    "palette.placeholder": "Szukaj wśród szkiców, kanałów, botów…",
+    "palette.noResults":   "Brak wyników",
+    "palette.sectionNav":  "Nawigacja",
 
     "topbar.editor":    "Edytor",
     "topbar.drafts":    "Szkice",
@@ -356,8 +359,10 @@ export const pl = {
     "channels.emptyDesc":     "Dodaj kanał Telegram, na którym bot będzie publikować posty",
     "channels.add":           "Dodaj kanał",
     "channels.private":       "Kanał prywatny",
+    "channels.copyUsername":  "Kopiuj username",
     "channels.stats":         "Statystyki",
     "channels.delete":        "Usuń",
+    "channels.cancelDelete":  "Cofnij",
     "channels.loading":       "Ładowanie…",
     "channels.loadError":     "Nie udało się załadować statystyk kanału",
     "channels.refreshError":  "Nie udało się odświeżyć statystyk",
@@ -372,6 +377,7 @@ export const pl = {
     "bots.emptyDesc":  "Dodaj bota Telegram, aby rozpocząć publikowanie postów",
     "bots.add":        "Dodaj bota",
     "bots.active":     "Aktywny",
+    "bots.copyToken":  "Kopiuj token",
     "bots.refresh":    "Odśwież",
     "bots.delete":     "Usuń bota",
 

@@ -2,6 +2,7 @@ import { Bot, Plus, Trash2, Eye, EyeOff, CheckCircle, AlertCircle, Loader } from
 import { useState, useEffect, useRef } from "react";
 import { TopBar } from "@/components/layout/TopBar";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { CopyButton } from "@/components/ui/CopyButton";
 import { useChannelsStore } from "@/store/channelsStore";
 import { validateBotToken, addBot, deleteBot, getBots } from "@/lib/tauriApi";
 import { toast } from "@/store/uiStore";
@@ -257,6 +258,7 @@ function BotCard({ bot, selected, onDelete }: { bot: BotType; selected: boolean;
         >
           {showToken ? <EyeOff size={14} /> : <Eye size={14} />}
         </button>
+        <CopyButton value={bot.token} title={t("bots.copyToken")} size={13} />
       </div>
 
       {/* Footer */}

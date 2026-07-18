@@ -3,8 +3,10 @@ import { Outlet, useLocation } from "react-router-dom";
 import { Sidebar } from "./Sidebar";
 import { BottomTabBar } from "./BottomTabBar";
 import { OnboardingTour } from "./OnboardingTour";
+import { CommandPalette } from "./CommandPalette";
 import { useChannelsStore, dedupeChannels } from "@/store/channelsStore";
-import { getBots, getChannels } from "@/lib/tauriApi";
+import { useDraftsStore } from "@/store/draftsStore";
+import { getBots, getChannels, getDrafts } from "@/lib/tauriApi";
 import { useIsMobileLayout } from "@/hooks/useIsMobileLayout";
 
 export function AppShell() {
@@ -12,14 +14,19 @@ export function AppShell() {
   const isMobile = useIsMobileLayout();
   const setBots     = useChannelsStore((s) => s.setBots);
   const setChannels = useChannelsStore((s) => s.setChannels);
+  const setDrafts   = useDraftsStore((s) => s.setDrafts);
 
   // Refresh bot/channel names from Telegram once per app launch, so a rename
   // shows up everywhere (publish panel, dashboard, etc.) without the user
   // having to visit the Bots/Channels pages first — those pages still
   // refresh on their own mount too, for a manual re-check mid-session.
+  // Drafts are loaded here too (previously only fetched on DraftsPage/
+  // SchedulePage mount) so CommandPalette has something to search from the
+  // moment the app opens, not just after the user has visited /drafts once.
   useEffect(() => {
     getBots().then(setBots).catch(() => {});
     getChannels().then((chs) => setChannels(dedupeChannels(chs))).catch(() => {});
+    getDrafts().then(setDrafts).catch(() => {});
   }, []);
 
   return (
@@ -36,6 +43,7 @@ export function AppShell() {
       </div>
       {isMobile && <BottomTabBar />}
       {!isMobile && <OnboardingTour />}
+      <CommandPalette />
     </div>
   );
 }

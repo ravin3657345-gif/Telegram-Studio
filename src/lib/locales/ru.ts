@@ -10,6 +10,9 @@ export const ru = {
     "nav.bots":       "Боты",
     "nav.settings":   "Настройки",
     "nav.more":       "Ещё",
+    "palette.placeholder": "Поиск по черновикам, каналам, ботам…",
+    "palette.noResults":   "Ничего не найдено",
+    "palette.sectionNav":  "Навигация",
 
     // ── TopBar ───────────────────────────────────────────────────────────────
     "topbar.editor":    "Редактор",
@@ -472,8 +475,10 @@ export const ru = {
     "channels.emptyDesc":     "Добавьте Telegram-канал, в который бот будет публиковать посты",
     "channels.add":           "Добавить канал",
     "channels.private":       "Приватный канал",
+    "channels.copyUsername":  "Скопировать username",
     "channels.stats":         "Статистика",
     "channels.delete":        "Удалить",
+    "channels.cancelDelete":  "Отменить",
     "channels.loading":       "Загрузка…",
     "channels.loadError":     "Не удалось загрузить статистику канала",
     "channels.refreshError":  "Не удалось обновить статистику",
@@ -489,6 +494,7 @@ export const ru = {
     "bots.emptyDesc":  "Добавьте Telegram-бота, чтобы начать публиковать посты",
     "bots.add":        "Добавить бота",
     "bots.active":     "Активен",
+    "bots.copyToken":  "Скопировать токен",
     "bots.refresh":    "Обновить",
     "bots.delete":     "Удалить бота",
 

@@ -309,6 +309,35 @@ function exitTable(editor: Editor, tr: Transaction, tablePos: number, table: PMN
   }
 }
 
+// Reverse of exitTable: approaching the table from an adjacent paragraph via
+// Up/Down. Same isolating-boundary problem as handleHorizontal above (see
+// its comment) but on the table's own edge instead of a cell's — without
+// this, gapcursor parks a visible line next to the table instead of putting
+// the caret in the nearest row. Always lands in column 0 — there's no
+// "remembered column" to restore when entering fresh from outside.
+function enterTable(editor: Editor, dir: 1 | -1): boolean {
+  const { state } = editor;
+  const { $from, empty } = state.selection;
+  if (!empty || $from.depth !== 1) return false;
+  const atEdge = dir === -1 ? $from.parentOffset === 0 : $from.parentOffset === $from.parent.content.size;
+  if (!atEdge) return false;
+
+  const boundaryPos = dir === -1 ? $from.before(1) : $from.after(1);
+  const $boundary = state.doc.resolve(boundaryPos);
+  const table = dir === -1 ? $boundary.nodeBefore : $boundary.nodeAfter;
+  if (!table || table.type.name !== "blockTable") return false;
+
+  const tablePos = dir === -1 ? boundaryPos - table.nodeSize : boundaryPos;
+  const targetRow = dir === -1 ? table.childCount - 1 : 0;
+  const target = cellAt(tablePos, table, targetRow, 0);
+  if (!target) return false;
+
+  const tr = state.tr;
+  selectCell(tr, target.cellPos, target.cellNode);
+  editor.view.dispatch(tr);
+  return true;
+}
+
 // Tab / Shift-Tab: next/previous cell, row-major, wrapping at row edges.
 // Tabbing past the last cell of the last row grows the table by one row
 // (finite table, so there's no "next row" to land on already like a real
@@ -366,6 +395,43 @@ function handleVertical(editor: Editor, dir: 1 | -1): boolean {
   return true;
 }
 
+// ArrowLeft/ArrowRight: normal caret movement within a cell's single-line
+// text; only at the very start/end of that text does it jump to the
+// previous/next cell (same row-major traversal as Tab/Shift-Tab, reusing
+// its cell math). Needed because tableCell is `isolating: true` — the
+// browser/ProseMirror can't glide the caret across that boundary on their
+// own, and without an explicit handler here gapcursor (re-enabled in
+// tiptapConfig.ts for atom-block navigation) claims the boundary instead,
+// parking a visible gap-cursor line there rather than moving into the next
+// cell.
+function handleHorizontal(editor: Editor, dir: 1 | -1): boolean {
+  const { $from, empty } = editor.state.selection;
+  if (!empty) return false;
+  const atEdge = dir === -1 ? $from.parentOffset === 0 : $from.parentOffset === $from.parent.content.size;
+  if (!atEdge) return false;
+
+  const info = findCurrentCell(editor.state);
+  if (!info) return false;
+  const { tablePos, table, rowIndex, colIndex } = info;
+  const cols = table.child(0).childCount;
+
+  let targetRow = rowIndex;
+  let targetCol = colIndex + dir;
+  if (targetCol >= cols) { targetCol = 0; targetRow += 1; }
+  if (targetCol < 0) { targetCol = cols - 1; targetRow -= 1; }
+
+  const tr = editor.state.tr;
+  if (targetRow < 0 || targetRow >= table.childCount) {
+    exitTable(editor, tr, tablePos, table, dir);
+  } else {
+    const target = cellAt(tablePos, table, targetRow, targetCol);
+    if (!target) return false;
+    selectCell(tr, target.cellPos, target.cellNode);
+  }
+  editor.view.dispatch(tr);
+  return true;
+}
+
 // `header` toggles per-cell gray/bold styling (rendered as <th> vs <td>) —
 // independent of row position, via the floating TableCellToggle overlay
 // above (tableCell itself stays a plain schema node, no NodeView — see that
@@ -401,6 +467,8 @@ export const TableCell = Node.create({
       "Shift-Tab": ({ editor }) => handleTab(editor, true),
       ArrowUp: ({ editor }) => handleVertical(editor, -1),
       ArrowDown: ({ editor }) => handleVertical(editor, 1),
+      ArrowLeft: ({ editor }) => handleHorizontal(editor, -1),
+      ArrowRight: ({ editor }) => handleHorizontal(editor, 1),
       Enter: ({ editor }) => handleVertical(editor, 1),
     };
   },
@@ -443,5 +511,12 @@ export const BlockTable = Node.create({
     // tableCell have no NodeView of their own, so they render as plain real
     // <tr>/<td>/<th> straight from the schema — no extra wrapping divs.
     return ReactNodeViewRenderer(TableView, { contentDOMElementTag: "table" });
+  },
+
+  addKeyboardShortcuts() {
+    return {
+      ArrowUp: ({ editor }) => enterTable(editor, -1),
+      ArrowDown: ({ editor }) => enterTable(editor, 1),
+    };
   },
 });

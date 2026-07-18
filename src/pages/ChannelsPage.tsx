@@ -7,6 +7,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { TopBar } from "@/components/layout/TopBar";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Spinner } from "@/components/ui/Spinner";
+import { CopyButton } from "@/components/ui/CopyButton";
+import { TimedUndoAction } from "@/components/ui/TimedUndoAction";
 import { useChannelsStore, dedupeChannels } from "@/store/channelsStore";
 import { addChannel, deleteChannel, getChannels, updateChannelBot } from "@/lib/tauriApi";
 import { toast } from "@/store/uiStore";
@@ -243,7 +245,6 @@ function ChannelCard({ channel, selected, onDelete }: { channel: Channel; select
   }
 
   async function handleDelete() {
-    if (!confirm(ti("channels.confirmDelete", { title: channel.title }))) return;
     setDeleting(true);
     try {
       await deleteChannel(channel.id);
@@ -286,9 +287,14 @@ function ChannelCard({ channel, selected, onDelete }: { channel: Channel; select
           <p style={{ fontSize: 14, fontWeight: 600, color: "var(--text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {channel.title}
           </p>
-          <p style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 1 }}>
-            {channel.username ? `@${channel.username}` : t("channels.private")}
-            {channel.memberCount != null && ` · 👥 ${channel.memberCount.toLocaleString()}`}
+          <p style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 1, display: "flex", alignItems: "center", gap: 3 }}>
+            <span>
+              {channel.username ? `@${channel.username}` : t("channels.private")}
+              {channel.memberCount != null && ` · 👥 ${channel.memberCount.toLocaleString()}`}
+            </span>
+            {channel.username && (
+              <CopyButton value={channel.username} title={t("channels.copyUsername")} size={10} />
+            )}
           </p>
 
           {/* Bot row */}
@@ -351,22 +357,15 @@ function ChannelCard({ channel, selected, onDelete }: { channel: Channel; select
             <ChevronDown size={11} style={{ transform: open ? "rotate(180deg)" : "none", transition: "transform 0.2s" }} />
           </button>
 
-          <button
-            onClick={handleDelete}
-            disabled={deleting}
-            style={{
-              display: "flex", alignItems: "center", gap: 5,
-              padding: "5px 12px", borderRadius: 8, fontSize: 12, fontWeight: 500,
-              border: "1px solid rgba(231,76,60,0.3)",
-              backgroundColor: "rgba(231,76,60,0.07)", color: "var(--danger)",
-              cursor: deleting ? "default" : "pointer",
-            }}
-          >
-            {deleting
+          <TimedUndoAction
+            label={t("channels.delete")}
+            undoLabel={t("channels.cancelDelete")}
+            icon={deleting
               ? <Loader size={12} style={{ animation: "spin 1s linear infinite" }} />
               : <Trash2 size={12} />}
-            {t("channels.delete")}
-          </button>
+            onConfirm={handleDelete}
+            disabled={deleting}
+          />
         </div>
       </div>
 

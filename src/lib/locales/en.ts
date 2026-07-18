@@ -9,6 +9,9 @@ export const en = {
     "nav.bots":       "Bots",
     "nav.settings":   "Settings",
     "nav.more":       "More",
+    "palette.placeholder": "Search drafts, channels, bots…",
+    "palette.noResults":   "No results found",
+    "palette.sectionNav":  "Navigation",
 
     "topbar.editor":    "Editor",
     "topbar.drafts":    "Drafts",
@@ -452,8 +455,10 @@ export const en = {
     "channels.emptyDesc":     "Add a Telegram channel for the bot to publish to",
     "channels.add":           "Add channel",
     "channels.private":       "Private channel",
+    "channels.copyUsername":  "Copy username",
     "channels.stats":         "Statistics",
     "channels.delete":        "Delete",
+    "channels.cancelDelete":  "Undo",
     "channels.loading":       "Loading…",
     "channels.loadError":     "Failed to load channel statistics",
     "channels.refreshError":  "Failed to refresh statistics",
@@ -468,6 +473,7 @@ export const en = {
     "bots.emptyDesc":  "Add a Telegram bot to start publishing posts",
     "bots.add":        "Add bot",
     "bots.active":     "Active",
+    "bots.copyToken":  "Copy token",
     "bots.refresh":    "Refresh",
     "bots.delete":     "Delete bot",
 

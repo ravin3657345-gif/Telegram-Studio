@@ -9,6 +9,9 @@ export const es = {
     "nav.bots":       "Bots",
     "nav.settings":   "Ajustes",
     "nav.more":       "Más",
+    "palette.placeholder": "Buscar borradores, canales, bots…",
+    "palette.noResults":   "No se encontraron resultados",
+    "palette.sectionNav":  "Navegación",
 
     "topbar.editor":    "Editor",
     "topbar.drafts":    "Borradores",
@@ -356,8 +359,10 @@ export const es = {
     "channels.emptyDesc":     "Añade un canal de Telegram para que el bot publique posts",
     "channels.add":           "Añadir canal",
     "channels.private":       "Canal privado",
+    "channels.copyUsername":  "Copiar username",
     "channels.stats":         "Estadísticas",
     "channels.delete":        "Eliminar",
+    "channels.cancelDelete":  "Deshacer",
     "channels.loading":       "Cargando…",
     "channels.loadError":     "Error al cargar las estadísticas del canal",
     "channels.refreshError":  "Error al actualizar las estadísticas",
@@ -372,6 +377,7 @@ export const es = {
     "bots.emptyDesc":  "Añade un bot de Telegram para empezar a publicar posts",
     "bots.add":        "Añadir bot",
     "bots.active":     "Activo",
+    "bots.copyToken":  "Copiar token",
     "bots.refresh":    "Actualizar",
     "bots.delete":     "Eliminar bot",
 

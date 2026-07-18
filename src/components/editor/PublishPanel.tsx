@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Send, Clock, CheckCircle2, AlertCircle, Loader2, Layers, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/Button";
+import { SplitButton } from "@/components/ui/SplitButton";
 import { ScheduleDialog } from "@/components/editor/ScheduleDialog";
 import { PublishConfirmDialog } from "@/components/editor/PublishConfirmDialog";
 import { useChannelsStore } from "@/store/channelsStore";
@@ -832,22 +833,22 @@ export function PublishPanel({ draftId }: PublishPanelProps) {
             {updating ? t("publish.updating") : t("publish.updateTelegram")}
           </Button>
         ) : (
-          <>
-            <Button variant="primary" size="sm" fullWidth disabled={!canPublish}
-              className="btn-publish-main"
-              leftIcon={status === "publishing" ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
-              onClick={() => setShowPublishConfirm(true)}
-            >
-              {status === "publishing" ? t("publish.publishing") : t("publish.button")}
-            </Button>
-
-            <Button variant="ghost" size="sm" fullWidth disabled={!canSchedule}
-              leftIcon={status === "scheduling" ? <Loader2 size={13} className="animate-spin" /> : <Clock size={13} />}
-              onClick={() => setShowSchedule(true)}
-            >
-              {status === "scheduling" ? t("publish.scheduling") : t("publish.schedule")}
-            </Button>
-          </>
+          <SplitButton
+            primary={{
+              label: status === "publishing" ? t("publish.publishing") : t("publish.button"),
+              icon: <Send size={13} />,
+              onClick: () => setShowPublishConfirm(true),
+              disabled: !canPublish,
+              loading: status === "publishing",
+            }}
+            secondary={{
+              label: status === "scheduling" ? t("publish.scheduling") : t("publish.schedule"),
+              icon: <Clock size={13} />,
+              onClick: () => setShowSchedule(true),
+              disabled: !canSchedule,
+              loading: status === "scheduling",
+            }}
+          />
         )}
       </div>
       </div>

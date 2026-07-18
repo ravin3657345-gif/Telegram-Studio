@@ -9,6 +9,9 @@ export const fr = {
     "nav.bots":       "Bots",
     "nav.settings":   "Paramètres",
     "nav.more":       "Plus",
+    "palette.placeholder": "Rechercher brouillons, chaînes, bots…",
+    "palette.noResults":   "Aucun résultat",
+    "palette.sectionNav":  "Navigation",
 
     "topbar.editor":    "Éditeur",
     "topbar.drafts":    "Brouillons",
@@ -356,8 +359,10 @@ export const fr = {
     "channels.emptyDesc":     "Ajoutez une chaîne Telegram pour que le bot y publie des posts",
     "channels.add":           "Ajouter une chaîne",
     "channels.private":       "Chaîne privée",
+    "channels.copyUsername":  "Copier le username",
     "channels.stats":         "Statistiques",
     "channels.delete":        "Supprimer",
+    "channels.cancelDelete":  "Annuler",
     "channels.loading":       "Chargement…",
     "channels.loadError":     "Échec du chargement des statistiques",
     "channels.refreshError":  "Échec de l'actualisation des statistiques",
@@ -372,6 +377,7 @@ export const fr = {
     "bots.emptyDesc":  "Ajoutez un bot Telegram pour commencer à publier des posts",
     "bots.add":        "Ajouter un bot",
     "bots.active":     "Actif",
+    "bots.copyToken":  "Copier le token",
     "bots.refresh":    "Actualiser",
     "bots.delete":     "Supprimer le bot",
 
