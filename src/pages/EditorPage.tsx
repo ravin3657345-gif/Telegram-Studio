@@ -26,7 +26,7 @@ export function EditorPage() {
   const { draftId } = useParams<{ draftId?: string }>();
   const navigate    = useNavigate();
   const location    = useLocation();
-  const isCreateTemplate = !!(location.state as { _createTemplate?: boolean } | null)?._createTemplate;
+  const isCreateTemplate = !!(location.state as { _createTemplate?: number } | null)?._createTemplate;
   useSettingsStore((s) => s.language);
   const showPreview = useSettingsStore((s) => s.showTelegramPreview);
   const isMobile = useIsMobileLayout();

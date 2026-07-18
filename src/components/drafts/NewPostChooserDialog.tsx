@@ -31,7 +31,9 @@ export function NewPostChooserDialog({ onClose }: Props) {
     onClose();
     // _newPost tells PostEditor this is a genuinely blank post, not a return
     // trip to whatever was already open — see PostEditor's isFreshSession.
-    navigate("/editor", { state: { _newPost: true } });
+    // A fresh timestamp, not `true` — see the HistoryNavState comment in
+    // PostEditor.tsx for why a repeated static value wouldn't reset twice.
+    navigate("/editor", { state: { _newPost: Date.now() } });
   }
 
   async function handleUse(tmpl: Template) {

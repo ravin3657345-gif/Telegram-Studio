@@ -52,8 +52,15 @@ function stripLegacyMessageSplitNodes<T>(node: T): T {
 
 interface HistoryNavState {
   _histId?: string;
-  _newPost?: boolean;
-  _createTemplate?: boolean;
+  // A nonce (Date.now()), not a plain boolean — the effect below resets on
+  // this value CHANGING between renders, and repeated navigate("/editor",
+  // { state: { _newPost: true } }) calls while already on a fresh session
+  // would carry the same `true` both times, so React's dependency check
+  // sees no change and skips the reset. A fresh timestamp on every trigger
+  // guarantees it always differs, so clicking "new post" twice in a row —
+  // e.g. from the sidebar button — clears every time, not just the first.
+  _newPost?: number;
+  _createTemplate?: number;
 }
 
 const ALLOWED_IMAGE = ["image/jpeg", "image/png", "image/webp", "image/gif"];
@@ -317,6 +324,15 @@ export function PostEditor({ draftId: initialDraftId, onEditorReady }: PostEdito
     draftLoadedRef.current   = false;
     historyLoadedRef.current = false;
     setDraftId(initialDraftId ?? null);
+    // resetEditor() above only clears the STORE's contentJson — the live
+    // TipTap document is uncontrolled and doesn't resync from that on its
+    // own. Without this, the visible editor kept showing whatever was
+    // loaded before (e.g. a template) until the component happened to fully
+    // unmount/remount elsewhere, which is what made it look like the button
+    // only worked "the second time, from another page." A real draftId
+    // switch doesn't need this — that case is handled by the getDraft
+    // effect below calling editor.commands.setContent(...) itself.
+    if (!initialDraftId) editor?.commands.clearContent(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialDraftId, histState._histId, histState._newPost, histState._createTemplate]);
 

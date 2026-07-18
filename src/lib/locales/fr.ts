@@ -12,6 +12,10 @@ export const fr = {
     "palette.placeholder": "Rechercher brouillons, chaînes, bots…",
     "palette.noResults":   "Aucun résultat",
     "palette.sectionNav":  "Navigation",
+    "palette.newPost":     "Créer un nouveau post",
+    "editor.newPostConfirmTitle":  "Démarrer un nouveau post ?",
+    "editor.newPostConfirmDesc":   "Le contenu actuel de l'éditeur et les paramètres d'envoi seront effacés sans possibilité d'annulation. Tout brouillon non enregistré sera perdu.",
+    "editor.newPostConfirmButton": "Oui, recommencer",
 
     "topbar.editor":    "Éditeur",
     "topbar.drafts":    "Brouillons",

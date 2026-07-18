@@ -10,10 +10,12 @@ import {
   ChevronRight,
   Clock,
   BarChart2,
+  FilePlus,
 } from "lucide-react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { SidebarItem } from "./SidebarItem";
 import { Tooltip } from "@/components/ui/Tooltip";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { useDraftsStore } from "@/store/draftsStore";
 import { useChannelsStore } from "@/store/channelsStore";
 import { useSettingsStore, SIDEBAR_WIDGET_IDS } from "@/store/settingsStore";
@@ -43,9 +45,16 @@ const MANAGE_ROUTES = [
 
 export function Sidebar() {
   const draftCount = useDraftsStore((s) => s.drafts.length);
+  const navigate = useNavigate();
   useSettingsStore((s) => s.language);
   const [appVersion, setAppVersion] = useState("1.0.0");
+  const [showNewPostConfirm, setShowNewPostConfirm] = useState(false);
   useEffect(() => { getVersion().then(setAppVersion).catch(() => {}); }, []);
+
+  function confirmNewPost() {
+    setShowNewPostConfirm(false);
+    navigate("/editor", { state: { _newPost: Date.now() } });
+  }
 
   return (
     <aside
@@ -71,6 +80,19 @@ export function Sidebar() {
             label={t(item.key)}
             badge={"hasBadge" in item && item.hasBadge ? draftCount : undefined}
             dataTour={"dataTour" in item ? item.dataTour : undefined}
+            action={
+              item.to === "/editor"
+                ? {
+                    icon: FilePlus,
+                    label: t("palette.newPost"),
+                    // Confirm first — this unconditionally wipes whatever's
+                    // in the editor (see PostEditor's isFreshSession reset),
+                    // and unlike TimedUndoAction elsewhere in this app there's
+                    // no "undo" to offer once unsaved content is gone.
+                    onClick: () => setShowNewPostConfirm(true),
+                  }
+                : undefined
+            }
           />
         ))}
       </nav>
@@ -110,6 +132,16 @@ export function Sidebar() {
           v{appVersion}
         </NavLink>
       </div>
+
+      {showNewPostConfirm && (
+        <ConfirmDialog
+          title={t("editor.newPostConfirmTitle")}
+          description={t("editor.newPostConfirmDesc")}
+          confirmLabel={t("editor.newPostConfirmButton")}
+          onConfirm={confirmNewPost}
+          onClose={() => setShowNewPostConfirm(false)}
+        />
+      )}
     </aside>
   );
 }

@@ -1,6 +1,6 @@
 import { useMemo, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
-import { PenLine, Files, LayoutTemplate, CalendarClock, History, Radio, Bot, Settings, FileText, Hash } from "lucide-react";
+import { PenLine, Files, LayoutTemplate, CalendarClock, History, Radio, Bot, Settings, FileText, Hash, FilePlus } from "lucide-react";
 import { useDraftsStore } from "@/store/draftsStore";
 import { useChannelsStore } from "@/store/channelsStore";
 import { t } from "@/lib/i18n";
@@ -40,6 +40,18 @@ export function useCommandPaletteItems(): CommandItem[] {
   const bots = useChannelsStore((s) => s.bots);
 
   return useMemo(() => {
+    // Distinct from the "Редактор" nav item below (which just opens
+    // whatever was already open) — mirrors NewPostChooserDialog.tsx's own
+    // "from scratch" button exactly, including the `_newPost` state flag
+    // PostEditor reads to know this is a genuinely blank session.
+    const newPostItem: CommandItem = {
+      id: "action-new-post",
+      title: t("palette.newPost"),
+      section: t("palette.sectionNav"),
+      icon: <FilePlus size={15} />,
+      onSelect: () => navigate("/editor", { state: { _newPost: Date.now() } }),
+    };
+
     const navItems: CommandItem[] = NAV_ROUTES.map((r) => ({
       id: `nav-${r.to}`,
       title: t(r.key),
@@ -75,6 +87,6 @@ export function useCommandPaletteItems(): CommandItem[] {
       onSelect: () => navigate("/bots"),
     }));
 
-    return [...navItems, ...draftItems, ...channelItems, ...botItems];
+    return [newPostItem, ...navItems, ...draftItems, ...channelItems, ...botItems];
   }, [navigate, drafts, channels, bots]);
 }

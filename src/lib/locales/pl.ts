@@ -12,6 +12,10 @@ export const pl = {
     "palette.placeholder": "Szukaj wśród szkiców, kanałów, botów…",
     "palette.noResults":   "Brak wyników",
     "palette.sectionNav":  "Nawigacja",
+    "palette.newPost":     "Utwórz nowy post",
+    "editor.newPostConfirmTitle":  "Rozpocząć nowy post?",
+    "editor.newPostConfirmDesc":   "Bieżąca zawartość edytora i ustawienia wysyłki zostaną wyczyszczone bez możliwości cofnięcia. Niezapisany szkic zostanie utracony.",
+    "editor.newPostConfirmButton": "Tak, zacznij od nowa",
 
     "topbar.editor":    "Edytor",
     "topbar.drafts":    "Szkice",

@@ -1,28 +1,13 @@
 import { fileRegistry } from "@/lib/fileRegistry";
 import type { DraftAttachment } from "@/types/draft";
 
-/**
- * Rebuilds in-memory blob URLs for a post's file attachments and patches
- * every blockImage/blockVideo node's `src` to point at them, keyed by the
- * same `fileId` the node already carries. Used both when opening an existing
- * draft and when applying a template — either way the actual bytes only
- * exist on disk (base64-encoded over IPC) until this runs.
- */
-export function restoreAttachmentsIntoJson(contentJson: string, attachments: DraftAttachment[]): string {
-  if (!attachments.length) return contentJson;
-
-  const urlMap: Record<string, string> = {};
-  for (const att of attachments) {
-    try {
-      const byteStr = atob(att.dataBase64);
-      const bytes = new Uint8Array(byteStr.length);
-      for (let i = 0; i < byteStr.length; i++) bytes[i] = byteStr.charCodeAt(i);
-      const file = new File([bytes], att.fileName, { type: att.mimeType });
-      urlMap[att.fileId] = fileRegistry.addWithId(att.fileId, file);
-    } catch { /* skip broken attachment */ }
-  }
+// Shared by restoreAttachmentsIntoJson/registerFilesIntoJson below — walks the
+// doc patching every blockImage/blockVideo node's `src` to the freshly
+// registered blob URL for its `fileId`, once the caller has already gotten
+// real File objects into fileRegistry by whatever means (base64 over IPC,
+// a bundled local asset, ...).
+function patchSrcByFileId(contentJson: string, urlMap: Record<string, string>): string {
   if (!Object.keys(urlMap).length) return contentJson;
-
   try {
     const doc = JSON.parse(contentJson);
     const patchNode = (node: Record<string, unknown>) => {
@@ -41,6 +26,44 @@ export function restoreAttachmentsIntoJson(contentJson: string, attachments: Dra
   } catch {
     return contentJson;
   }
+}
+
+/**
+ * Rebuilds in-memory blob URLs for a post's file attachments and patches
+ * every blockImage/blockVideo node's `src` to point at them, keyed by the
+ * same `fileId` the node already carries. Used both when opening an existing
+ * draft and when applying a (database-backed) template — either way the
+ * actual bytes only exist on disk (base64-encoded over IPC) until this runs.
+ */
+export function restoreAttachmentsIntoJson(contentJson: string, attachments: DraftAttachment[]): string {
+  if (!attachments.length) return contentJson;
+
+  const urlMap: Record<string, string> = {};
+  for (const att of attachments) {
+    try {
+      const byteStr = atob(att.dataBase64);
+      const bytes = new Uint8Array(byteStr.length);
+      for (let i = 0; i < byteStr.length; i++) bytes[i] = byteStr.charCodeAt(i);
+      const file = new File([bytes], att.fileName, { type: att.mimeType });
+      urlMap[att.fileId] = fileRegistry.addWithId(att.fileId, file);
+    } catch { /* skip broken attachment */ }
+  }
+  return patchSrcByFileId(contentJson, urlMap);
+}
+
+/**
+ * Same job as restoreAttachmentsIntoJson, but for File objects already in
+ * hand (e.g. fetched from a bundled static asset — see the showcase example
+ * template in exampleTemplates.ts) instead of base64 DraftAttachments that
+ * arrived over Tauri IPC. Skips the base64 round-trip since there's no IPC
+ * boundary to cross for a file that's already local.
+ */
+export function registerFilesIntoJson(contentJson: string, files: Record<string, File>): string {
+  const urlMap: Record<string, string> = {};
+  for (const [fileId, file] of Object.entries(files)) {
+    urlMap[fileId] = fileRegistry.addWithId(fileId, file);
+  }
+  return patchSrcByFileId(contentJson, urlMap);
 }
 
 /**

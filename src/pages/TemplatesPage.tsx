@@ -13,6 +13,7 @@ import { t, ti, type TranslationKey } from "@/lib/i18n";
 import { useSettingsStore } from "@/store/settingsStore";
 import type { Template, TemplateCategory } from "@/types/template";
 import { EXAMPLE_TEMPLATES, type ExampleTemplate } from "@/lib/exampleTemplates";
+import { registerFilesIntoJson } from "@/lib/attachmentRestore";
 import { accentGradient, accentGrayGradient } from "@/lib/color";
 import { useListKeyboardNav } from "@/hooks/useListKeyboardNav";
 
@@ -125,8 +126,27 @@ export function TemplatesPage() {
     }
   }
 
-  function handleUseExample(example: ExampleTemplate) {
-    setContentJson(example.contentJson);
+  async function handleUseExample(example: ExampleTemplate) {
+    let contentJson = example.contentJson;
+    // Only the showcase example currently carries real images — for every
+    // other one this is a no-op (assets is undefined). blockImage's `src`
+    // starts empty in the static catalog entry (see exampleTemplates.ts);
+    // fetching the bundled asset and registering it into fileRegistry here
+    // mirrors exactly what restoreAttachmentsIntoJson does for a real
+    // DB-backed template's base64 attachments, just from a local file
+    // instead of bytes that came over Tauri IPC.
+    if (example.assets) {
+      const files: Record<string, File> = {};
+      await Promise.all(
+        Object.entries(example.assets).map(async ([fileId, asset]) => {
+          const res = await fetch(asset.url);
+          const blob = await res.blob();
+          files[fileId] = new File([blob], asset.fileName, { type: asset.mimeType });
+        }),
+      );
+      contentJson = registerFilesIntoJson(contentJson, files);
+    }
+    setContentJson(contentJson);
     navigate("/editor");
     toast.success(ti("templates.examples.opened", { name: example.name }));
   }
@@ -200,7 +220,7 @@ export function TemplatesPage() {
     <>
       <TopBar
         actions={
-          <Button variant="primary" size="sm" leftIcon={<Plus size={13} />} onClick={() => navigate("/editor", { state: { _createTemplate: true } })}>
+          <Button variant="primary" size="sm" leftIcon={<Plus size={13} />} onClick={() => navigate("/editor", { state: { _createTemplate: Date.now() } })}>
             {t("templates.createTemplate")}
           </Button>
         }
@@ -340,7 +360,7 @@ export function TemplatesPage() {
                 {/* New template dashed card — always visible */}
                 <div className="px-6">
                   <button
-                    onClick={() => navigate("/editor", { state: { _createTemplate: true } })}
+                    onClick={() => navigate("/editor", { state: { _createTemplate: Date.now() } })}
                     className="rounded-xl border-2 border-dashed flex flex-col items-center justify-center gap-2 transition-all w-full"
                     style={{
                       minHeight: 80,

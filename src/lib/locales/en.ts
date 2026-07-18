@@ -12,6 +12,10 @@ export const en = {
     "palette.placeholder": "Search drafts, channels, bots…",
     "palette.noResults":   "No results found",
     "palette.sectionNav":  "Navigation",
+    "palette.newPost":     "Create new post",
+    "editor.newPostConfirmTitle":  "Start a new post?",
+    "editor.newPostConfirmDesc":   "The editor's current content and send settings will be cleared with no way to undo it. Any unsaved draft will be lost.",
+    "editor.newPostConfirmButton": "Yes, start over",
 
     "topbar.editor":    "Editor",
     "topbar.drafts":    "Drafts",

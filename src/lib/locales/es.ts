@@ -12,6 +12,10 @@ export const es = {
     "palette.placeholder": "Buscar borradores, canales, bots…",
     "palette.noResults":   "No se encontraron resultados",
     "palette.sectionNav":  "Navegación",
+    "palette.newPost":     "Crear nueva publicación",
+    "editor.newPostConfirmTitle":  "¿Empezar una nueva publicación?",
+    "editor.newPostConfirmDesc":   "El contenido actual del editor y los ajustes de envío se borrarán sin posibilidad de deshacerlo. Se perderá cualquier borrador sin guardar.",
+    "editor.newPostConfirmButton": "Sí, empezar de nuevo",
 
     "topbar.editor":    "Editor",
     "topbar.drafts":    "Borradores",

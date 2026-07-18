@@ -10,6 +10,10 @@
 // into the editor via setContentJson(), it just never touches the DB.
 
 import type { TemplateCategory } from "@/types/template";
+import demoCollage1 from "@/assets/demo/demo-collage-1.jpg";
+import demoCollage2 from "@/assets/demo/demo-collage-2.jpg";
+import demoSlide1 from "@/assets/demo/demo-slide-1.jpg";
+import demoSlide2 from "@/assets/demo/demo-slide-2.jpg";
 
 export interface ExampleTemplate {
   id: string;
@@ -18,7 +22,29 @@ export interface ExampleTemplate {
   /** One-line note on the copywriting technique this example demonstrates. */
   technique: string;
   contentJson: string;
+  /**
+   * Bundled local image assets this example's blockImage nodes reference by
+   * fileId (see registerFilesIntoJson in attachmentRestore.ts) — undefined
+   * for every other example here, since none of them use real media. Vite
+   * resolves each import to a small hashed-filename URL, not the image bytes
+   * themselves, so this costs nothing until a template that actually needs
+   * one is used.
+   */
+  assets?: Record<string, { url: string; fileName: string; mimeType: string }>;
 }
+
+// blockImage's `src` is only ever a display URL — the real Rich-publish path
+// (PublishPanel.tsx) resolves photos via fileRegistry.getFile(fileId)
+// exclusively, so `src` alone would preview fine and then fail/vanish on
+// Publish. TemplatesPage.handleUseExample fetches these and registers them
+// into fileRegistry (via registerFilesIntoJson) before setting the content,
+// exactly like opening a real draft/template restores its own attachments.
+const SHOWCASE_ASSETS: NonNullable<ExampleTemplate["assets"]> = {
+  "demo-collage-1": { url: demoCollage1, fileName: "demo-collage-1.jpg", mimeType: "image/jpeg" },
+  "demo-collage-2": { url: demoCollage2, fileName: "demo-collage-2.jpg", mimeType: "image/jpeg" },
+  "demo-slide-1":   { url: demoSlide1,   fileName: "demo-slide-1.jpg",   mimeType: "image/jpeg" },
+  "demo-slide-2":   { url: demoSlide2,   fileName: "demo-slide-2.jpg",   mimeType: "image/jpeg" },
+};
 
 const doc = (...content: unknown[]) => JSON.stringify({ type: "doc", content });
 const heading = (level: number, text: string) => ({
@@ -30,9 +56,32 @@ const p = (...runs: Array<string | { text: string; marks: unknown[] }>) => ({
 });
 const bold = (text: string) => ({ text, marks: [{ type: "bold" }] });
 const italic = (text: string) => ({ text, marks: [{ type: "italic" }] });
+const underline = (text: string) => ({ text, marks: [{ type: "underline" }] });
+const strike = (text: string) => ({ text, marks: [{ type: "strike" }] });
+const spoiler = (text: string) => ({ text, marks: [{ type: "spoiler" }] });
+const highlight = (text: string) => ({ text, marks: [{ type: "highlight" }] });
+const inlineCode = (text: string) => ({ text, marks: [{ type: "code" }] });
+const link = (text: string, href: string) => ({ text, marks: [{ type: "link", attrs: { href } }] });
 const li = (...runs: Array<string | { text: string; marks: unknown[] }>) => ({
   type: "listItem",
   content: [p(...runs)],
+});
+const quote = (expandable: boolean, ...blocks: unknown[]) => ({
+  type: "blockquote",
+  attrs: { expandable },
+  content: blocks,
+});
+const check = (checked: boolean, text: string) => ({
+  type: "checkItem",
+  attrs: { checked },
+  content: [{ type: "text", text }],
+});
+// `src: ""` — patched to a real blob URL by registerFilesIntoJson once
+// TemplatesPage fetches the matching SHOWCASE_ASSETS entry; empty until then
+// is fine, this node never renders before that patch runs.
+const img = (fileId: string, groupLayout: "collage" | "slideshow") => ({
+  type: "blockImage",
+  attrs: { src: "", fileId, groupLayout, fileName: SHOWCASE_ASSETS[fileId].fileName, mimeType: SHOWCASE_ASSETS[fileId].mimeType },
 });
 
 export const EXAMPLE_TEMPLATES: ExampleTemplate[] = [
@@ -133,6 +182,93 @@ export const EXAMPLE_TEMPLATES: ExampleTemplate[] = [
           answer: "<p>Да, в течение <b>14 дней</b> с момента оплаты — просто напишите в поддержку.</p>",
         },
       },
+    ),
+  },
+  {
+    // Mirrors the sales-bot's own /demo command (sales-bot/supabase/functions/
+    // sales-bot/index.ts, handleDemo) block-for-block where possible, so a
+    // user who saw that live demo in Telegram gets the same post inside the
+    // app. The four demo photos (collage + slideshow) are bundled as real
+    // local assets — see `assets` below and SHOWCASE_ASSETS above — the
+    // audio player is the one thing still not reproduced, same reason
+    // (needs a real attached file) but nobody's asked for that one yet.
+    id: "__example-showcase",
+    name: "Витрина блоков Rich-режима",
+    category: "other",
+    technique: "То же демо, что бот присылает по команде /demo — один пост, все текстовые/структурные блоки сразу",
+    assets: SHOWCASE_ASSETS,
+    contentJson: doc(
+      { type: "anchorPoint" },
+      heading(2, "🎨 Витрина возможностей Rich-режима"),
+      p("Так выглядит пост, собранный в Telegram Studio из блоков — без единой строчки HTML или Markdown."),
+      p(bold("жирный"), " ", italic("курсив"), " ", underline("подчёркнутый"), " ", strike("зачёркнутый"), " ", spoiler("спойлер"), " ", highlight("маркер"), " и ", inlineCode("инлайн-код")),
+      quote(false, p("Обычная цитата — для пояснений и врезок.")),
+      quote(false,
+        p(bold("Форматирование"), " работает и внутри цитаты"),
+        quote(false, p("а внутри неё — ещё одна, вложенная")),
+      ),
+      check(true, "Собрать пост в редакторе"),
+      check(false, "Опубликовать в канал"),
+      {
+        type: "orderedList",
+        content: [
+          li("Открыть редактор"),
+          li("Собрать пост из блоков"),
+          li("Нажать «Опубликовать»"),
+        ],
+      },
+      {
+        type: "codeBlock",
+        attrs: { language: "javascript" },
+        content: [{ type: "text", text: 'console.log("Привет, Telegram!");' }],
+      },
+      quote(true, p("Раскрывающийся текст — нажмите, чтобы посмотреть. Удобно для пояснений, которые не нужно показывать сразу всем.")),
+      p("Фото собираются в коллаж:"),
+      img("demo-collage-1", "collage"),
+      img("demo-collage-2", "collage"),
+      p("Или в слайд-шоу, если снимков много и их удобнее пролистывать:"),
+      img("demo-slide-1", "slideshow"),
+      img("demo-slide-2", "slideshow"),
+      p("Карта — например, для анонса локации мероприятия:"),
+      { type: "blockMap", attrs: { lat: 55.7558, long: 37.6173, zoom: 15 } },
+      p("И формулы, если вдруг это техническая статья:"),
+      { type: "blockFormula", attrs: { expression: "E = mc^2" } },
+      {
+        type: "blockTable",
+        content: [
+          {
+            type: "tableRow",
+            content: [
+              { type: "tableCell", attrs: { header: true }, content: [{ type: "text", text: "Блок" }] },
+              { type: "tableCell", attrs: { header: true }, content: [{ type: "text", text: "Поддержка" }] },
+            ],
+          },
+          {
+            type: "tableRow",
+            content: [
+              { type: "tableCell", attrs: { header: false }, content: [{ type: "text", text: "Фото, видео, аудио, коллажи, слайд-шоу" }] },
+              { type: "tableCell", attrs: { header: false }, content: [{ type: "text", text: "Да" }] },
+            ],
+          },
+          {
+            type: "tableRow",
+            content: [
+              { type: "tableCell", attrs: { header: false }, content: [{ type: "text", text: "Таблицы, чек-листы, код, раскрывающийся текст" }] },
+              { type: "tableCell", attrs: { header: false }, content: [{ type: "text", text: "Да" }] },
+            ],
+          },
+          {
+            type: "tableRow",
+            content: [
+              { type: "tableCell", attrs: { header: false }, content: [{ type: "text", text: "Карты, формулы (LaTeX)" }] },
+              { type: "tableCell", attrs: { header: false }, content: [{ type: "text", text: "Да" }] },
+            ],
+          },
+        ],
+      },
+      quote(false, p("💡 Всё это собирается визуально, перетаскиванием блоков — редактор сам превращает их в нужную разметку.")),
+      p("А ссылки в тексте — обычным словом, без некрасивого URL целиком: ", link("вот так", "https://telegram.org"), "."),
+      p("И «Лифт» — для длинных постов, мгновенный переход наверх без прокрутки: ", link("👆 Лифт", "#top")),
     ),
   },
 ];

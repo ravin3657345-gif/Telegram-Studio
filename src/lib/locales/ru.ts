@@ -13,6 +13,10 @@ export const ru = {
     "palette.placeholder": "Поиск по черновикам, каналам, ботам…",
     "palette.noResults":   "Ничего не найдено",
     "palette.sectionNav":  "Навигация",
+    "palette.newPost":     "Создать новый пост",
+    "editor.newPostConfirmTitle":  "Начать новый пост?",
+    "editor.newPostConfirmDesc":   "Текущее содержимое редактора и настройки отправки будут очищены без возможности отмены. Несохранённый черновик потеряется.",
+    "editor.newPostConfirmButton": "Да, начать заново",
 
     // ── TopBar ───────────────────────────────────────────────────────────────
     "topbar.editor":    "Редактор",
