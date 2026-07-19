@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use crate::telegram::{
     client::{TelegramClient, TelegramError},
     types::{InlineKeyboardMarkup, TgChat, TgMessage, TgUser},
+    TgForm, TgPart,
 };
 
 // ─── Payload structs ─────────────────────────────────────────────────────────
@@ -153,12 +154,12 @@ pub async fn send_photo(
         .map_err(TelegramError::Api)?;
     log::debug!("[photo] raw={} bytes, normalized={} bytes, mime={}, name={}", raw_len, bytes.len(), mime, name);
 
-    let part = reqwest::multipart::Part::bytes(bytes)
+    let part = TgPart::bytes(bytes)
         .file_name(name)
         .mime_str(&mime)
         .map_err(|e| TelegramError::Network(e.to_string()))?;
 
-    let mut form = reqwest::multipart::Form::new()
+    let mut form = TgForm::new()
         .text("chat_id", chat_id.to_string())
         .text("caption", caption.to_string())
         .text("parse_mode", parse_mode.to_string())
@@ -186,12 +187,12 @@ pub async fn send_video(
         .decode(&media.data_base64)
         .map_err(|e| TelegramError::Base64(e.to_string()))?;
 
-    let part = reqwest::multipart::Part::bytes(bytes)
+    let part = TgPart::bytes(bytes)
         .file_name(media.file_name.clone())
         .mime_str(&media.mime_type)
         .map_err(|e| TelegramError::Network(e.to_string()))?;
 
-    let mut form = reqwest::multipart::Form::new()
+    let mut form = TgForm::new()
         .text("chat_id", chat_id.to_string())
         .text("caption", caption.to_string())
         .text("parse_mode", parse_mode.to_string())
@@ -220,12 +221,12 @@ pub async fn send_document(
         .map_err(|e| TelegramError::Base64(e.to_string()))?;
 
     let mime = if media.mime_type.is_empty() { "application/octet-stream" } else { &media.mime_type };
-    let part = reqwest::multipart::Part::bytes(bytes)
+    let part = TgPart::bytes(bytes)
         .file_name(media.file_name.clone())
         .mime_str(mime)
         .map_err(|e| TelegramError::Network(e.to_string()))?;
 
-    let mut form = reqwest::multipart::Form::new()
+    let mut form = TgForm::new()
         .text("chat_id", chat_id.to_string())
         .text("caption", caption.to_string())
         .text("parse_mode", parse_mode.to_string())
@@ -312,7 +313,7 @@ pub async fn send_rich_message(
         rich_message["media"] = serde_json::Value::Array(media_json);
     }
 
-    let form = reqwest::multipart::Form::new()
+    let form = TgForm::new()
         .text("chat_id", chat_id.to_string())
         .text(
             "rich_message",
@@ -320,7 +321,7 @@ pub async fn send_rich_message(
         );
 
     let form = media.iter().try_fold(form, |form, m| {
-        let part = reqwest::multipart::Part::bytes(m.bytes.clone())
+        let part = TgPart::bytes(m.bytes.clone())
             .file_name(m.file_name.clone())
             .mime_str(&m.mime_type)
             .map_err(|e| TelegramError::Network(e.to_string()))?;
@@ -426,7 +427,7 @@ pub async fn send_media_group(
     caption: &str,
     parse_mode: &str,
 ) -> Result<Vec<TgMessage>, TelegramError> {
-    let mut form = reqwest::multipart::Form::new()
+    let mut form = TgForm::new()
         .text("chat_id", chat_id.to_string());
 
     let mut media_json = Vec::new();
@@ -468,7 +469,7 @@ pub async fn send_media_group(
             (raw, mime, item.file_name.clone())
         };
 
-        let part = reqwest::multipart::Part::bytes(bytes)
+        let part = TgPart::bytes(bytes)
             .file_name(name)
             .mime_str(&mime)
             .map_err(|e| TelegramError::Network(e.to_string()))?;
