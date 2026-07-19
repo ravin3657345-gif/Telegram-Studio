@@ -121,6 +121,7 @@ export const fr = {
     "toolbar.file":        "Fichier",
     "toolbar.html":        "Vue HTML",
     "toolbar.split":       "Diviser le post ici (au curseur)",
+    "toolbar.more":        "Plus",
 
     "bubble.bold":        "Gras (Ctrl+B)",
     "bubble.italic":      "Italique (Ctrl+I)",
@@ -567,6 +568,8 @@ export const fr = {
     "block.formulaError":     "Erreur",
     "block.editingHint":  "Ctrl+B gras · Ctrl+I italique · Ctrl+U souligné",
     "block.drag":         "Glisser le bloc",
+    "block.moveUp":       "Déplacer vers le haut",
+    "block.moveDown":     "Déplacer vers le bas",
     "block.actions":      "Actions du bloc",
     "block.replaceImage": "Remplacer l'image",
     "code.text":     "Texte",

@@ -13,6 +13,7 @@ import { useEditorStore } from "@/store/editorStore";
 import { useUiStore } from "@/store/uiStore";
 import { t } from "@/lib/i18n";
 import { buildTableNode } from "@/extensions/BlockTable";
+import { isAndroidPlatform, MOBILE_BREAKPOINT } from "@/hooks/useIsMobileLayout";
 
 // ─── Menu items ───────────────────────────────────────────────────────────────
 
@@ -362,6 +363,50 @@ const SlashMenu = forwardRef<SlashMenuRef, SlashMenuProps>(({ items, command }, 
 
 SlashMenu.displayName = "SlashMenu";
 
+// ─── Mobile popup container ───────────────────────────────────────────────────
+// `render()` below is a plain suggestion-lifecycle factory outside the React
+// tree (no hooks allowed) — same platform/width check useIsMobileLayout()
+// does, just called directly instead of as a hook.
+function isMobileNow(): boolean {
+  return isAndroidPlatform() || (typeof window !== "undefined" && window.innerWidth < MOBILE_BREAKPOINT);
+}
+
+// On mobile, swaps the tippy-at-caret popup for a bottom sheet — a floating
+// list anchored to wherever "/" was typed is routinely off-screen or under
+// the keyboard on a phone. Built directly with the same `.bottom-sheet-*`
+// classes BottomSheet.tsx uses (see globals.css) rather than mounting a
+// second React root just to host `component.element`, which is already a
+// plain DOM node from ReactRenderer by this point.
+function createMobileSheet(content: HTMLElement, onDismiss: () => void) {
+  const overlay = document.createElement("div");
+  overlay.className = "bottom-sheet-overlay";
+  overlay.setAttribute("data-state", "open");
+  overlay.style.zIndex = "9998";
+
+  const sheet = document.createElement("div");
+  sheet.className = "bottom-sheet-content";
+  sheet.setAttribute("data-state", "open");
+  sheet.style.maxHeight = "60vh";
+  sheet.style.zIndex = "9999";
+
+  const handle = document.createElement("div");
+  handle.className = "bottom-sheet-handle";
+
+  const body = document.createElement("div");
+  body.className = "bottom-sheet-body";
+  body.appendChild(content);
+
+  sheet.appendChild(handle);
+  sheet.appendChild(body);
+  overlay.appendChild(sheet);
+  // Same "hide, don't force-cancel the suggestion" behavior the desktop
+  // Escape handler below already had — see this function's call site.
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) onDismiss(); });
+  document.body.appendChild(overlay);
+
+  return { destroy: () => overlay.remove() };
+}
+
 // ─── Extension ────────────────────────────────────────────────────────────────
 
 export const SlashCommand = Extension.create({
@@ -390,7 +435,8 @@ export const SlashCommand = Extension.create({
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         render: (): any => {
           let component: ReactRenderer<SlashMenuRef>;
-          let popup: TippyInstance[];
+          let popup: TippyInstance[] | undefined;
+          let mobileSheet: { destroy: () => void } | undefined;
 
           return {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -399,6 +445,14 @@ export const SlashCommand = Extension.create({
                 props,
                 editor: props.editor,
               });
+
+              if (isMobileNow()) {
+                mobileSheet = createMobileSheet(component.element as HTMLElement, () => {
+                  mobileSheet?.destroy();
+                  mobileSheet = undefined;
+                });
+                return;
+              }
 
               popup = tippy("body", {
                 getReferenceClientRect: props.clientRect as () => DOMRect,
@@ -423,14 +477,20 @@ export const SlashCommand = Extension.create({
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             onUpdate(props: any) {
               component.updateProps(props);
-              popup[0].setProps({ getReferenceClientRect: props.clientRect });
+              popup?.[0].setProps({ getReferenceClientRect: props.clientRect });
             },
             onKeyDown(props: { event: KeyboardEvent }) {
-              if (props.event.key === "Escape") { popup[0].hide(); return true; }
+              if (props.event.key === "Escape") {
+                popup?.[0].hide();
+                mobileSheet?.destroy();
+                mobileSheet = undefined;
+                return true;
+              }
               return (component.ref as SlashMenuRef)?.onKeyDown(props) ?? false;
             },
             onExit() {
-              popup[0].destroy();
+              popup?.[0].destroy();
+              mobileSheet?.destroy();
               component.destroy();
             },
           };

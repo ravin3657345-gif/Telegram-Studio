@@ -5,7 +5,12 @@ import { NESTABLE_CONTAINER_TYPES } from "@/lib/blockGeometry";
 
 // Move the top-level block containing the selection one slot up/down —
 // keyboard equivalent of dragging it with the handle (Notion: Ctrl/Cmd+Shift+↑/↓).
-function moveCurrentBlock(editor: Editor, dir: -1 | 1): boolean {
+// Exported for BlockHoverControls.tsx's mobile tap-menu (see its "move up/
+// down" buttons) — on mobile there's no drag handle at all (see that file's
+// module comment), and tapping a block already places the text cursor in
+// it via native contentEditable behavior, so this selection-based move
+// works unmodified as the touch equivalent, not just the keyboard one.
+export function moveCurrentBlock(editor: Editor, dir: -1 | 1): boolean {
   const { state, view } = editor;
   const { $from } = state.selection;
   if ($from.depth < 1) return false;

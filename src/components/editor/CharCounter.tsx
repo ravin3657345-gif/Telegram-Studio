@@ -11,6 +11,8 @@ import { t, ti, pluralWords } from "@/lib/i18n";
 import { useSettingsStore } from "@/store/settingsStore";
 import { Scissors } from "lucide-react";
 import clsx from "clsx";
+import { useIsMobileLayout } from "@/hooks/useIsMobileLayout";
+import { useIsLandscape } from "@/hooks/useIsLandscape";
 
 interface CharCounterProps {
   editor: Editor;
@@ -20,6 +22,12 @@ export function CharCounter({ editor }: CharCounterProps) {
   const count = editor.storage.characterCount?.characters() ?? 0;
   const publishMode = useEditorStore((s) => s.publishMode);
   useSettingsStore((s) => s.language);
+  // Same landscape-compaction as PostTitleInput.tsx — smaller of the fixed
+  // chunks stacking up before the reported "тесно в landscape" complaint,
+  // still worth shrinking even though the title was the bigger offender.
+  const isMobile = useIsMobileLayout();
+  const isLandscape = useIsLandscape();
+  const compact = isMobile && isLandscape;
 
   let hasMedia = false;
   editor.state.doc.descendants((node) => {
@@ -76,7 +84,7 @@ export function CharCounter({ editor }: CharCounterProps) {
       data-tour="char-counter"
       className="char-counter-root flex items-center gap-3 px-4 flex-shrink-0 border-t"
       style={{
-        height: 32,
+        height: compact ? 22 : 32,
         borderColor: "var(--border-subtle)",
         backgroundColor: "var(--bg-surface)",
       }}

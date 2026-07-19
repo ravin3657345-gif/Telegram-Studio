@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import type { Editor } from "@tiptap/react";
-import { GripVertical, Plus, MoreHorizontal } from "lucide-react";
+import { GripVertical, Plus, MoreHorizontal, ChevronUp, ChevronDown } from "lucide-react";
 import {
   getBlockAtY, getBlockEl, getBlockRect, getBlockEndRect, getNestedDropInfo,
   listBlocks, setGapBefore, clearGap, clearGapTransitions, collapseBlockFootprint, restoreBlockFootprint,
@@ -11,6 +11,8 @@ import {
 } from "@/lib/blockGeometry";
 import { t } from "@/lib/i18n";
 import { Tooltip } from "@/components/ui/Tooltip";
+import { useIsMobileLayout } from "@/hooks/useIsMobileLayout";
+import { moveCurrentBlock } from "@/extensions/BlockMoveShortcuts";
 
 interface BlockHoverControlsProps {
   editor: Editor;
@@ -40,6 +42,23 @@ const btnStyle: React.CSSProperties = {
   color: "var(--text-muted)",
   background: "transparent",
   border: "none",
+  cursor: "pointer",
+};
+
+// Mobile tap targets — 22px (desktop) is well under the ~40px minimum a
+// finger can reliably hit; also gets a visible background (not just an
+// icon on transparent) since there's no hover state to reveal a button's
+// clickable bounds on touch.
+const mobileBtnStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  width: 40,
+  height: 40,
+  borderRadius: 8,
+  color: "var(--text-secondary)",
+  background: "var(--bg-elevated)",
+  border: "1px solid var(--border-subtle)",
   cursor: "pointer",
 };
 
@@ -106,6 +125,7 @@ function makeGhost(sourceEl: HTMLElement, rect: DOMRect): HTMLDivElement {
 }
 
 export function BlockHoverControls({ editor, onOpenMenu }: BlockHoverControlsProps) {
+  const isMobile = useIsMobileLayout();
   const [hoverPos, setHoverPos] = useState<number | null>(null);
   const [rect, setRect] = useState<DOMRect | null>(null);
   // Right-side "⋯" trigger only: the actual rendered text's end (Range API)
@@ -135,9 +155,24 @@ export function BlockHoverControls({ editor, onOpenMenu }: BlockHoverControlsPro
     }, HIDE_DELAY);
   }
 
-  // ── Track which block is hovered ────────────────────────────────────────
+  // ── Track which block is hovered (desktop) / tapped (mobile) ───────────────
+  // Mouse hover has no touch equivalent at all — mousemove/mouseleave simply
+  // never fire on a real tap. Mobile gets its own branch: a tap resolves the
+  // block the same way (getBlockAtY on the tap's Y), but the panel then
+  // stays open (no HIDE_DELAY timer — nothing to "leave") until the next tap
+  // either selects a different block or lands outside any block (closes).
   useEffect(() => {
     const view = editor.view;
+
+    if (isMobile) {
+      function onClick(e: MouseEvent) {
+        const pos = getBlockAtY(view, e.clientY);
+        if (pos === null) { setHover(null, null, null); return; }
+        setHover(pos, getBlockRect(view, pos), getBlockEndRect(view, pos));
+      }
+      view.dom.addEventListener("click", onClick);
+      return () => view.dom.removeEventListener("click", onClick);
+    }
 
     function onMouseMove(e: MouseEvent) {
       if (draggingRef.current) return;
@@ -158,7 +193,7 @@ export function BlockHoverControls({ editor, onOpenMenu }: BlockHoverControlsPro
       cancelHide();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editor]);
+  }, [editor, isMobile]);
 
   // ── Keep the controls glued to the hovered block as it grows/shrinks —
   // without this, typing into a block (without moving the mouse) leaves the
@@ -198,6 +233,16 @@ export function BlockHoverControls({ editor, onOpenMenu }: BlockHoverControlsPro
     if (hoverPos === null) return;
     onOpenMenu(hoverPos, e.currentTarget.getBoundingClientRect().right, e.currentTarget.getBoundingClientRect().top);
   }
+
+  // ── Mobile move up/down — replaces the grip/drag entirely on touch (see
+  // this file's tap-tracking effect above: the grip is invisible without
+  // hover in the first place, and a touch-drag would have the finger
+  // covering the exact drop target it's aiming for). Reuses
+  // moveCurrentBlock's existing selection-based move — tapping a block
+  // already placed the text cursor there via native contentEditable
+  // behavior, so no extra positioning logic is needed here.
+  function handleMoveUp() { moveCurrentBlock(editor, -1); }
+  function handleMoveDown() { moveCurrentBlock(editor, 1); }
 
   // ── Grip — drag to reorder ───────────────────────────────────────────────
   function handleGripPointerDown(e: React.PointerEvent) {
@@ -334,9 +379,55 @@ export function BlockHoverControls({ editor, onOpenMenu }: BlockHoverControlsPro
 
   const visible = hoverPos !== null && rect !== null;
 
+  // Mobile: one row (duplicate/move-up/move-down/menu) instead of desktop's
+  // two mouse-anchored clusters — clamped inside the viewport instead of
+  // `left: rect.left - 52`, which routinely put the desktop cluster
+  // off-screen to the left on a narrow phone.
+  const MOBILE_PANEL_WIDTH = 4 * 40 + 3 * 6 + 12;
+  const mobileLeft = rect
+    ? Math.max(8, Math.min(rect.left, window.innerWidth - MOBILE_PANEL_WIDTH - 8))
+    : 0;
+  const mobileTop = rect ? Math.max(8, rect.top - 48) : 0;
+
   return createPortal(
     <AnimatePresence>
-      {visible && rect && (
+      {visible && rect && isMobile && (
+        <motion.div
+          key="block-tap-controls"
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          exit={{ opacity: 0, scale: 0.9 }}
+          transition={{ duration: 0.12 }}
+          style={{
+            position: "fixed",
+            top: mobileTop,
+            left: mobileLeft,
+            display: "flex",
+            gap: 6,
+            padding: 6,
+            borderRadius: 10,
+            backgroundColor: "var(--bg-surface)",
+            border: "1px solid var(--border-default)",
+            boxShadow: "0 4px 16px rgba(0,0,0,0.2)",
+            zIndex: 200,
+          }}
+        >
+          <button type="button" title={t("context.duplicate")} style={mobileBtnStyle} onClick={handleAddClick}>
+            <Plus size={17} />
+          </button>
+          <button type="button" title={t("block.moveUp")} style={mobileBtnStyle} onClick={handleMoveUp}>
+            <ChevronUp size={17} />
+          </button>
+          <button type="button" title={t("block.moveDown")} style={mobileBtnStyle} onClick={handleMoveDown}>
+            <ChevronDown size={17} />
+          </button>
+          <button type="button" title={t("block.actions")} style={mobileBtnStyle} onClick={handleMenuClick}>
+            <MoreHorizontal size={17} />
+          </button>
+        </motion.div>
+      )}
+
+      {visible && rect && !isMobile && (
         <motion.div
           key="block-hover-controls"
           initial={{ opacity: 0, scale: 0.9 }}

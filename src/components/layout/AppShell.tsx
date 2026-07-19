@@ -8,6 +8,7 @@ import { useChannelsStore, dedupeChannels } from "@/store/channelsStore";
 import { useDraftsStore } from "@/store/draftsStore";
 import { getBots, getChannels, getDrafts } from "@/lib/tauriApi";
 import { useIsMobileLayout } from "@/hooks/useIsMobileLayout";
+import { ensureNotificationPermission } from "@/lib/notifications";
 
 export function AppShell() {
   const location = useLocation();
@@ -27,6 +28,10 @@ export function AppShell() {
     getBots().then(setBots).catch(() => {});
     getChannels().then((chs) => setChannels(dedupeChannels(chs))).catch(() => {});
     getDrafts().then(setDrafts).catch(() => {});
+    // Scheduled-post outcome notifications (see scheduler/mod.rs) only
+    // deliver on Android once permission's been granted — this is the
+    // one-time request for that, same startup effect as the rest above.
+    ensureNotificationPermission();
   }, []);
 
   return (

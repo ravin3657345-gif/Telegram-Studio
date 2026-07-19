@@ -1,17 +1,20 @@
+import { useState } from "react";
 import type { Editor } from "@tiptap/react";
 import {
   Bold, Italic, Underline, Strikethrough, EyeOff,
   Quote, List, ListOrdered, Link, Smile, Image, Film,
-  Heading1, Heading2, Heading3, Code2, Minus,
+  Heading1, Heading2, Heading3, Code2, Minus, MoreHorizontal,
   Undo2, Redo2, Code, FileUp, Scissors,
   Subscript as SubscriptIcon, Superscript as SuperscriptIcon,
   Highlighter, ChevronsDownUp, Anchor, Music,
 } from "lucide-react";
 import { ToolbarButton, ToolbarSeparator } from "./ToolbarButton";
+import { BottomSheet } from "@/components/ui/BottomSheet";
 import { t } from "@/lib/i18n";
 import { useSettingsStore } from "@/store/settingsStore";
 import { useEditorStore } from "@/store/editorStore";
 import { useUiStore } from "@/store/uiStore";
+import { useIsMobileLayout } from "@/hooks/useIsMobileLayout";
 import { ANCHOR_TOP_NAME } from "@/extensions/BlockAnchor";
 
 // Inserts (once) an invisible anchor marker at the very start of the post,
@@ -52,6 +55,31 @@ interface EditorToolbarProps {
   splitActive?: boolean;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type IconType = React.ComponentType<any>;
+
+// Every button, in original visual order, as data instead of inline JSX —
+// lets desktop (unchanged: full horizontal scroll strip, all buttons) and
+// mobile (priority subset inline + rest in a BottomSheet, see below) render
+// from the exact same definitions instead of risking the two lists drifting
+// apart. `mobilePriority` marks the ~8 buttons the plan called out as
+// always-visible on mobile (bold/italic/underline/H1-H3/list/image);
+// everything else — including undo/redo, which desktop keeps up front —
+// moves into "Ещё" on mobile, where a labeled list row is more legible than
+// a hover-only tooltip on an icon nobody can hover.
+type ToolbarEntry =
+  | { type: "separator" }
+  | {
+      type: "button";
+      id: string;
+      mobilePriority: boolean;
+      title: string;
+      icon: IconType;
+      isActive: boolean;
+      disabled?: boolean;
+      onClick: () => void;
+    };
+
 export function EditorToolbar({
   editor,
   onLinkClick,
@@ -66,6 +94,8 @@ export function EditorToolbar({
   const publishMode = useEditorStore((s) => s.publishMode);
   const anchorLinkText = useSettingsStore((s) => s.anchorLinkText);
   const toast = useUiStore((s) => s.toast);
+  const isMobile = useIsMobileLayout();
+  const [showMore, setShowMore] = useState(false);
 
   // Appends a short "— note" to a tooltip when this button's output looks/
   // behaves differently (or vanishes) in the current publish mode — purely
@@ -84,235 +114,232 @@ export function EditorToolbar({
     el.scrollLeft += e.deltaY;
   }
 
-  return (
-    <div
-      onWheel={handleWheel}
-      className="flex items-center gap-0.5 px-2 flex-shrink-0 border-b overflow-x-auto toolbar-scroll"
-      style={{
-        height: 44,
-        minHeight: 44,
-        backgroundColor: "var(--bg-surface)",
-        borderColor: "var(--border-subtle)",
-        scrollbarWidth: "thin",
-        scrollbarColor: "var(--border-default) transparent",
-      }}
-    >
-      <ToolbarButton
-        title={t("toolbar.undo")}
-        icon={Undo2}
-        isActive={false}
-        onClick={() => editor.chain().focus().undo().run()}
-        disabled={!editor.can().undo()}
-      />
-      <ToolbarButton
-        title={t("toolbar.redo")}
-        icon={Redo2}
-        isActive={false}
-        onClick={() => editor.chain().focus().redo().run()}
-        disabled={!editor.can().redo()}
-      />
+  const entries: ToolbarEntry[] = [
+    { type: "button", id: "undo", mobilePriority: false, title: t("toolbar.undo"), icon: Undo2, isActive: false,
+      onClick: () => editor.chain().focus().undo().run(), disabled: !editor.can().undo() },
+    { type: "button", id: "redo", mobilePriority: false, title: t("toolbar.redo"), icon: Redo2, isActive: false,
+      onClick: () => editor.chain().focus().redo().run(), disabled: !editor.can().redo() },
 
-      <ToolbarSeparator />
+    { type: "separator" },
 
-      <ToolbarButton
-        title={withHint(t("toolbar.h1"), publishMode === "normal" ? t("toolbar.headingDegrades") : null)}
-        icon={Heading1}
-        isActive={editor.isActive("heading", { level: 1 })}
-        onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
-      />
-      <ToolbarButton
-        title={withHint(t("toolbar.h2"), publishMode === "normal" ? t("toolbar.headingDegrades") : null)}
-        icon={Heading2}
-        isActive={editor.isActive("heading", { level: 2 })}
-        onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
-      />
-      <ToolbarButton
-        title={withHint(t("toolbar.h3"), publishMode === "normal" ? t("toolbar.heading3Degrades") : null)}
-        icon={Heading3}
-        isActive={editor.isActive("heading", { level: 3 })}
-        onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}
-      />
+    { type: "button", id: "h1", mobilePriority: true,
+      title: withHint(t("toolbar.h1"), publishMode === "normal" ? t("toolbar.headingDegrades") : null),
+      icon: Heading1, isActive: editor.isActive("heading", { level: 1 }),
+      onClick: () => editor.chain().focus().toggleHeading({ level: 1 }).run() },
+    { type: "button", id: "h2", mobilePriority: true,
+      title: withHint(t("toolbar.h2"), publishMode === "normal" ? t("toolbar.headingDegrades") : null),
+      icon: Heading2, isActive: editor.isActive("heading", { level: 2 }),
+      onClick: () => editor.chain().focus().toggleHeading({ level: 2 }).run() },
+    { type: "button", id: "h3", mobilePriority: true,
+      title: withHint(t("toolbar.h3"), publishMode === "normal" ? t("toolbar.heading3Degrades") : null),
+      icon: Heading3, isActive: editor.isActive("heading", { level: 3 }),
+      onClick: () => editor.chain().focus().toggleHeading({ level: 3 }).run() },
 
-      <ToolbarSeparator />
+    { type: "separator" },
 
-      <ToolbarButton title={t("toolbar.bold")} icon={Bold}
-        isActive={editor.isActive("bold")} onClick={() => editor.chain().focus().toggleBold().run()}
-        disabled={!editor.can().toggleBold()}
-      />
-      <ToolbarButton title={t("toolbar.italic")} icon={Italic}
-        isActive={editor.isActive("italic")} onClick={() => editor.chain().focus().toggleItalic().run()}
-        disabled={!editor.can().toggleItalic()}
-      />
-      <ToolbarButton title={t("toolbar.underline")} icon={Underline}
-        isActive={editor.isActive("underline")} onClick={() => editor.chain().focus().toggleUnderline().run()}
-        disabled={!editor.can().toggleUnderline()}
-      />
-      <ToolbarButton title={t("toolbar.strike")} icon={Strikethrough}
-        isActive={editor.isActive("strike")} onClick={() => editor.chain().focus().toggleStrike().run()}
-        disabled={!editor.can().toggleStrike()}
-      />
-      <ToolbarButton title={t("toolbar.code")} icon={Code}
-        isActive={editor.isActive("code")} onClick={() => editor.chain().focus().toggleCode().run()}
-        disabled={!editor.can().toggleCode()}
-      />
-      <ToolbarButton
-        title={t("toolbar.spoiler")}
-        icon={EyeOff}
-        isActive={editor.isActive("spoiler")} onClick={() => editor.chain().focus().toggleSpoiler().run()}
-        disabled={!editor.can().toggleMark("spoiler")}
-      />
-      <ToolbarButton
-        title={withHint(t("toolbar.subscript"), publishMode !== "rich" ? t("toolbar.richOnlyFormat") : null)}
-        icon={SubscriptIcon}
-        isActive={editor.isActive("subscript")} onClick={() => editor.chain().focus().toggleSubscript().run()}
-      />
-      <ToolbarButton
-        title={withHint(t("toolbar.superscript"), publishMode !== "rich" ? t("toolbar.richOnlyFormat") : null)}
-        icon={SuperscriptIcon}
-        isActive={editor.isActive("superscript")} onClick={() => editor.chain().focus().toggleSuperscript().run()}
-      />
-      <ToolbarButton
-        title={withHint(t("toolbar.highlight"), publishMode !== "rich" ? t("toolbar.richOnlyFormat") : null)}
-        icon={Highlighter}
-        isActive={editor.isActive("highlight")} onClick={() => editor.chain().focus().toggleHighlight().run()}
-      />
+    { type: "button", id: "bold", mobilePriority: true, title: t("toolbar.bold"), icon: Bold,
+      isActive: editor.isActive("bold"), onClick: () => editor.chain().focus().toggleBold().run(),
+      disabled: !editor.can().toggleBold() },
+    { type: "button", id: "italic", mobilePriority: true, title: t("toolbar.italic"), icon: Italic,
+      isActive: editor.isActive("italic"), onClick: () => editor.chain().focus().toggleItalic().run(),
+      disabled: !editor.can().toggleItalic() },
+    { type: "button", id: "underline", mobilePriority: true, title: t("toolbar.underline"), icon: Underline,
+      isActive: editor.isActive("underline"), onClick: () => editor.chain().focus().toggleUnderline().run(),
+      disabled: !editor.can().toggleUnderline() },
+    { type: "button", id: "strike", mobilePriority: false, title: t("toolbar.strike"), icon: Strikethrough,
+      isActive: editor.isActive("strike"), onClick: () => editor.chain().focus().toggleStrike().run(),
+      disabled: !editor.can().toggleStrike() },
+    { type: "button", id: "code", mobilePriority: false, title: t("toolbar.code"), icon: Code,
+      isActive: editor.isActive("code"), onClick: () => editor.chain().focus().toggleCode().run(),
+      disabled: !editor.can().toggleCode() },
+    { type: "button", id: "spoiler", mobilePriority: false, title: t("toolbar.spoiler"), icon: EyeOff,
+      isActive: editor.isActive("spoiler"), onClick: () => editor.chain().focus().toggleSpoiler().run(),
+      disabled: !editor.can().toggleMark("spoiler") },
+    { type: "button", id: "subscript", mobilePriority: false,
+      title: withHint(t("toolbar.subscript"), publishMode !== "rich" ? t("toolbar.richOnlyFormat") : null),
+      icon: SubscriptIcon, isActive: editor.isActive("subscript"),
+      onClick: () => editor.chain().focus().toggleSubscript().run() },
+    { type: "button", id: "superscript", mobilePriority: false,
+      title: withHint(t("toolbar.superscript"), publishMode !== "rich" ? t("toolbar.richOnlyFormat") : null),
+      icon: SuperscriptIcon, isActive: editor.isActive("superscript"),
+      onClick: () => editor.chain().focus().toggleSuperscript().run() },
+    { type: "button", id: "highlight", mobilePriority: false,
+      title: withHint(t("toolbar.highlight"), publishMode !== "rich" ? t("toolbar.richOnlyFormat") : null),
+      icon: Highlighter, isActive: editor.isActive("highlight"),
+      onClick: () => editor.chain().focus().toggleHighlight().run() },
 
-      <ToolbarSeparator />
+    { type: "separator" },
 
-      <ToolbarButton title={t("toolbar.quote")} icon={Quote}
-        isActive={editor.isActive("blockquote")} onClick={() => editor.chain().focus().toggleBlockquote().run()}
-        disabled={!editor.can().toggleBlockquote()}
-      />
-      {editor.isActive("blockquote") && (
-        <ToolbarButton
-          title={
+    { type: "button", id: "quote", mobilePriority: false, title: t("toolbar.quote"), icon: Quote,
+      isActive: editor.isActive("blockquote"), onClick: () => editor.chain().focus().toggleBlockquote().run(),
+      disabled: !editor.can().toggleBlockquote() },
+    ...(editor.isActive("blockquote")
+      ? [{
+          type: "button" as const, id: "collapsible", mobilePriority: false,
+          title:
             // Rich messages don't support the `expandable` attribute —
             // only the normal publish mode does.
             publishMode !== "normal"
               ? t("toolbar.collapsibleUnavail")
               : editor.getAttributes("blockquote").expandable
                 ? t("toolbar.makeNormal")
-                : t("toolbar.makeCollapsible")
-          }
-          icon={ChevronsDownUp}
-          isActive={!!editor.getAttributes("blockquote").expandable}
-          disabled={publishMode !== "normal"}
-          onClick={() => {
+                : t("toolbar.makeCollapsible"),
+          icon: ChevronsDownUp,
+          isActive: !!editor.getAttributes("blockquote").expandable,
+          disabled: publishMode !== "normal",
+          onClick: () => {
             if (publishMode !== "normal") {
               toast("warning", t("toolbar.collapsibleUnavail"), t("toolbar.collapsibleUnavailHint"));
               return;
             }
             (editor.commands as any).toggleBlockquoteExpandable();
-          }}
-        />
-      )}
-      <ToolbarButton title={t("toolbar.codeBlock")} icon={Code2}
-        isActive={editor.isActive("codeBlock")} onClick={() => editor.chain().focus().toggleCodeBlock().run()}
-        disabled={!editor.can().toggleCodeBlock()}
-      />
-      <ToolbarButton
-        title={withHint(t("toolbar.list"), publishMode === "normal" ? t("toolbar.listDegrades") : null)}
-        icon={List}
-        isActive={editor.isActive("bulletList")} onClick={() => editor.chain().focus().toggleBulletList().run()}
-        disabled={!editor.can().toggleBulletList()}
-      />
-      <ToolbarButton
-        title={withHint(t("toolbar.orderedList"), publishMode === "normal" ? t("toolbar.listDegrades") : null)}
-        icon={ListOrdered}
-        isActive={editor.isActive("orderedList")} onClick={() => editor.chain().focus().toggleOrderedList().run()}
-        disabled={!editor.can().toggleOrderedList()}
-      />
-      <ToolbarButton
-        title={withHint(t("toolbar.divider"), publishMode === "normal" ? t("toolbar.dividerDegrades") : null)}
-        icon={Minus}
-        isActive={false} onClick={() => editor.chain().focus().setHorizontalRule().run()}
-      />
+          },
+        }]
+      : []),
+    { type: "button", id: "codeBlock", mobilePriority: false, title: t("toolbar.codeBlock"), icon: Code2,
+      isActive: editor.isActive("codeBlock"), onClick: () => editor.chain().focus().toggleCodeBlock().run(),
+      disabled: !editor.can().toggleCodeBlock() },
+    { type: "button", id: "list", mobilePriority: true,
+      title: withHint(t("toolbar.list"), publishMode === "normal" ? t("toolbar.listDegrades") : null),
+      icon: List, isActive: editor.isActive("bulletList"),
+      onClick: () => editor.chain().focus().toggleBulletList().run(), disabled: !editor.can().toggleBulletList() },
+    { type: "button", id: "orderedList", mobilePriority: false,
+      title: withHint(t("toolbar.orderedList"), publishMode === "normal" ? t("toolbar.listDegrades") : null),
+      icon: ListOrdered, isActive: editor.isActive("orderedList"),
+      onClick: () => editor.chain().focus().toggleOrderedList().run(), disabled: !editor.can().toggleOrderedList() },
+    { type: "button", id: "divider", mobilePriority: false,
+      title: withHint(t("toolbar.divider"), publishMode === "normal" ? t("toolbar.dividerDegrades") : null),
+      icon: Minus, isActive: false, onClick: () => editor.chain().focus().setHorizontalRule().run() },
 
-      <ToolbarSeparator />
+    { type: "separator" },
 
-      <ToolbarButton title={t("toolbar.link")} icon={Link}
-        isActive={editor.isActive("link")} onClick={onLinkClick}
-      />
-      <ToolbarButton title={t("toolbar.emoji")} icon={Smile} isActive={false} onClick={onEmojiClick} />
-      <ToolbarButton
-        title={
-          publishMode !== "rich"
-            ? `${t("anchor.insert")} — ${t("anchor.unavail")}`
-            : t("anchor.insert")
+    { type: "button", id: "link", mobilePriority: false, title: t("toolbar.link"), icon: Link,
+      isActive: editor.isActive("link"), onClick: onLinkClick },
+    { type: "button", id: "emoji", mobilePriority: false, title: t("toolbar.emoji"), icon: Smile,
+      isActive: false, onClick: onEmojiClick },
+    { type: "button", id: "anchor", mobilePriority: false,
+      title: publishMode !== "rich" ? `${t("anchor.insert")} — ${t("anchor.unavail")}` : t("anchor.insert"),
+      icon: Anchor, isActive: false, disabled: publishMode !== "rich",
+      onClick: () => {
+        if (publishMode !== "rich") {
+          toast("warning", t("anchor.unavail"), t("anchor.unavailHint"));
+          return;
         }
-        icon={Anchor}
-        isActive={false}
-        disabled={publishMode !== "rich"}
-        onClick={() => {
-          if (publishMode !== "rich") {
-            toast("warning", t("anchor.unavail"), t("anchor.unavailHint"));
-            return;
-          }
-          insertJumpToTopLink(editor, anchorLinkText.trim() || t("anchor.linkText"));
-        }}
-      />
+        insertJumpToTopLink(editor, anchorLinkText.trim() || t("anchor.linkText"));
+      } },
 
-      <ToolbarSeparator />
+    { type: "separator" },
 
-      <ToolbarButton title={t("toolbar.image")} icon={Image} isActive={false} onClick={() => onMediaClick("image")} />
-      <ToolbarButton title={t("toolbar.video")} icon={Film} isActive={false} onClick={() => onMediaClick("video")} />
-      <ToolbarButton
-        title={
-          publishMode !== "normal"
-            ? `${t("toolbar.file")} — ${t("toolbar.fileWarning")}`
-            : t("toolbar.file")
+    { type: "button", id: "image", mobilePriority: true, title: t("toolbar.image"), icon: Image,
+      isActive: false, onClick: () => onMediaClick("image") },
+    { type: "button", id: "video", mobilePriority: false, title: t("toolbar.video"), icon: Film,
+      isActive: false, onClick: () => onMediaClick("video") },
+    { type: "button", id: "file", mobilePriority: false,
+      title: publishMode !== "normal" ? `${t("toolbar.file")} — ${t("toolbar.fileWarning")}` : t("toolbar.file"),
+      icon: FileUp, isActive: false, disabled: publishMode !== "normal",
+      onClick: () => {
+        if (publishMode !== "normal") {
+          toast("warning", t("toolbar.fileWarning"), t("toolbar.fileHint"));
+          return;
         }
-        icon={FileUp}
-        isActive={false}
-        disabled={publishMode !== "normal"}
-        onClick={() => {
-          if (publishMode !== "normal") {
-            toast("warning", t("toolbar.fileWarning"), t("toolbar.fileHint"));
-            return;
-          }
-          onMediaClick("file");
-        }}
-      />
-      <ToolbarButton
-        title={
-          publishMode !== "rich"
-            ? `${t("toolbar.audio")} — ${t("slash.audioWarning")}`
-            : t("toolbar.audio")
+        onMediaClick("file");
+      } },
+    { type: "button", id: "audio", mobilePriority: false,
+      title: publishMode !== "rich" ? `${t("toolbar.audio")} — ${t("slash.audioWarning")}` : t("toolbar.audio"),
+      icon: Music, isActive: false, disabled: publishMode !== "rich",
+      onClick: () => {
+        if (publishMode !== "rich") {
+          toast("warning", t("slash.audioWarning"), t("slash.audioHint"));
+          return;
         }
-        icon={Music}
-        isActive={false}
-        disabled={publishMode !== "rich"}
-        onClick={() => {
-          if (publishMode !== "rich") {
-            toast("warning", t("slash.audioWarning"), t("slash.audioHint"));
-            return;
-          }
-          onMediaClick("audio");
+        onMediaClick("audio");
+      } },
+
+    { type: "separator" },
+
+    { type: "button", id: "html", mobilePriority: false, title: t("toolbar.html"),
+      icon: () => <span className="text-2xs font-mono font-bold leading-none">&lt;/&gt;</span>,
+      isActive: showHtmlView, onClick: onHtmlView },
+
+    ...(onSplitClick
+      ? ([
+          { type: "separator" },
+          { type: "button", id: "split", mobilePriority: false, title: t("toolbar.split"), icon: Scissors,
+            isActive: !!splitActive, onClick: onSplitClick },
+        ] as ToolbarEntry[])
+      : []),
+  ];
+
+  const visibleEntries = isMobile
+    ? entries.filter((e) => e.type === "button" && e.mobilePriority)
+    : entries;
+  const overflowEntries = entries.filter((e) => e.type === "button" && !e.mobilePriority);
+
+  return (
+    <>
+      <div
+        onWheel={handleWheel}
+        className="flex items-center gap-0.5 px-2 flex-shrink-0 border-b overflow-x-auto toolbar-scroll"
+        style={{
+          height: 44,
+          minHeight: 44,
+          backgroundColor: "var(--bg-surface)",
+          borderColor: "var(--border-subtle)",
+          scrollbarWidth: "thin",
+          scrollbarColor: "var(--border-default) transparent",
         }}
-      />
-
-      <ToolbarSeparator />
-
-      <ToolbarButton
-        title={t("toolbar.html")}
-        icon={() => (
-          <span className="text-2xs font-mono font-bold leading-none">&lt;/&gt;</span>
+      >
+        {visibleEntries.map((e, i) =>
+          e.type === "separator" ? (
+            <ToolbarSeparator key={`sep-${i}`} />
+          ) : (
+            <ToolbarButton
+              key={e.id}
+              title={e.title}
+              icon={e.icon}
+              isActive={e.isActive}
+              disabled={e.disabled}
+              onClick={e.onClick}
+            />
+          )
         )}
-        isActive={showHtmlView}
-        onClick={onHtmlView}
-      />
 
-      {onSplitClick && (
-        <>
-          <ToolbarSeparator />
+        {isMobile && (
           <ToolbarButton
-            title={t("toolbar.split")}
-            icon={Scissors}
-            isActive={!!splitActive}
-            onClick={onSplitClick}
+            title={t("toolbar.more")}
+            icon={MoreHorizontal}
+            isActive={showMore}
+            onClick={() => setShowMore(true)}
           />
-        </>
+        )}
+      </div>
+
+      {isMobile && showMore && (
+        <BottomSheet title={t("toolbar.more")} onOpenChange={(open) => !open && setShowMore(false)}>
+          {overflowEntries.map((e) => {
+            if (e.type !== "button") return null;
+            const Icon = e.icon;
+            return (
+              <button
+                key={e.id}
+                type="button"
+                disabled={e.disabled}
+                onClick={() => { e.onClick(); setShowMore(false); }}
+                className="flex items-center gap-3 w-full text-left rounded-lg disabled:opacity-40"
+                style={{
+                  padding: "12px 14px",
+                  backgroundColor: e.isActive ? "var(--accent-subtle)" : "transparent",
+                  color: e.isActive ? "var(--accent)" : "var(--text-primary)",
+                  fontSize: 14,
+                }}
+              >
+                <Icon size={18} strokeWidth={e.isActive ? 2.25 : 1.75} style={{ flexShrink: 0 }} />
+                {e.title}
+              </button>
+            );
+          })}
+        </BottomSheet>
       )}
-    </div>
+    </>
   );
 }

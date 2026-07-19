@@ -121,6 +121,7 @@ export const es = {
     "toolbar.file":        "Archivo",
     "toolbar.html":        "Ver HTML",
     "toolbar.split":       "Dividir la publicación aquí (en el cursor)",
+    "toolbar.more":        "Más",
 
     "bubble.bold":        "Negrita (Ctrl+B)",
     "bubble.italic":      "Cursiva (Ctrl+I)",
@@ -567,6 +568,8 @@ export const es = {
     "block.formulaError":     "Error",
     "block.editingHint":  "Ctrl+B negrita · Ctrl+I cursiva · Ctrl+U subrayado",
     "block.drag":         "Arrastrar bloque",
+    "block.moveUp":       "Mover arriba",
+    "block.moveDown":     "Mover abajo",
     "block.actions":      "Acciones del bloque",
     "block.replaceImage": "Reemplazar imagen",
     "code.text":     "Texto",

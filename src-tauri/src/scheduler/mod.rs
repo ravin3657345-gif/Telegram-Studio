@@ -1,5 +1,6 @@
 use chrono::Utc;
 use tauri::{AppHandle, Manager};
+use tauri_plugin_notification::NotificationExt;
 use tokio::time::{interval, Duration};
 
 use crate::{
@@ -78,7 +79,7 @@ async fn process_pending(app: &AppHandle) -> Result<(), String> {
     for row in pending {
         let is_rich = row.publish_mode == "rich";
 
-        let (ordered_bots, opt_chat_id, content, media, rich_parts) = {
+        let (ordered_bots, opt_chat_id, channel_title, content, media, rich_parts) = {
             let db = state.db.lock().map_err(|e| e.to_string())?;
 
             // Load all bots; put the scheduled bot first, then fallback to others
@@ -101,13 +102,20 @@ async fn process_pending(app: &AppHandle) -> Result<(), String> {
                 }
             }
 
-            let opt_chat_id: Option<String> = db
+            // Also fetches the channel's display title — not needed for
+            // sending, only so the notification below (see `notify` and its
+            // call sites) can say *which* channel a post succeeded/failed
+            // for instead of a bare "a post" that's meaningless once more
+            // than one post is scheduled around the same time.
+            let channel_row: Option<(String, String)> = db
                 .query_row(
-                    "SELECT telegram_id FROM channels WHERE id = ?1",
+                    "SELECT telegram_id, title FROM channels WHERE id = ?1",
                     [row.channel_id.as_str()],
-                    |r| r.get::<_, String>(0),
+                    |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)),
                 )
                 .ok();
+            let opt_chat_id = channel_row.as_ref().map(|(id, _)| id.clone());
+            let channel_title = channel_row.map(|(_, title)| title).unwrap_or_default();
 
             if is_rich {
                 // Rich HTML still has its tg://photo|video|audio?id=… references
@@ -123,7 +131,7 @@ async fn process_pending(app: &AppHandle) -> Result<(), String> {
                     html = methods::remove_img_placeholder(&html, attach_name);
                 }
                 let html = methods::strip_empty_media_groups(html.trim());
-                (all_bots, opt_chat_id, html, Vec::new(), parts)
+                (all_bots, opt_chat_id, channel_title, html, Vec::new(), parts)
             } else {
                 let content: String = row.content_html
                     .filter(|s| !s.is_empty())
@@ -144,7 +152,7 @@ async fn process_pending(app: &AppHandle) -> Result<(), String> {
                 // never held in memory between schedule time and send time.
                 let media = load_scheduled_media(&db, &row.id);
 
-                (all_bots, opt_chat_id, content, media, Vec::new())
+                (all_bots, opt_chat_id, channel_title, content, media, Vec::new())
             }
         };
 
@@ -213,14 +221,22 @@ async fn process_pending(app: &AppHandle) -> Result<(), String> {
             update_status(&state, &row.id, "published", None)?;
             cleanup_media_for(&state, &row.id);
             sync_draft_status(&state, row.draft_id.as_deref(), true);
+            notify(app, "Пост опубликован", &channel_title);
         } else if last_was_transient {
             // Don't permafail on a network blip — leave 'pending' so the next
-            // tick retries, up to MAX_TRANSIENT_RETRIES.
-            record_transient_failure(&state, &row.id, row.retry_count, &last_err)?;
+            // tick retries, up to MAX_TRANSIENT_RETRIES. Only notifies once
+            // retries are actually exhausted (`gave_up`) — a single transient
+            // blip that the next tick recovers from on its own isn't worth
+            // surfacing, only the eventual permanent outcome is.
+            let gave_up = record_transient_failure(&state, &row.id, row.retry_count, &last_err)?;
+            if gave_up {
+                notify(app, "Не удалось опубликовать пост", &format!("{channel_title}: {last_err}"));
+            }
         } else {
             update_status(&state, &row.id, "failed", Some(last_err.as_str()))?;
             cleanup_media_for(&state, &row.id);
             sync_draft_status(&state, row.draft_id.as_deref(), false);
+            notify(app, "Не удалось опубликовать пост", &format!("{channel_title}: {last_err}"));
         }
     }
 
@@ -376,17 +392,20 @@ fn update_status(
 
 /// Records a transient (network/API) failure. Keeps the post 'pending' so the
 /// next tick retries it, unless MAX_TRANSIENT_RETRIES has been reached — at
-/// which point it's given up on and marked 'failed'.
+/// which point it's given up on and marked 'failed'. Returns whether this
+/// call was the one that gave up (`true`) — the caller uses that to decide
+/// whether to notify: a single blip the next tick will retry on its own
+/// isn't worth surfacing, only the eventual permanent outcome is.
 fn record_transient_failure(
     state: &AppState,
     id: &str,
     prev_retry_count: i64,
     error: &str,
-) -> Result<(), String> {
+) -> Result<bool, String> {
     let db = state.db.lock().map_err(|e| e.to_string())?;
     let now = Utc::now().to_rfc3339();
 
-    match next_retry_decision(prev_retry_count, MAX_TRANSIENT_RETRIES) {
+    let gave_up = match next_retry_decision(prev_retry_count, MAX_TRANSIENT_RETRIES) {
         RetryDecision::GiveUp { attempts } => {
             let msg = format!("{error} (не удалось после {attempts} попыток)");
             db.execute(
@@ -395,6 +414,7 @@ fn record_transient_failure(
                 rusqlite::params![msg, attempts, now.as_str(), id],
             )
             .map_err(|e| e.to_string())?;
+            true
         }
         RetryDecision::RetryLater { retry_count } => {
             // status stays 'pending' — picked up again on the next tick
@@ -404,7 +424,18 @@ fn record_transient_failure(
                 rusqlite::params![error, retry_count, now.as_str(), id],
             )
             .map_err(|e| e.to_string())?;
+            false
         }
+    };
+    Ok(gave_up)
+}
+
+/// Best-effort — a failed/unpermitted notification is logged, never
+/// propagated. This is a nice-to-have surfaced from a background tick with
+/// nothing else watching it; it must never be the reason a scheduler run
+/// fails or a status update gets skipped.
+fn notify(app: &AppHandle, title: &str, body: &str) {
+    if let Err(e) = app.notification().builder().title(title).body(body).show() {
+        log::warn!("[scheduler] failed to show notification: {e}");
     }
-    Ok(())
 }

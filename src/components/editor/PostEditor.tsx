@@ -22,6 +22,7 @@ import { toast } from "@/store/uiStore";
 import { t, ti } from "@/lib/i18n";
 import { useAttachmentStore } from "@/store/attachmentStore";
 import { useAutoSplit } from "@/hooks/useAutoSplit";
+import { useIsMobileLayout } from "@/hooks/useIsMobileLayout";
 import { SplitOverlay } from "./SplitOverlay";
 import { Scissors, RefreshCw } from "lucide-react";
 import {
@@ -100,6 +101,7 @@ export function PostEditor({ draftId: initialDraftId, onEditorReady }: PostEdito
   const [isDraggingOver, setIsDraggingOver]   = useState(false);
   const [contextMenu, setContextMenu]         = useState<{ x: number; y: number; blockPos: number | null } | null>(null);
   const tauriDropHandledRef = useRef(false);
+  const isMobile = useIsMobileLayout();
 
   const { contentJson, setContentJson, setPostTitle, setDraftTitle, resetEditor, setDraftId } =
     useEditorStore();
@@ -667,9 +669,16 @@ export function PostEditor({ draftId: initialDraftId, onEditorReady }: PostEdito
         </div>
       )}
 
-      {/* Hidden file inputs — IDs used by slash command */}
-      <input id="editor-image-input" ref={imageInputRef} type="file" multiple accept={ALLOWED_MEDIA} className="hidden" onChange={handleFileInputChange} />
-      <input id="editor-video-input" ref={videoInputRef} type="file" multiple accept={ALLOWED_MEDIA} className="hidden" onChange={handleFileInputChange} />
+      {/* Hidden file inputs — IDs used by slash command.
+          Image/video get `capture="environment"` on mobile so tapping
+          "Фото"/"Видео" jumps straight to the camera instead of a gallery
+          picker — a deliberate tradeoff, not an oversight: `capture` and
+          `multiple` don't really coexist (most mobile browsers prioritize
+          the camera once `capture` is set), so this is single-shot-from-
+          camera on mobile vs. multi-select-from-gallery on desktop, not
+          both at once from the same button. */}
+      <input id="editor-image-input" ref={imageInputRef} type="file" multiple={!isMobile} capture={isMobile ? "environment" : undefined} accept={ALLOWED_MEDIA} className="hidden" onChange={handleFileInputChange} />
+      <input id="editor-video-input" ref={videoInputRef} type="file" multiple={!isMobile} capture={isMobile ? "environment" : undefined} accept={ALLOWED_MEDIA} className="hidden" onChange={handleFileInputChange} />
       <input id="editor-audio-input" ref={audioInputRef} type="file" multiple accept={ALLOWED_MEDIA} className="hidden" onChange={handleFileInputChange} />
       <input id="editor-file-input"  ref={fileInputRef}  type="file" multiple                                                      className="hidden" onChange={handleDocumentInputChange} />
 

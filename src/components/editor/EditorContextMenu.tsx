@@ -11,6 +11,8 @@ import type { Editor } from "@tiptap/react";
 import { useEditorStore } from "@/store/editorStore";
 import { useUiStore } from "@/store/uiStore";
 import { t } from "@/lib/i18n";
+import { useIsMobileLayout } from "@/hooks/useIsMobileLayout";
+import { BottomSheet } from "@/components/ui/BottomSheet";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type IconType = React.ComponentType<any>;
@@ -179,6 +181,7 @@ interface EditorContextMenuProps {
 }
 
 export function EditorContextMenu({ editor, x, y, blockPos, onClose }: EditorContextMenuProps) {
+  const isMobile = useIsMobileLayout();
   const menuRef = useRef<HTMLDivElement>(null);
   const menuW = 200;
   const [coords, setCoords] = useState(() => ({
@@ -239,6 +242,46 @@ export function EditorContextMenu({ editor, x, y, blockPos, onClose }: EditorCon
       document.removeEventListener("keydown", handleKey);
     };
   }, [onClose]);
+
+  // Mobile: full-width bottom sheet instead of a position:fixed popup near
+  // the tap point — same `sections` data (buildSections above is untouched),
+  // just a different container. Sidesteps the whole off-screen-positioning
+  // problem the desktop branch below has to solve with coords/useLayoutEffect,
+  // and gets ~44px row targets instead of the desktop py-1.5 (~28-30px).
+  // Radix's own outside-tap/Escape handling (inside BottomSheet) replaces
+  // the manual `mousedown` listener below, which is a no-op here anyway
+  // since menuRef never gets attached to anything on this branch.
+  if (isMobile) {
+    return (
+      <BottomSheet title={t("block.actions")} onOpenChange={(open) => !open && onClose()}>
+        {sections.map((section, si) => (
+          <div key={si} style={{ marginBottom: si < sections.length - 1 ? 8 : 0 }}>
+            <div
+              className="px-3 text-2xs font-bold uppercase"
+              style={{ color: "var(--text-muted)", letterSpacing: "0.07em", paddingBottom: 4 }}
+            >
+              {section.header}
+            </div>
+            {section.items.map((item, i) => {
+              const Icon = item.icon;
+              return (
+                <button
+                  key={i}
+                  type="button"
+                  className="w-full flex items-center gap-3 text-left rounded-lg"
+                  style={{ padding: "12px 14px", color: "var(--text-primary)", fontSize: 14 }}
+                  onClick={() => { item.action(); onClose(); }}
+                >
+                  <Icon size={18} strokeWidth={1.75} style={{ flexShrink: 0, color: "var(--text-muted)" }} />
+                  {item.label}
+                </button>
+              );
+            })}
+          </div>
+        ))}
+      </BottomSheet>
+    );
+  }
 
   return createPortal(
     <motion.div

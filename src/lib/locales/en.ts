@@ -177,6 +177,7 @@ export const en = {
     "toolbar.file":        "File",
     "toolbar.html":        "HTML view",
     "toolbar.split":       "Split the post here (at the cursor)",
+    "toolbar.more":        "More",
 
     "bubble.bold":        "Bold (Ctrl+B)",
     "bubble.italic":      "Italic (Ctrl+I)",
@@ -566,6 +567,8 @@ export const en = {
     "block.formulaError":     "Error",
     "block.editingHint":  "Ctrl+B bold · Ctrl+I italic · Ctrl+U underline",
     "block.drag":         "Drag block",
+    "block.moveUp":       "Move up",
+    "block.moveDown":     "Move down",
     "block.actions":      "Block actions",
     "block.replaceImage": "Replace image",
     "code.text":     "Text",

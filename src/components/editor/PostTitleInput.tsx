@@ -3,6 +3,8 @@ import { Eye, EyeOff } from "lucide-react";
 import { useEditorStore } from "@/store/editorStore";
 import { t } from "@/lib/i18n";
 import { useSettingsStore } from "@/store/settingsStore";
+import { useIsMobileLayout } from "@/hooks/useIsMobileLayout";
+import { useIsLandscape } from "@/hooks/useIsLandscape";
 
 const MAX_CHARS = 100;
 
@@ -11,6 +13,17 @@ export function PostTitleInput() {
   useSettingsStore((s) => s.language);
   const ref = useRef<HTMLTextAreaElement>(null);
   const remaining = MAX_CHARS - postTitle.length;
+  // Landscape on a phone has ~360-400px of height total — the fixed 18/14px
+  // padding + text-2xl this took regardless of orientation ate a large chunk
+  // of that before any actual content showed (confirmed during planning: this
+  // was one of several fixed-size chunks stacking up to the reported "тесно
+  // в landscape" complaint). Portrait mobile and desktop are unaffected.
+  // Both hooks called unconditionally (not `a() && b()`, which would skip
+  // the second call — and thus violate React's hook-call-order rule —
+  // whenever isMobile is false) then combined afterward.
+  const isMobile = useIsMobileLayout();
+  const isLandscape = useIsLandscape();
+  const compact = isMobile && isLandscape;
 
   function handleChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
     const val = e.target.value.replace(/\n/g, "");
@@ -39,7 +52,7 @@ export function PostTitleInput() {
       className="relative border-b flex-shrink-0"
       style={{
         borderColor: "var(--border-subtle)",
-        padding: "18px 145px 14px 40px",
+        padding: compact ? "8px 100px 8px 20px" : "18px 145px 14px 40px",
       }}
     >
       <textarea
@@ -50,7 +63,10 @@ export function PostTitleInput() {
         onKeyDown={handleKeyDown}
         onInput={autoResize}
         placeholder={t("editor.titlePlaceholder")}
-        className="post-title-input w-full resize-none overflow-hidden bg-transparent text-2xl font-bold leading-tight outline-none"
+        className={
+          "post-title-input w-full resize-none overflow-hidden bg-transparent font-bold leading-tight outline-none "
+          + (compact ? "text-lg" : "text-2xl")
+        }
         style={{
           color: includeTitle ? "var(--text-primary)" : "var(--text-muted)",
           caretColor: "var(--accent)",
@@ -66,7 +82,7 @@ export function PostTitleInput() {
         title={includeTitle ? t("editor.includeTitleOn") : t("editor.includeTitleOff")}
         style={{
           position: "absolute",
-          top: 16,
+          top: compact ? 8 : 16,
           right: 10,
           display: "flex",
           alignItems: "center",

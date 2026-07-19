@@ -19,6 +19,7 @@ import {
 import { DRAFT_MAX_COUNT } from "@/lib/constants";
 import { NewPostChooserDialog } from "@/components/drafts/NewPostChooserDialog";
 import { useListKeyboardNav } from "@/hooks/useListKeyboardNav";
+import { useIsMobileLayout } from "@/hooks/useIsMobileLayout";
 
 const DRAFT_LIMIT = DRAFT_MAX_COUNT;
 
@@ -77,6 +78,7 @@ export function DraftsPage() {
   const restoreDraft = useDraftsStore((s) => s.restoreDraft);
   const setLoading  = useDraftsStore((s) => s.setLoading);
   useSettingsStore((s) => s.language);
+  const isMobile = useIsMobileLayout();
 
   // Pending optimistic deletes, keyed by draft id — cleared by Undo.
   const pendingDeletesRef = useRef(new Map<string, ReturnType<typeof setTimeout>>());
@@ -381,6 +383,14 @@ export function DraftsPage() {
                   }}
                 />
               </div>
+            ) : isMobile ? (
+              <MobileDraftsList
+                drafts={visibleDrafts}
+                onOpen={(id) => navigate(`/editor/${id}`)}
+                onDelete={handleDelete}
+                onCancelSchedule={handleCancelSchedule}
+                onNew={() => setShowChooser(true)}
+              />
             ) : (
               <DraftsTable
                 drafts={visibleDrafts}
@@ -593,6 +603,140 @@ function DraftTableRow({
           <Trash2 size={12} />
         </button>
       )}
+    </div>
+  );
+}
+
+// ── Mobile card view ──────────────────────────────────────────────────────────
+// Replaces DraftsTable's fixed-width Status(120px)/Scheduled(160px) columns —
+// confirmed during planning to squeeze the title column down to ~50-70px on
+// a phone. Cards stack the title full-width on its own line, status+date on
+// a second line below instead of beside it. No selectedId/containerRef/
+// containerProps here — useListKeyboardNav's arrow-key list navigation has
+// no touch equivalent, unlike the delete/cancel-schedule actions (which stay
+// always-visible instead of hover-revealed, same reasoning as
+// BlockHoverControls.tsx's mobile branch elsewhere in this pass).
+
+function MobileDraftsList({
+  drafts,
+  onOpen,
+  onDelete,
+  onCancelSchedule,
+  onNew,
+}: {
+  drafts: DraftRow[];
+  onOpen: (id: string) => void;
+  onDelete: (e: React.MouseEvent, id: string) => void;
+  onCancelSchedule: (e: React.MouseEvent, id: string) => void;
+  onNew: () => void;
+}) {
+  useSettingsStore((s) => s.language);
+
+  return (
+    <div style={{ padding: "0 16px" }}>
+      {drafts.map((d) => {
+        const status = d.status;
+        const title = d.postTitle || d.title || t("drafts.untitled");
+        const schedDate = d.scheduledAt
+          ? new Date(d.scheduledAt).toLocaleString("ru", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })
+          : "—";
+        const countdown = status === "scheduled" && d.scheduledAt ? formatCountdown(d.scheduledAt) : null;
+        return (
+          <MobileDraftCard
+            key={d.id}
+            title={title}
+            status={status}
+            schedDate={schedDate}
+            countdown={countdown}
+            onClick={() => onOpen(d.id)}
+            onDelete={(e) => onDelete(e, d.id)}
+            onCancelSchedule={(e) => onCancelSchedule(e, d.id)}
+          />
+        );
+      })}
+
+      <button
+        onClick={onNew}
+        className="flex items-center justify-center w-full"
+        style={{
+          height: 44,
+          marginTop: 4,
+          marginBottom: 12,
+          borderRadius: 10,
+          border: "1px dashed var(--border-default)",
+          color: "var(--text-muted)",
+          fontSize: 13,
+        }}
+      >
+        <Plus size={14} style={{ marginRight: 6 }} />
+        {t("drafts.newRow")}
+      </button>
+    </div>
+  );
+}
+
+function MobileDraftCard({
+  title,
+  status,
+  schedDate,
+  countdown,
+  onClick,
+  onDelete,
+  onCancelSchedule,
+}: {
+  title: string;
+  status: DraftStatus;
+  schedDate: string;
+  countdown: string | null;
+  onClick: () => void;
+  onDelete: (e: React.MouseEvent) => void;
+  onCancelSchedule: (e: React.MouseEvent) => void;
+}) {
+  return (
+    <div
+      onClick={onClick}
+      style={{
+        borderRadius: 12,
+        border: "1px solid var(--border-subtle)",
+        backgroundColor: "var(--bg-surface)",
+        padding: "12px 14px",
+        marginTop: 10,
+        cursor: "pointer",
+      }}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex items-center gap-2 min-w-0">
+          <FileText size={14} style={{ color: "var(--text-muted)", flexShrink: 0 }} />
+          <span className="truncate text-sm" style={{ color: "var(--text-primary)", fontWeight: 500 }}>{title}</span>
+        </div>
+        <button
+          onClick={(e) => { e.stopPropagation(); onDelete(e); }}
+          className="flex items-center justify-center flex-shrink-0 rounded"
+          style={{ width: 32, height: 32, backgroundColor: "var(--bg-elevated)", color: "var(--text-muted)" }}
+          title={t("drafts.delete")}
+        >
+          <Trash2 size={14} />
+        </button>
+      </div>
+
+      <div className="flex items-center gap-2 flex-wrap" style={{ marginTop: 8 }}>
+        <StatusPill status={status} />
+        {countdown ? (
+          <>
+            <span style={{ fontSize: 11.5, color: "var(--text-secondary)" }}>{countdown}</span>
+            <button
+              onClick={(e) => { e.stopPropagation(); onCancelSchedule(e); }}
+              className="flex items-center justify-center flex-shrink-0 rounded"
+              style={{ width: 24, height: 24, color: "var(--text-muted)" }}
+              title={t("sched.cancel")}
+            >
+              <XCircle size={13} />
+            </button>
+          </>
+        ) : (
+          <span style={{ fontSize: 11.5, color: "var(--text-secondary)" }}>{schedDate}</span>
+        )}
+      </div>
     </div>
   );
 }

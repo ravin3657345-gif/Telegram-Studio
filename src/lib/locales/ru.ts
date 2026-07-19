@@ -183,6 +183,7 @@ export const ru = {
     "toolbar.file":        "Файл",
     "toolbar.html":        "Просмотр HTML",
     "toolbar.split":       "Разделить пост здесь (по курсору)",
+    "toolbar.more":        "Ещё",
 
     // ── Inline bubble menu ───────────────────────────────────────────────────
     "bubble.bold":        "Жирный (Ctrl+B)",
@@ -588,6 +589,8 @@ export const ru = {
     "block.formulaError":     "Ошибка",
     "block.editingHint":  "Ctrl+B жирный · Ctrl+I курсив · Ctrl+U подчёркивание",
     "block.drag":         "Перетащить блок",
+    "block.moveUp":       "Переместить вверх",
+    "block.moveDown":     "Переместить вниз",
     "block.actions":      "Действия с блоком",
     "block.replaceImage": "Заменить изображение",
     "code.text":     "Текст",

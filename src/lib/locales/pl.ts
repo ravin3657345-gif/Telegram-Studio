@@ -121,6 +121,7 @@ export const pl = {
     "toolbar.file":        "Plik",
     "toolbar.html":        "Widok HTML",
     "toolbar.split":       "Podziel post tutaj (przy kursorze)",
+    "toolbar.more":        "Więcej",
 
     "bubble.bold":        "Pogrubienie (Ctrl+B)",
     "bubble.italic":      "Kursywa (Ctrl+I)",
@@ -567,6 +568,8 @@ export const pl = {
     "block.formulaError":     "Błąd",
     "block.editingHint":  "Ctrl+B pogrubienie · Ctrl+I kursywa · Ctrl+U podkreślenie",
     "block.drag":         "Przeciągnij blok",
+    "block.moveUp":       "Przesuń w górę",
+    "block.moveDown":     "Przesuń w dół",
     "block.actions":      "Akcje bloku",
     "block.replaceImage": "Zamień obraz",
     "code.text":     "Tekst",
