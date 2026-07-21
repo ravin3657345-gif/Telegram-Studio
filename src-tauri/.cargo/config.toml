@@ -1,0 +1,6 @@
+# WINDIVERT_PATH tells windivert-sys's build script where to find the
+# prebuilt WinDivert.dll/.lib/WinDivert64.sys (see vendor/windivert/x64/ and
+# Cargo.toml's windows-only dependency block). Relative so this works from
+# any checkout location, not just this machine.
+[env]
+WINDIVERT_PATH = { value = "vendor/windivert/x64", relative = true }

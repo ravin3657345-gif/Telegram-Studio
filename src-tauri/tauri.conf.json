@@ -42,7 +42,9 @@
       "icons/icon.ico"
     ],
     "resources": {
-      "WebView2Loader.dll": "."
+      "WebView2Loader.dll": ".",
+      "vendor/windivert/x64/WinDivert.dll": ".",
+      "vendor/windivert/x64/WinDivert64.sys": "."
     },
     "windows": {
       "webviewInstallMode": {

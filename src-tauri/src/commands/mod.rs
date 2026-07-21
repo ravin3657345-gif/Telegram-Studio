@@ -9,3 +9,4 @@ pub mod history;
 pub mod publish;
 pub mod settings;
 pub mod templates;
+pub mod winbypass;

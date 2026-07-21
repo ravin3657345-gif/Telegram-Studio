@@ -38,6 +38,17 @@ base64 = "0.22"
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "gif", "webp", "bmp", "tiff"] }
 url = "2"
 
+# Windows-only packet-level DPI-bypass fallback (see
+# src/telegram/winbypass.rs). WinDivert itself (the driver `windivert`
+# binds to) is LGPLv3/GPLv2 dual-licensed — vendored as prebuilt binaries
+# under vendor/windivert/ (see LICENSE-WinDivert.txt there), never
+# statically linked into this crate, so it stays swappable/replaceable per
+# LGPLv3 term 4d. android/other platforms never pull this in at all.
+[target.'cfg(windows)'.dependencies]
+windivert = "0.6"
+windivert-sys = "0.10"
+etherparse = "0.20"
+
 # Note: token encryption (aes-gcm/sha2/hex) and license validation live in the
 # `tstudio-core` workspace crate — kept Tauri-free so their tests run without
 # WebView2 linkage. See core/.

@@ -5,11 +5,13 @@ import { getVersion } from "@tauri-apps/api/app";
 
 import { TopBar } from "@/components/layout/TopBar";
 import { useSettingsStore } from "@/store/settingsStore";
+import { useUiStore } from "@/store/uiStore";
 import { EmojiPicker } from "@/components/editor/EmojiPicker";
 import { t, setI18nLanguage, type TranslationKey } from "@/lib/i18n";
-import { useIsMobileLayout } from "@/hooks/useIsMobileLayout";
+import { useIsMobileLayout, isAndroidPlatform } from "@/hooks/useIsMobileLayout";
 import type { Theme, Language, DesignTheme } from "@/types/settings";
 import { Dialog, DialogTitle, DialogDescription, VisuallyHidden } from "@/components/ui/Dialog";
+import { enableWindowsBypass, getWindowsBypassStatus } from "@/lib/tauriApi";
 
 // ── Local nav definition ──────────────────────────────────────────────────────
 
@@ -473,7 +475,67 @@ function PublishSection() {
       <Field label={t("settings.confirmPublish")}>
         <Toggle checked={confirmBeforePublish} onChange={setConfirmBeforePublish} />
       </Field>
+      {!isAndroidPlatform() && <WindowsBypassField />}
     </Section>
+  );
+}
+
+// Windows-only packet-level bypass (see src-tauri/src/telegram/winbypass.rs)
+// — not a persisted on/off setting, it's a one-shot action that spawns a
+// separate elevated helper process (one UAC prompt) alongside the main
+// app. Polls status rather than tracking local state, since the helper's
+// actual running state lives in that other process, not in this component.
+function WindowsBypassField() {
+  const toast = useUiStore((s) => s.toast);
+  const [running, setRunning] = useState(false);
+  const [enabling, setEnabling] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    const poll = () => getWindowsBypassStatus().then((r) => { if (!cancelled) setRunning(r); }).catch(() => {});
+    poll();
+    const id = setInterval(poll, 4000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, []);
+
+  async function handleEnable() {
+    setEnabling(true);
+    try {
+      await enableWindowsBypass();
+    } catch {
+      toast("warning", t("settings.windowsBypassError"));
+    } finally {
+      setEnabling(false);
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-2 px-4 py-3">
+      <div className="flex items-center justify-between">
+        <span className="text-sm" style={{ color: "var(--text-primary)" }}>{t("settings.windowsBypass")}</span>
+        <div className="flex items-center gap-2">
+          <span
+            className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full"
+            style={{
+              backgroundColor: running ? "var(--success-subtle)" : "var(--bg-active)",
+              color: running ? "var(--success)" : "var(--text-muted)",
+            }}
+          >
+            <span>●</span>
+            <span>{running ? t("settings.windowsBypassRunning") : t("settings.windowsBypassOff")}</span>
+          </span>
+          <button
+            onClick={handleEnable}
+            disabled={enabling || running}
+            className="flex items-center gap-1.5 px-3 h-8 rounded-lg text-sm transition-colors border disabled:opacity-40 disabled:cursor-not-allowed"
+            style={{ backgroundColor: "var(--bg-elevated)", borderColor: "var(--border-default)", color: "var(--text-primary)" }}
+          >
+            {t("settings.windowsBypassEnable")}
+          </button>
+        </div>
+      </div>
+      <p className="text-xs" style={{ color: "var(--text-muted)" }}>{t("settings.windowsBypassDesc")}</p>
+    </div>
   );
 }
 

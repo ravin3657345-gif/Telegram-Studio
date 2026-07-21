@@ -160,6 +160,8 @@ pub fn run() {
             commands::fs_utils::read_file_as_base64,
             commands::license::get_license_status,
             commands::license::activate_license,
+            commands::winbypass::enable_windows_bypass,
+            commands::winbypass::windows_bypass_status,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
