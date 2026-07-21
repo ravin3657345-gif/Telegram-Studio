@@ -38,19 +38,6 @@ base64 = "0.22"
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "gif", "webp", "bmp", "tiff"] }
 url = "2"
 
-# Below: already present transitively via reqwest's rustls-tls stack (see
-# Cargo.lock) — pinned here as direct deps, same versions, only to expose
-# their APIs directly for src/telegram/fragmented.rs's DPI-fallback path
-# (see that file's module comment for why reqwest itself can't do this).
-bytes = "1"
-rustls = "0.23"
-tokio-rustls = "0.26"
-rustls-pki-types = "1"
-webpki-roots = "1"
-hyper = { version = "1", features = ["client", "http1"] }
-hyper-util = { version = "0.1", features = ["tokio"] }
-http-body-util = "0.1"
-
 # Note: token encryption (aes-gcm/sha2/hex) and license validation live in the
 # `tstudio-core` workspace crate — kept Tauri-free so their tests run without
 # WebView2 linkage. See core/.

@@ -1,12 +1,10 @@
 // Own multipart form builder, chainable the same way as reqwest's own
 // `multipart::Form`/`Part` (see the 6 call sites in methods.rs — the diff
-// there is just the type name) but able to produce TWO different outputs
-// from the same field data: a `reqwest::multipart::Form` for the normal
-// path, and hand-encoded raw multipart/form-data bytes for the fragmented
-// fallback path in fragmented.rs, which doesn't go through reqwest at all
-// and so can't be handed a `reqwest::multipart::Form` (that type can't be
-// introspected/rebuilt once constructed — it's meant to be consumed once by
-// reqwest itself).
+// there is just the type name). Used instead of reqwest's own type directly
+// so the same field data can be handed to both the direct and Supabase-relay
+// call paths in client.rs without double-consuming it (`reqwest::multipart::
+// Form` can't be introspected/rebuilt once constructed — it's meant to be
+// consumed once by a single request).
 //
 // Files are buffered fully in memory rather than streamed — Telegram's own
 // Bot API caps uploads at 50MB, trivial to hold in RAM on a desktop app.
@@ -42,9 +40,9 @@ impl TgForm {
 
     /// Builds a fresh `reqwest::multipart::Form` from the field data — not
     /// cached, since `Form` is meant to be consumed once by a single
-    /// request and isn't `Clone`. Called again for the fragmented fallback
-    /// path would be wrong (double-consumes the same bytes into two
-    /// concurrently-live `Form`s) — that path uses `encode_raw` instead.
+    /// request and isn't `Clone`. Called again (once per call path that
+    /// needs one) rather than shared, since a single `Form` can't be reused
+    /// across two concurrent requests.
     pub fn into_reqwest(&self) -> Result<reqwest::multipart::Form, TelegramError> {
         let mut form = reqwest::multipart::Form::new();
         for (name, field) in &self.fields {
@@ -60,41 +58,6 @@ impl TgForm {
             };
         }
         Ok(form)
-    }
-
-    /// Hand-encodes the same fields as a raw multipart/form-data body (RFC
-    /// 7578) for the fragmented fallback path, which sends its own
-    /// `Content-Type: multipart/form-data; boundary=...` header built from
-    /// the same `boundary` string.
-    pub fn encode_raw(&self, boundary: &str) -> Vec<u8> {
-        let mut out = Vec::new();
-        for (name, field) in &self.fields {
-            out.extend_from_slice(b"--");
-            out.extend_from_slice(boundary.as_bytes());
-            out.extend_from_slice(b"\r\n");
-            match field {
-                TgField::Text(value) => {
-                    out.extend_from_slice(
-                        format!("Content-Disposition: form-data; name=\"{name}\"\r\n\r\n").as_bytes(),
-                    );
-                    out.extend_from_slice(value.as_bytes());
-                }
-                TgField::File { filename, mime, bytes } => {
-                    out.extend_from_slice(
-                        format!(
-                            "Content-Disposition: form-data; name=\"{name}\"; filename=\"{filename}\"\r\nContent-Type: {mime}\r\n\r\n"
-                        )
-                        .as_bytes(),
-                    );
-                    out.extend_from_slice(bytes);
-                }
-            }
-            out.extend_from_slice(b"\r\n");
-        }
-        out.extend_from_slice(b"--");
-        out.extend_from_slice(boundary.as_bytes());
-        out.extend_from_slice(b"--\r\n");
-        out
     }
 }
 
@@ -134,30 +97,5 @@ impl TgPart {
         }
         self.mime = mime.to_string();
         Ok(self)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn encode_raw_matches_expected_bytes() {
-        let form = TgForm::new()
-            .text("chat_id", "123".to_string())
-            .part("photo", TgPart::bytes(vec![1, 2, 3]).file_name("a.jpg".to_string()).mime_str("image/jpeg").unwrap());
-
-        let out = form.encode_raw("BOUNDARY");
-        let expected = b"--BOUNDARY\r\n\
-Content-Disposition: form-data; name=\"chat_id\"\r\n\r\n\
-123\r\n\
---BOUNDARY\r\n\
-Content-Disposition: form-data; name=\"photo\"; filename=\"a.jpg\"\r\n\
-Content-Type: image/jpeg\r\n\r\n\
-\x01\x02\x03\r\n\
---BOUNDARY--\r\n"
-            .to_vec();
-
-        assert_eq!(out, expected);
     }
 }
