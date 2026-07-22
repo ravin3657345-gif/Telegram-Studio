@@ -6,7 +6,7 @@ import {
   Heading1, Heading2, Heading3, Code2, Minus, MoreHorizontal,
   Undo2, Redo2, Code, FileUp, Scissors,
   Subscript as SubscriptIcon, Superscript as SuperscriptIcon,
-  Highlighter, ChevronsDownUp, Anchor, Music,
+  Highlighter, ChevronsDownUp, Anchor, Music, ClipboardType,
 } from "lucide-react";
 import { ToolbarButton, ToolbarSeparator } from "./ToolbarButton";
 import { BottomSheet } from "@/components/ui/BottomSheet";
@@ -48,6 +48,7 @@ interface EditorToolbarProps {
   editor: Editor;
   onLinkClick: () => void;
   onEmojiClick: () => void;
+  onSnippetClick: () => void;
   onMediaClick: (type: "image" | "video" | "file" | "audio") => void;
   onHtmlView: () => void;
   showHtmlView: boolean;
@@ -84,6 +85,7 @@ export function EditorToolbar({
   editor,
   onLinkClick,
   onEmojiClick,
+  onSnippetClick,
   onMediaClick,
   onHtmlView,
   showHtmlView,
@@ -217,6 +219,8 @@ export function EditorToolbar({
       isActive: editor.isActive("link"), onClick: onLinkClick },
     { type: "button", id: "emoji", mobilePriority: false, title: t("toolbar.emoji"), icon: Smile,
       isActive: false, onClick: onEmojiClick },
+    { type: "button", id: "snippet", mobilePriority: false, title: t("toolbar.snippet"), icon: ClipboardType,
+      isActive: false, onClick: onSnippetClick },
     { type: "button", id: "anchor", mobilePriority: false,
       title: publishMode !== "rich" ? `${t("anchor.insert")} — ${t("anchor.unavail")}` : t("anchor.insert"),
       icon: Anchor, isActive: false, disabled: publishMode !== "rich",

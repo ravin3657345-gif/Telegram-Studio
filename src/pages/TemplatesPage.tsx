@@ -261,6 +261,7 @@ export function TemplatesPage() {
                     onUse={() => handleUseExample(ex)}
                   />
                 ))}
+                <NewTemplateCard onClick={() => navigate("/editor", { state: { _createTemplate: Date.now() } })} />
               </div>
             </div>
 
@@ -359,27 +360,7 @@ export function TemplatesPage() {
 
                 {/* New template dashed card — always visible */}
                 <div className="px-6">
-                  <button
-                    onClick={() => navigate("/editor", { state: { _createTemplate: Date.now() } })}
-                    className="rounded-xl border-2 border-dashed flex flex-col items-center justify-center gap-2 transition-all w-full"
-                    style={{
-                      minHeight: 80,
-                      borderColor: "var(--border-default)",
-                      color: "var(--text-muted)",
-                      fontSize: 13,
-                    }}
-                    onMouseEnter={(e) => {
-                      (e.currentTarget as HTMLElement).style.borderColor = "var(--accent)";
-                      (e.currentTarget as HTMLElement).style.color = "var(--accent)";
-                    }}
-                    onMouseLeave={(e) => {
-                      (e.currentTarget as HTMLElement).style.borderColor = "var(--border-default)";
-                      (e.currentTarget as HTMLElement).style.color = "var(--text-muted)";
-                    }}
-                  >
-                    <Plus size={18} strokeWidth={1.5} />
-                    <span>{t("templates.newTemplate")}</span>
-                  </button>
+                  <NewTemplateCard onClick={() => navigate("/editor", { state: { _createTemplate: Date.now() } })} />
                 </div>
               </div>
             )}
@@ -501,6 +482,36 @@ function TemplateCard({
         </div>
       )}
     </div>
+  );
+}
+
+// ── New template dashed card — shared between the examples grid and the
+// "My templates" grid so there's always an obvious way to start a blank
+// template, whether or not the user has saved any of their own yet ────────
+
+function NewTemplateCard({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className="rounded-xl border-2 border-dashed flex flex-col items-center justify-center gap-2 transition-all w-full"
+      style={{
+        minHeight: 80,
+        borderColor: "var(--border-default)",
+        color: "var(--text-muted)",
+        fontSize: 13,
+      }}
+      onMouseEnter={(e) => {
+        (e.currentTarget as HTMLElement).style.borderColor = "var(--accent)";
+        (e.currentTarget as HTMLElement).style.color = "var(--accent)";
+      }}
+      onMouseLeave={(e) => {
+        (e.currentTarget as HTMLElement).style.borderColor = "var(--border-default)";
+        (e.currentTarget as HTMLElement).style.color = "var(--text-muted)";
+      }}
+    >
+      <Plus size={18} strokeWidth={1.5} />
+      <span>{t("templates.newTemplate")}</span>
+    </button>
   );
 }
 

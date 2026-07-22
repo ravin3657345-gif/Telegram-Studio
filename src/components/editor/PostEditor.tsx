@@ -12,6 +12,7 @@ import { EditorToolbar } from "./EditorToolbar";
 import { PostTitleInput } from "./PostTitleInput";
 import { LinkDialog } from "./LinkDialog";
 import { EmojiPicker } from "./EmojiPicker";
+import { SnippetPicker } from "./SnippetPicker";
 import { CharCounter } from "./CharCounter";
 import { InlineBubbleMenu } from "./InlineBubbleMenu";
 import { HtmlViewPanel } from "./HtmlViewPanel";
@@ -96,8 +97,10 @@ export function PostEditor({ draftId: initialDraftId, onEditorReady }: PostEdito
 
   const [showLinkDialog, setShowLinkDialog]   = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [showSnippetPicker, setShowSnippetPicker] = useState(false);
   const [showHtmlView, setShowHtmlView]       = useState(false);
   const [emojiAnchor, setEmojiAnchor]         = useState<DOMRect | undefined>();
+  const [snippetAnchor, setSnippetAnchor]     = useState<DOMRect | undefined>();
   const [isDraggingOver, setIsDraggingOver]   = useState(false);
   const [contextMenu, setContextMenu]         = useState<{ x: number; y: number; blockPos: number | null } | null>(null);
   const tauriDropHandledRef = useRef(false);
@@ -514,6 +517,31 @@ export function PostEditor({ draftId: initialDraftId, onEditorReady }: PostEdito
     savedEmojiPos.current = { from: nextFrom, to: nextFrom };
   }
 
+  // ── Snippet picker ────────────────────────────────────────────────────────
+  const savedSnippetPos = useRef<{ from: number; to: number } | null>(null);
+
+  function handleSnippetClick() {
+    if (editor) {
+      savedSnippetPos.current = {
+        from: editor.state.selection.from,
+        to:   editor.state.selection.to,
+      };
+    }
+    const btnEl = document.querySelector<HTMLButtonElement>(`[aria-label="${t('toolbar.snippet')}"]`);
+    setSnippetAnchor(btnEl?.getBoundingClientRect());
+    setShowSnippetPicker((prev) => !prev);
+  }
+
+  function handleSnippetInsert(content: string) {
+    if (!editor) return;
+    let chain = editor.chain().focus();
+    if (savedSnippetPos.current) chain = chain.setTextSelection(savedSnippetPos.current);
+    chain.insertContent(content).run();
+    const nextFrom = editor.state.selection.from;
+    savedSnippetPos.current = { from: nextFrom, to: nextFrom };
+    setShowSnippetPicker(false);
+  }
+
   if (!editor) return null;
 
   return (
@@ -532,6 +560,7 @@ export function PostEditor({ draftId: initialDraftId, onEditorReady }: PostEdito
         editor={editor}
         onLinkClick={() => setShowLinkDialog(true)}
         onEmojiClick={handleEmojiClick}
+        onSnippetClick={handleSnippetClick}
         onMediaClick={handleMediaClick}
         onHtmlView={() => setShowHtmlView((v) => !v)}
         showHtmlView={showHtmlView}
@@ -684,6 +713,7 @@ export function PostEditor({ draftId: initialDraftId, onEditorReady }: PostEdito
 
       {showLinkDialog   && <LinkDialog editor={editor} onClose={() => setShowLinkDialog(false)} />}
       {showEmojiPicker  && <EmojiPicker onSelect={handleEmojiInsert} onClose={() => setShowEmojiPicker(false)} anchorRect={emojiAnchor} />}
+      {showSnippetPicker && <SnippetPicker onSelect={handleSnippetInsert} onClose={() => setShowSnippetPicker(false)} anchorRect={snippetAnchor} />}
     </div>
   );
 }

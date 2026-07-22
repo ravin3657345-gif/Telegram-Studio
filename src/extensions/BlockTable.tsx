@@ -287,10 +287,24 @@ function createEmptyRow(editor: Editor, cols: number): PMNode {
 // empty paragraph there first if the table is the first/last node in the
 // doc — mirrors how other atom-ish blocks in this editor let you escape by
 // arrowing past their edge instead of getting stuck inside forever.
+//
+// Two tables stacked back to back (no paragraph between them — reachable via
+// the block-insert "+" button) are a special case within that same "outside
+// the table" neighbor check: `before`/`after` isn't a textblock, so the
+// generic branch would've inserted a pointless blank paragraph wedged
+// between two tables instead of just continuing straight into the next
+// table's nearest cell, the same way exiting toward a paragraph continues
+// straight into it.
 function exitTable(editor: Editor, tr: Transaction, tablePos: number, table: PMNode, dir: 1 | -1) {
   const { schema } = editor.state;
   if (dir === -1) {
     const before = tr.doc.resolve(tablePos).nodeBefore;
+    if (before?.type.name === "blockTable") {
+      const otherPos = tablePos - before.nodeSize;
+      const otherCols = before.child(0).childCount;
+      const target = cellAt(otherPos, before, before.childCount - 1, otherCols - 1);
+      if (target) { selectCell(tr, target.cellPos, target.cellNode); return; }
+    }
     if (before?.isTextblock) {
       tr.setSelection(TextSelection.near(tr.doc.resolve(tablePos), -1));
     } else {
@@ -300,6 +314,10 @@ function exitTable(editor: Editor, tr: Transaction, tablePos: number, table: PMN
   } else {
     const afterPos = tablePos + table.nodeSize;
     const after = tr.doc.resolve(afterPos).nodeAfter;
+    if (after?.type.name === "blockTable") {
+      const target = cellAt(afterPos, after, 0, 0);
+      if (target) { selectCell(tr, target.cellPos, target.cellNode); return; }
+    }
     if (after?.isTextblock) {
       tr.setSelection(TextSelection.near(tr.doc.resolve(afterPos), 1));
     } else {
@@ -315,7 +333,77 @@ function exitTable(editor: Editor, tr: Transaction, tablePos: number, table: PMN
 // this, gapcursor parks a visible line next to the table instead of putting
 // the caret in the nearest row. Always lands in column 0 — there's no
 // "remembered column" to restore when entering fresh from outside.
-function enterTable(editor: Editor, dir: 1 | -1): boolean {
+//
+// atEdge used to be a plain `parentOffset === 0/size` check — purely a
+// logical-text-position test, blind to how the paragraph actually wraps
+// on screen. Live-reported 2026-07-22: arrowing Up from partway through
+// (not the literal first character of) a paragraph below the table missed
+// this check entirely, so the press fell through to the browser's own
+// native caret placement — which isn't ProseMirror-mediated and isn't
+// stopped by `isolating`, letting it land the caret at some x-matched spot
+// inside the table's rendered DOM instead of a real cell.
+// `view.endOfTextblock(dir)` is the ProseMirror-correct fix — it measures
+// actual rendered line layout, so it's true only when the caret is on the
+// visual first/last line of the block, exactly the condition that should
+// trigger "escape to whatever's above/below" regardless of *logical* offset.
+//
+// Confirmed by a jsdom test crash while building this fix (not just theory):
+// `endOfTextblock`'s coordinate measurement can throw outright
+// (`getClientRects is not a function` in jsdom's incomplete DOM; some real
+// browser edge case near this file's non-standard table NodeView — custom
+// contentDOMElementTag, isolating cells — is exactly the kind of DOM shape
+// that trips this sort of measurement up) rather than degrading gracefully.
+// An uncaught throw inside a keydown handler is a very plausible source of
+// the reported corruption itself, not just a missed case — wrapped so a
+// measurement failure falls back to the same safe absolute-offset check
+// instead of blowing up the keystroke.
+function enterTable(editor: Editor, dir: -1 | 1): boolean {
+  const { state, view } = editor;
+  const { $from, empty } = state.selection;
+  if (!empty || $from.depth !== 1) return false;
+  const absoluteEdge = dir === -1 ? $from.parentOffset === 0 : $from.parentOffset === $from.parent.content.size;
+  let visualEdge = false;
+  try {
+    visualEdge = view.endOfTextblock(dir === -1 ? "up" : "down");
+  } catch {
+    // Measurement failed — fall back to absoluteEdge only, see comment above.
+  }
+  const atEdge = absoluteEdge || visualEdge;
+  if (!atEdge) return false;
+
+  const boundaryPos = dir === -1 ? $from.before(1) : $from.after(1);
+  const $boundary = state.doc.resolve(boundaryPos);
+  const table = dir === -1 ? $boundary.nodeBefore : $boundary.nodeAfter;
+  if (!table || table.type.name !== "blockTable") return false;
+
+  const tablePos = dir === -1 ? boundaryPos - table.nodeSize : boundaryPos;
+  const targetRow = dir === -1 ? table.childCount - 1 : 0;
+  const target = cellAt(tablePos, table, targetRow, 0);
+  if (!target) return false;
+
+  const tr = state.tr;
+  selectCell(tr, target.cellPos, target.cellNode);
+  editor.view.dispatch(tr);
+  return true;
+}
+
+// Horizontal counterpart to enterTable above — approaching the table via
+// Left/Right from an adjacent paragraph instead of Up/Down. Missed in the
+// original fix (live-reported 2026-07-22: ArrowLeft in the paragraph right
+// below the table misbehaved the same way Up/Down used to): handleHorizontal
+// only ever handles the case where the selection is already inside a cell
+// (findCurrentCell), so a press starting outside the table fell straight
+// through to gapcursor/the browser default, same isolating-boundary problem
+// as the vertical case.
+// No endOfTextblock measurement needed here — unlike vertical movement,
+// "start of paragraph" (offset 0) and "end of paragraph" (offset ===
+// content.size) are unambiguous regardless of visual line-wrapping, so a
+// plain parentOffset check is already the correct edge test.
+// Landing spot mirrors reading order: Left (dir -1, coming from below) lands
+// in the LAST cell of the LAST row — the table's own last position in
+// document order; Right (dir 1, coming from above) lands in the FIRST cell
+// of the FIRST row.
+function enterTableHorizontal(editor: Editor, dir: -1 | 1): boolean {
   const { state } = editor;
   const { $from, empty } = state.selection;
   if (!empty || $from.depth !== 1) return false;
@@ -328,8 +416,10 @@ function enterTable(editor: Editor, dir: 1 | -1): boolean {
   if (!table || table.type.name !== "blockTable") return false;
 
   const tablePos = dir === -1 ? boundaryPos - table.nodeSize : boundaryPos;
+  const cols = table.child(0).childCount;
   const targetRow = dir === -1 ? table.childCount - 1 : 0;
-  const target = cellAt(tablePos, table, targetRow, 0);
+  const targetCol = dir === -1 ? cols - 1 : 0;
+  const target = cellAt(tablePos, table, targetRow, targetCol);
   if (!target) return false;
 
   const tr = state.tr;
@@ -404,10 +494,21 @@ function handleVertical(editor: Editor, dir: 1 | -1): boolean {
 // tiptapConfig.ts for atom-block navigation) claims the boundary instead,
 // parking a visible gap-cursor line there rather than moving into the next
 // cell.
+//
+// Deliberately doesn't require `empty`: handleVertical/handleTab/Enter all
+// land via selectCell(), which selects the *whole* cell's text (Excel-
+// style), not a collapsed caret — bailing out on a non-empty selection here
+// meant the first Left/Right press after any Up/Down/Tab/Enter skipped this
+// handler entirely and fell through to the browser's default range-collapse
+// behavior, which doesn't know about the isolating cell boundary and could
+// land the caret in an unrelated cell ("sticks to the cell above", live-
+// reported 2026-07-22). $from is the selection's left edge and $to its
+// right edge — for a collapsed caret they're the same position, so this
+// still behaves identically to before in that case.
 function handleHorizontal(editor: Editor, dir: 1 | -1): boolean {
-  const { $from, empty } = editor.state.selection;
-  if (!empty) return false;
-  const atEdge = dir === -1 ? $from.parentOffset === 0 : $from.parentOffset === $from.parent.content.size;
+  const { $from, $to } = editor.state.selection;
+  const edge = dir === -1 ? $from : $to;
+  const atEdge = dir === -1 ? edge.parentOffset === 0 : edge.parentOffset === edge.parent.content.size;
   if (!atEdge) return false;
 
   const info = findCurrentCell(editor.state);
@@ -442,6 +543,24 @@ export const TableCell = Node.create({
   name: "tableCell",
   content: "inline*",
   isolating: true,
+  // Same reasoning as BlockTable's `allowGapCursor: false` — cell-to-cell
+  // movement is fully handled by handleTab/handleVertical/handleHorizontal
+  // above, gapcursor has no business placing anything at a cell boundary.
+  allowGapCursor: false,
+  // Not just "higher than the default 100": @tiptap/extension-link sets its
+  // OWN priority to 1000 (its `exitable: true` makes @tiptap/core generate a
+  // separate ArrowRight keymap plugin — see Mark.handleExit — that
+  // unconditionally inserts a space and claims the key when the caret sits
+  // at the end of linked text, e.g. a hyperlinked table cell). 1000 here
+  // would only be a TIE with Link, resolved in our favor purely by luck of
+  // extension-array position (ties fall back to array order after
+  // ExtensionManager's reverse+stable-sort — see BlockTable's own comment
+  // above `group: "block"` for the full mechanics). Bumped past it so the
+  // win is deterministic regardless of where either extension sits in
+  // tiptapConfig.ts's array. Verified directly, not assumed — see
+  // BlockTable.test.tsx's "doesn't conflict with Link mark's own ArrowRight"
+  // describe block.
+  priority: 1001,
 
   addAttributes() {
     return {
@@ -465,10 +584,25 @@ export const TableCell = Node.create({
     return {
       Tab: ({ editor }) => handleTab(editor, false),
       "Shift-Tab": ({ editor }) => handleTab(editor, true),
-      ArrowUp: ({ editor }) => handleVertical(editor, -1),
-      ArrowDown: ({ editor }) => handleVertical(editor, 1),
-      ArrowLeft: ({ editor }) => handleHorizontal(editor, -1),
-      ArrowRight: ({ editor }) => handleHorizontal(editor, 1),
+      // handleVertical/enterTable both live here (not split across TableCell
+      // and BlockTable) on purpose. Each extension's addKeyboardShortcuts
+      // becomes its OWN separate ProseMirror keymap() plugin (see
+      // @tiptap/core's ExtensionManager `get plugins()`) — there is no single
+      // merged keymap object as previously assumed. Two extensions binding
+      // the same key are two independent PM plugins whose relative order
+      // (and therefore which one gets first refusal) is an unobvious function
+      // of extension array position (reversed) + priority-stable-sort +
+      // interleaving with StarterKit's bundled Gapcursor plugin — not
+      // something worth depending on. Trying both functions from one handler
+      // removes the inter-extension race entirely: handleVertical covers
+      // "already inside a cell", enterTable covers "approaching from an
+      // adjacent block", and they're mutually exclusive by construction
+      // (findCurrentCell vs $from.depth === 1) so trying both in sequence is
+      // safe.
+      ArrowUp: ({ editor }) => handleVertical(editor, -1) || enterTable(editor, -1),
+      ArrowDown: ({ editor }) => handleVertical(editor, 1) || enterTable(editor, 1),
+      ArrowLeft: ({ editor }) => handleHorizontal(editor, -1) || enterTableHorizontal(editor, -1),
+      ArrowRight: ({ editor }) => handleHorizontal(editor, 1) || enterTableHorizontal(editor, 1),
       Enter: ({ editor }) => handleVertical(editor, 1),
     };
   },
@@ -492,6 +626,29 @@ export const BlockTable = Node.create({
   group: "block",
   content: "tableRow+",
   isolating: true,
+  // `allowGapCursor: false` (a real ProseMirror NodeSpec field, passed
+  // through by Node.create same as `isolating` above) tells gapcursor this
+  // node is never a valid landing spot. `enterTable`'s own ArrowUp/Down
+  // handling now lives on TableCell, not here — see the long comment on
+  // TableCell's addKeyboardShortcuts for why splitting it across two
+  // extensions was the actual bug.
+  //
+  // Mechanics of `priority` worth recording, since two earlier assumptions
+  // about it were wrong (live debugging, 2026-07-22): each extension's
+  // addKeyboardShortcuts becomes its OWN separate ProseMirror keymap()
+  // plugin, not one shared merged keymap (see @tiptap/core's
+  // ExtensionManager `get plugins()`). When several plugins bind the same
+  // key, ProseMirror tries each plugin's handler in the ORDER THOSE PLUGINS
+  // APPEAR in the final plugins array, stopping at the first one that
+  // returns true. That order is: reverse the whole `extensions` array, then
+  // a priority-descending STABLE sort (equal priority keeps the reversed
+  // order). So priority only strictly guarantees a win over LOWER-priority
+  // extensions; a TIE falls back to array position, which is exactly the
+  // kind of implicit, easy-to-silently-break dependency worth avoiding —
+  // see TableCell's `priority: 1001` for the concrete case (a real tie with
+  // @tiptap/extension-link) this bit us with.
+  allowGapCursor: false,
+  priority: 1001,
 
   parseHTML() {
     return [{ tag: "table" }];
@@ -511,12 +668,5 @@ export const BlockTable = Node.create({
     // tableCell have no NodeView of their own, so they render as plain real
     // <tr>/<td>/<th> straight from the schema — no extra wrapping divs.
     return ReactNodeViewRenderer(TableView, { contentDOMElementTag: "table" });
-  },
-
-  addKeyboardShortcuts() {
-    return {
-      ArrowUp: ({ editor }) => enterTable(editor, -1),
-      ArrowDown: ({ editor }) => enterTable(editor, 1),
-    };
   },
 });

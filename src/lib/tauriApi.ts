@@ -4,6 +4,7 @@ import type { Channel } from "@/types/channel";
 import type { Draft, DraftSummary, DraftPayload } from "@/types/draft";
 import type { AppSettings } from "@/types/settings";
 import type { Template, SaveTemplatePayload } from "@/types/template";
+import type { Snippet, SaveSnippetPayload } from "@/types/snippet";
 import type {
   BotInfo,
   MediaPayload,
@@ -198,6 +199,17 @@ export const deleteTemplate = (templateId: string): Promise<void> =>
 
 export const recordTemplateUse = (templateId: string): Promise<void> =>
   invoke("record_template_use", { templateId });
+
+// ── Сниппеты ─────────────────────────────────────────────────────────────────
+
+export const getSnippets = (): Promise<Snippet[]> =>
+  invoke("get_snippets");
+
+export const saveSnippet = (payload: SaveSnippetPayload): Promise<Snippet> =>
+  invoke("save_snippet", { payload });
+
+export const deleteSnippet = (snippetId: string): Promise<void> =>
+  invoke("delete_snippet", { snippetId });
 
 // ── Лицензия ─────────────────────────────────────────────────────────────────
 

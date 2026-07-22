@@ -15,6 +15,7 @@ pub fn run(conn: &Connection) -> Result<()> {
     migrate_v12(conn)?;
     migrate_v13(conn)?;
     migrate_v14(conn)?;
+    migrate_v15(conn)?;
     seed_settings(conn)?;
     Ok(())
 }
@@ -242,6 +243,25 @@ fn migrate_v14(conn: &Connection) -> Result<()> {
     let _ = conn.execute_batch(
         "ALTER TABLE scheduled_media ADD COLUMN attach_name TEXT;"
     );
+    Ok(())
+}
+
+fn migrate_v15(conn: &Connection) -> Result<()> {
+    // Reusable text snippets (CTA lines, hashtag sets, signatures) —
+    // deliberately a standalone table, not folded into `drafts` the way
+    // templates were: no attachments/publish machinery needed, just plain
+    // text inserted at the editor cursor.
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS snippets (
+            id         TEXT PRIMARY KEY,
+            name       TEXT NOT NULL,
+            content    TEXT NOT NULL,
+            sort_order INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_snippets_order ON snippets(sort_order, created_at);"
+    )?;
     Ok(())
 }
 

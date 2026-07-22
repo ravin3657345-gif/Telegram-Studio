@@ -1,13 +1,14 @@
 import { useEffect, useState } from "react";
-import { Send, Clock, CheckCircle2, AlertCircle, Loader2, Layers, Pencil } from "lucide-react";
+import { Send, Clock, CheckCircle2, AlertCircle, Loader2, Layers, Pencil, LayoutTemplate } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { SplitButton } from "@/components/ui/SplitButton";
 import { ScheduleDialog } from "@/components/editor/ScheduleDialog";
 import { PublishConfirmDialog } from "@/components/editor/PublishConfirmDialog";
+import { SaveTemplateDialog } from "@/components/editor/SaveTemplateDialog";
 import { useChannelsStore } from "@/store/channelsStore";
 import { usePublishStore } from "@/store/publishStore";
 import { useEditorStore } from "@/store/editorStore";
-import { publishPost, schedulePost, publishRichPost, republishRichPost, scheduleRichPost, sendPoll, editPublishedPost, upsertDraft, updateScheduledPostContent } from "@/lib/tauriApi";
+import { publishPost, schedulePost, publishRichPost, republishRichPost, scheduleRichPost, sendPoll, editPublishedPost, upsertDraft, updateScheduledPostContent, saveTemplate } from "@/lib/tauriApi";
 import { segmentDocument, splitIntoMessagesAtGaps, splitJsonAtGaps } from "@/lib/htmlConverter";
 import { TELEGRAM_MAX_RICH_BLOCKS } from "@/lib/constants";
 import type { TextSegment, PollSegment } from "@/lib/htmlConverter";
@@ -20,6 +21,7 @@ import { useSettingsStore } from "@/store/settingsStore";
 import { toast, useUiStore } from "@/store/uiStore";
 import { fileToBase64, normalizeImageToJpeg } from "@/lib/imageProcessing";
 import type { PublishResult } from "@/types/publish";
+import type { TemplateCategory } from "@/types/template";
 
 // ─── Component ─────────────────────────────────────────────────────────────────
 
@@ -37,6 +39,8 @@ export function PublishPanel({ draftId }: PublishPanelProps) {
 
   const [showSchedule, setShowSchedule] = useState(false);
   const [showPublishConfirm, setShowPublishConfirm] = useState(false);
+  const [showTemplateDialog, setShowTemplateDialog] = useState(false);
+  const [savingTemplate, setSavingTemplate] = useState(false);
 
   const splitGaps      = useEditorStore((s) => s.splitGaps);
   const effectiveTitle = includeTitle ? postTitle : "";
@@ -507,6 +511,25 @@ export function PublishPanel({ draftId }: PublishPanelProps) {
     else await handleSchedule(isoDate);
   }
 
+  // Same flow as the TopBar "Сохранить как шаблон" button (EditorPage.tsx) —
+  // duplicated rather than lifted into a shared prop/callback because this
+  // one is reachable from both the desktop split button and every mobile
+  // tab's publish panel, and the whole handler is only a few lines wired to
+  // state this component already has (contentJson, attachments).
+  async function handleSaveAsTemplate(name: string, category: TemplateCategory) {
+    setShowTemplateDialog(false);
+    setSavingTemplate(true);
+    try {
+      const attachments = await collectInlineAttachments(contentJson || "{}");
+      await saveTemplate({ name, contentJson: contentJson || "{}", category, attachments });
+      toast.success(ti("editor.templateSaved", { name }));
+    } catch {
+      toast.error(t("editor.templateError"));
+    } finally {
+      setSavingTemplate(false);
+    }
+  }
+
   const normalHint = segments.length > 1
     ? ti("publish.normal.hintN", { n: segments.length })
     : t("publish.normal.hint1");
@@ -841,13 +864,23 @@ export function PublishPanel({ draftId }: PublishPanelProps) {
               disabled: !canPublish,
               loading: status === "publishing",
             }}
-            secondary={{
-              label: status === "scheduling" ? t("publish.scheduling") : t("publish.schedule"),
-              icon: <Clock size={13} />,
-              onClick: () => setShowSchedule(true),
-              disabled: !canSchedule,
-              loading: status === "scheduling",
-            }}
+            secondary={[
+              {
+                label: status === "scheduling" ? t("publish.scheduling") : t("publish.schedule"),
+                icon: <Clock size={13} />,
+                onClick: () => setShowSchedule(true),
+                disabled: !canSchedule,
+                loading: status === "scheduling",
+              },
+              {
+                label: t("editor.saveAsTemplate"),
+                icon: <LayoutTemplate size={13} />,
+                onClick: () => setShowTemplateDialog(true),
+                disabled: !contentJson,
+                loading: savingTemplate,
+                iconOnly: true,
+              },
+            ]}
           />
         )}
       </div>
@@ -862,6 +895,14 @@ export function PublishPanel({ draftId }: PublishPanelProps) {
           postTitle={effectiveTitle}
           onConfirm={() => { setShowPublishConfirm(false); handlePublish(); }}
           onClose={() => setShowPublishConfirm(false)}
+        />
+      )}
+
+      {showTemplateDialog && (
+        <SaveTemplateDialog
+          initialName={draftTitle}
+          onConfirm={handleSaveAsTemplate}
+          onClose={() => setShowTemplateDialog(false)}
         />
       )}
     </>

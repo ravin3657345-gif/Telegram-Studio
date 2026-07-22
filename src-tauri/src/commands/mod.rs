@@ -8,5 +8,6 @@ pub mod fs_utils;
 pub mod history;
 pub mod publish;
 pub mod settings;
+pub mod snippets;
 pub mod templates;
 pub mod winbypass;
