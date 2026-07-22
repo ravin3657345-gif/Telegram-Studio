@@ -206,11 +206,3 @@ export const getLicenseStatus = (): Promise<boolean> =>
 
 export const activateLicense = (key: string): Promise<void> =>
   invoke("activate_license", { key });
-
-// ── Обход блокировок (Windows) ──────────────────────────────────────────────
-
-export const enableWindowsBypass = (): Promise<void> =>
-  invoke("enable_windows_bypass");
-
-export const getWindowsBypassStatus = (): Promise<boolean> =>
-  invoke("windows_bypass_status");

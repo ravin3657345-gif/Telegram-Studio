@@ -42,14 +42,25 @@ use windivert::WinDivert;
 use windivert_sys::ChecksumFlags;
 
 /// Bytes into the TCP payload where an outbound data segment gets split.
-/// Same order of magnitude as the (now-removed) TLS-ClientHello split in
-/// the old fragmented.rs — small enough to reliably land inside whatever a
-/// naive DPI/middlebox is buffering on, large enough to still be a real
-/// segment either side of the cut.
-const SPLIT_AT: usize = 4;
+/// Was 4 — live-confirmed 2026-07-22 (inbound RST's ack number exactly
+/// matched seq+full_payload_len) that Cloudflare's edge in front of the
+/// Supabase relay ACKs the full reassembled ClientHello, then resets
+/// *because of the split itself*: a 4-byte-then-rest cut is a wildly
+/// unnatural shape (no real TCP stack ever segments like that under normal
+/// MTU/Nagle behavior) and reads as a textbook evasion signature. 120 lands
+/// inside the extensions area of a typical 260-500 byte ClientHello — first
+/// fragment carries the base structure, second carries SNI/ALPN/etc,
+/// closer to how a legitimate mid-stream MTU split would actually look.
+const SPLIT_AT: usize = 120;
 /// Segments this small are bare ACKs/handshake noise, not real data —
 /// nothing to gain by splitting them, so they're passed through untouched.
 const MIN_PAYLOAD_TO_SPLIT: usize = 16;
+/// Gap between sending the two fragments. Live-confirmed 2026-07-22
+/// alongside SPLIT_AT: sending both halves back-to-back with no gap makes
+/// them trivial to buffer and reassemble for pattern analysis on the
+/// receiving edge; a small delay is what a real network path (not
+/// something splitting the packet on purpose) would look like.
+const FRAGMENT_DELAY: std::time::Duration = std::time::Duration::from_millis(25);
 
 static RUNNING: AtomicBool = AtomicBool::new(false);
 
@@ -221,12 +232,34 @@ fn resolve_ipv4(hosts: &[String]) -> Vec<Ipv4Addr> {
 }
 
 fn build_filter(ips: &[Ipv4Addr]) -> String {
-    let addr_clause = ips
+    let dst_clause = ips
         .iter()
         .map(|ip| format!("ip.DstAddr == {ip}"))
         .collect::<Vec<_>>()
         .join(" or ");
-    format!("outbound and tcp and tcp.DstPort == 443 and ({addr_clause})")
+    let src_clause = ips
+        .iter()
+        .map(|ip| format!("ip.SrcAddr == {ip}"))
+        .collect::<Vec<_>>()
+        .join(" or ");
+    // `!impostor` per reqrypt.org/windivert-doc.html's filter language
+    // reference — didn't fix the actual bug (confirmed live 2026-07-22:
+    // identical failure with or without it), kept anyway since it's
+    // documented-correct hygiene for a handle that reinjects modified
+    // packets, just not sufficient on its own.
+    //
+    // Also captures inbound RST/FIN from the same hosts now (never
+    // touched, passthrough only) purely for diagnostics — outbound-only
+    // logging can't show *whether the remote ever responds at all*, let
+    // alone at what ack/sequence number, which is the one thing that
+    // would actually distinguish "our fragments are malformed" from "the
+    // remote received everything fine and reset for an unrelated reason"
+    // (e.g. Cloudflare's own edge, in front of the Supabase relay, doing
+    // something to a ClientHello that arrives in an unusual shape).
+    format!(
+        "(outbound and !impostor and tcp and tcp.DstPort == 443 and ({dst_clause})) or \
+         (inbound and tcp and tcp.SrcPort == 443 and (tcp.Rst or tcp.Fin) and ({src_clause}))"
+    )
 }
 
 /// Returns `Ok(true)` if the packet was actually split into two fragments,
@@ -247,6 +280,24 @@ fn handle_packet(
         handle.send(&packet).map_err(|e| e.to_string())?;
         return Ok(false);
     };
+
+    if !packet.address.outbound() {
+        // Diagnostics-only branch (filter only admits inbound RST/FIN, see
+        // build_filter): the ack number here is exactly how many bytes of
+        // *our* stream the remote had actually received before it gave up
+        // — the one thing that tells "our fragments never arrived intact"
+        // apart from "everything arrived fine, something else reset it".
+        let [s0, s1, s2, s3] = ip_header.source;
+        log_line(&format!(
+            "INBOUND {} from {s0}.{s1}.{s2}.{s3}:{} seq={:08x} ack={:08x} (bytes acked so far)",
+            if tcp_header.rst { "RST" } else { "FIN" },
+            tcp_header.source_port,
+            tcp_header.sequence_number,
+            tcp_header.acknowledgment_number,
+        ));
+        handle.send(&packet).map_err(|e| e.to_string())?;
+        return Ok(false);
+    }
 
     if payload.len() < MIN_PAYLOAD_TO_SPLIT || tcp_header.syn || tcp_header.rst || tcp_header.fin {
         handle.send(&packet).map_err(|e| e.to_string())?;
@@ -274,6 +325,7 @@ fn handle_packet(
     }
 
     handle.send(&frag1).map_err(|e| e.to_string())?;
+    std::thread::sleep(FRAGMENT_DELAY);
     handle.send(&frag2).map_err(|e| e.to_string())?;
     Ok(true)
 }
