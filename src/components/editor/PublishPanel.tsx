@@ -65,6 +65,8 @@ export function PublishPanel({ draftId }: PublishPanelProps) {
   // normal-mode segments below.
   const hasMap = (contentJson ?? "").includes('"type":"blockMap"');
   const hasFormula = (contentJson ?? "").includes('"type":"blockFormula"');
+  // Same reasoning — pull quotes (Bot API 10.2's <aside>) are also Rich-only.
+  const hasPullquote = (contentJson ?? "").includes('"type":"pullquote"');
   // Bot API 10.1 caps a single Rich Message at 500 top-level blocks
   // (separate from the 32,768-char length cap) — checked per split chunk
   // via the same splitJsonAtGaps used by the real publish call, since each
@@ -76,7 +78,7 @@ export function PublishPanel({ draftId }: PublishPanelProps) {
     try { return (JSON.parse(chunk).content ?? []).length > TELEGRAM_MAX_RICH_BLOCKS; }
     catch { return false; }
   });
-  const hasContent = hasAttachments || (publishMode === "rich" && (hasTable || hasAudio || hasMap || hasFormula)) || segments.some(
+  const hasContent = hasAttachments || (publishMode === "rich" && (hasTable || hasAudio || hasMap || hasFormula || hasPullquote)) || segments.some(
     (s) =>
       (s.type === "text" && s.html.trim()) ||
       s.type === "image" ||
@@ -90,6 +92,7 @@ export function PublishPanel({ draftId }: PublishPanelProps) {
   const audioBlockedOutsideRich = publishMode !== "rich" && hasAudio;
   const mapBlockedOutsideRich = publishMode !== "rich" && hasMap;
   const formulaBlockedOutsideRich = publishMode !== "rich" && hasFormula;
+  const pullquoteBlockedOutsideRich = publishMode !== "rich" && hasPullquote;
   // Scheduled posts support text + images/video/files (scheduler persists media
   // to disk and sends it via the same photo/video/document logic as immediate
   // publish). Polls are the one segment type with no scheduled-send path yet —
@@ -102,7 +105,7 @@ export function PublishPanel({ draftId }: PublishPanelProps) {
     hasBots && selectedChannelIds.length > 0 && hasContent &&
     !fileBlockedInRich &&
     !tableBlockedOutsideRich && !audioBlockedOutsideRich &&
-    !mapBlockedOutsideRich && !formulaBlockedOutsideRich && !richBlockLimitExceeded &&
+    !mapBlockedOutsideRich && !formulaBlockedOutsideRich && !pullquoteBlockedOutsideRich && !richBlockLimitExceeded &&
     status !== "publishing" && status !== "scheduling";
 
   const canSchedule = canPublish && !mediaBlockedInSchedule;
@@ -795,6 +798,30 @@ export function PublishPanel({ draftId }: PublishPanelProps) {
                 onClick={() => setPublishMode("rich")}
               >
                 {t("publish.formulaOutsideRichLink")}
+              </button>
+              .
+            </span>
+          </div>
+        )}
+
+        {/* Pull quote warning outside Rich mode — pull quotes only exist in Rich Messages */}
+        {pullquoteBlockedOutsideRich && (
+          <div
+            className="publish-warning-box flex items-start gap-2 px-3 py-2 rounded-lg text-xs"
+            style={{
+              backgroundColor: "var(--warning-subtle)",
+              border: "1px solid color-mix(in srgb, var(--warning) 30%, transparent)",
+              color: "var(--text-secondary)",
+            }}
+          >
+            <AlertCircle size={13} style={{ color: "var(--warning)", flexShrink: 0, marginTop: 1 }} />
+            <span>
+              {t("publish.pullquoteOutsideRich")}&nbsp;
+              <button
+                style={{ color: "var(--accent)", textDecoration: "underline", background: "none", border: "none", cursor: "pointer", padding: 0, font: "inherit" }}
+                onClick={() => setPublishMode("rich")}
+              >
+                {t("publish.pullquoteOutsideRichLink")}
               </button>
               .
             </span>

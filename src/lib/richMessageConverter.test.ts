@@ -157,6 +157,23 @@ describe("tiptapToRichHtml", () => {
     expect(html).toBe("<blockquote><p>Quoted</p></blockquote>");
   });
 
+  it("appends a blockquote's credit as a trailing <cite>, inside the tag (Bot API 10.2)", () => {
+    const { html } = tiptapToRichHtml(
+      doc({ type: "blockquote", attrs: { credit: "The Author" }, content: [para(text("Quoted"))] }),
+    );
+    expect(html).toBe("<blockquote><p>Quoted</p><cite>The Author</cite></blockquote>");
+  });
+
+  it("renders a pullquote as <aside>text<cite>credit</cite></aside>, credit omitted when unset", () => {
+    const withCredit = tiptapToRichHtml(
+      doc({ type: "pullquote", attrs: { credit: "The Author" }, content: [text("Pull quote")] }),
+    ).html;
+    expect(withCredit).toBe("<aside>Pull quote<cite>The Author</cite></aside>");
+
+    const noCredit = tiptapToRichHtml(doc({ type: "pullquote", content: [text("Just text")] })).html;
+    expect(noCredit).toBe("<aside>Just text</aside>");
+  });
+
   it("converts a blockFaq answer's mini-HTML markup into real Rich HTML tags, not escaped literal text", () => {
     // Regression: the answer used to go through escapeHtml(), turning
     // "<b>bold</b>" into the literal text "&lt;b&gt;bold&lt;/b&gt;" instead of

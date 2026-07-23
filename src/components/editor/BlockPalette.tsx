@@ -69,6 +69,7 @@ const PREVIEW_BUILDERS: Partial<Record<BlockPreviewType, (label: string) => HTML
   h2: (label) => { const el = document.createElement("h2"); el.className = "tiptap-heading"; el.textContent = label; return el; },
   h3: (label) => { const el = document.createElement("h3"); el.className = "tiptap-heading"; el.textContent = label; return el; },
   quote: (label) => { const el = document.createElement("blockquote"); el.textContent = label; return el; },
+  pullquote: (label) => { const el = document.createElement("aside"); el.style.textAlign = "center"; el.textContent = label; return el; },
   code: (label) => {
     const pre = document.createElement("pre");
     const code = document.createElement("code");

@@ -192,8 +192,77 @@ async function handleStorageForward(suffix: string, req: Request): Promise<Respo
   }
 }
 
+// Admin-side helper, same shape as handleStorageForward but writes the
+// reassembled bytes back to Storage instead of forwarding to Telegram —
+// used for publishing large release installers (several MB) when a single
+// big request to Storage itself hits the same ISP interference this whole
+// file exists to route around (see docs/telegram-blocking-bypass.md).
+// Deliberately scoped to the `sales-assets` bucket only — this function's
+// auth is the app's embedded publishable key (effectively public, JWT
+// verification just confirms it came from a real Supabase-issued token),
+// so it must not become a write-anywhere-in-any-bucket primitive.
+const ASSEMBLE_MARKER = "/assemble";
+const ASSEMBLE_BUCKET = "sales-assets";
+
+async function handleAssemble(req: Request): Promise<Response> {
+  let payload: { chunkPaths: string[]; destPath: string };
+  try {
+    payload = await req.json();
+  } catch {
+    return new Response(
+      JSON.stringify({ ok: false, description: "assemble: invalid JSON body" }),
+      { status: 400, headers: { "Content-Type": "application/json" } },
+    );
+  }
+  if (!Array.isArray(payload.chunkPaths) || payload.chunkPaths.length === 0 || !payload.destPath) {
+    return new Response(
+      JSON.stringify({ ok: false, description: "assemble: chunkPaths and destPath required" }),
+      { status: 400, headers: { "Content-Type": "application/json" } },
+    );
+  }
+
+  try {
+    const bytes = await reassembleFile(payload.chunkPaths);
+    const putResp = await fetch(
+      `${SUPABASE_URL}/storage/v1/object/${ASSEMBLE_BUCKET}/${payload.destPath}`,
+      {
+        method: "POST",
+        headers: {
+          apikey: SERVICE_KEY,
+          Authorization: `Bearer ${SERVICE_KEY}`,
+          "Content-Type": "application/octet-stream",
+          "x-upsert": "true",
+        },
+        body: bytes,
+      },
+    );
+    if (!putResp.ok) {
+      return new Response(
+        JSON.stringify({ ok: false, description: `assemble: storage write failed ${putResp.status}` }),
+        { status: 502, headers: { "Content-Type": "application/json" } },
+      );
+    }
+    return new Response(
+      JSON.stringify({ ok: true, bytes: bytes.length }),
+      { status: 200, headers: { "Content-Type": "application/json" } },
+    );
+  } catch (e) {
+    return new Response(
+      JSON.stringify({ ok: false, description: `assemble: failed: ${e}` }),
+      { status: 502, headers: { "Content-Type": "application/json" } },
+    );
+  } finally {
+    await Promise.all(payload.chunkPaths.map((p) => deleteFromStorage(p)));
+  }
+}
+
 Deno.serve(async (req: Request) => {
   const url = new URL(req.url);
+
+  if (url.pathname.includes(ASSEMBLE_MARKER)) {
+    return handleAssemble(req);
+  }
+
   const markerIdx = url.pathname.indexOf(PATH_MARKER);
   let rest = markerIdx === -1 ? "" : url.pathname.slice(markerIdx + PATH_MARKER.length);
 

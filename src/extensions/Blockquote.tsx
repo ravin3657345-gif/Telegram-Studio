@@ -50,6 +50,34 @@ function BlockquoteView({ node, updateAttributes }: any) {
       {/* Editable content first — required by TipTap */}
       <NodeViewContent as="span" />
 
+      {/* Author credit — Bot API 10.2's `credit` field (<cite> in Rich HTML,
+          see richMessageConverter.ts). Plain text, not rich-formatted — a
+          one-line attribution doesn't need bold/italic/etc, and skipping
+          that keeps this an <input> instead of a nested editable node.
+          Shown regardless of publish mode: normal mode just silently drops
+          it on convert (see htmlConverter.ts), same as any other Rich-only
+          data left on a normal-mode-compatible block — no reason to hide
+          the field itself over that. */}
+      <input
+        contentEditable={false}
+        value={node.attrs.credit ?? ""}
+        onChange={(e) => updateAttributes({ credit: e.target.value || null })}
+        placeholder={t("quote.creditPlaceholder")}
+        style={{
+          display: "block",
+          marginTop: 4,
+          border: "none",
+          background: "transparent",
+          font: "inherit",
+          fontSize: "0.85em",
+          fontStyle: "normal",
+          fontWeight: 600,
+          color: "var(--accent)",
+          outline: "none",
+          width: "100%",
+        }}
+      />
+
       {/* Toggle button — non-editable, floats in the corner. Hidden in Rich mode:
           Rich messages don't support expandable quotes at all. */}
       {canToggleExpandable && (
@@ -97,6 +125,16 @@ export const Blockquote = Node.create({
         default: false,
         parseHTML: (el) => el.hasAttribute("expandable"),
         renderHTML: (attrs) => (attrs.expandable ? { expandable: "" } : {}),
+      },
+      // Author attribution — Bot API 10.2's InputRichBlockBlockQuotation.credit,
+      // sent as a nested <cite> in Rich HTML (see richMessageConverter.ts),
+      // stored here as a plain data-attribute since round-tripping through
+      // raw HTML paste isn't a real need for this app (content_json, not
+      // HTML, is the persisted source of truth).
+      credit: {
+        default: null,
+        parseHTML: (el) => el.getAttribute("data-credit"),
+        renderHTML: (attrs) => (attrs.credit ? { "data-credit": attrs.credit } : {}),
       },
     };
   },

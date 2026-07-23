@@ -4,7 +4,7 @@ import { ReactRenderer } from "@tiptap/react";
 import {
   Heading1, Heading2, Heading3, Pilcrow, Quote, Code2,
   List, ListOrdered, Minus, Image, Film, HelpCircle, BarChart2,
-  CheckSquare, Lightbulb, Table2, Music, MapPin, Sigma,
+  CheckSquare, Lightbulb, Table2, Music, MapPin, Sigma, MessageSquareQuote,
 } from "lucide-react";
 import tippy, { type Instance as TippyInstance } from "tippy.js";
 import "tippy.js/dist/tippy.css";
@@ -22,7 +22,7 @@ import { isAndroidPlatform, MOBILE_BREAKPOINT } from "@/hooks/useIsMobileLayout"
 // that matches the editor's own typography (label text alone isn't enough,
 // it doesn't say "this becomes a heading" vs "this becomes a quote").
 export type BlockPreviewType =
-  | "paragraph" | "h1" | "h2" | "h3" | "quote" | "code"
+  | "paragraph" | "h1" | "h2" | "h3" | "quote" | "pullquote" | "code"
   | "list" | "orderedList" | "checklist" | "callout" | "divider"
   | "image" | "video" | "audio" | "faq" | "poll" | "table" | "map" | "formula";
 
@@ -89,6 +89,21 @@ export function getSlashItems(): SlashItem[] {
       previewType: "quote",
       group: "text",
       command: (e) => e.chain().focus().toggleBlockquote().run(),
+    },
+    {
+      icon: MessageSquareQuote,
+      label: t("slash.pullquote"),
+      description: t("slash.pullquote.desc"),
+      previewType: "pullquote",
+      group: "text",
+      isBlocked: () => useEditorStore.getState().publishMode !== "rich",
+      command: (e) => {
+        if (useEditorStore.getState().publishMode !== "rich") {
+          useUiStore.getState().toast("warning", t("slash.pullquoteWarning"), t("slash.pullquoteHint"));
+          return;
+        }
+        e.chain().focus().insertContent({ type: "pullquote" }).run();
+      },
     },
     {
       icon: Code2,

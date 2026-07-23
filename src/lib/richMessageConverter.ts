@@ -145,7 +145,19 @@ function convertSingleNode(
       // trace of the attribute. <details><summary> is the real collapsible
       // mechanism in Rich mode; a quote just stays a quote either way.
       const inner = convertBlockList(node.content ?? [], photos, counter);
-      return inner.trim() ? `<blockquote>${inner}</blockquote>` : "";
+      const credit = node.attrs?.credit as string | undefined;
+      // <cite> goes INSIDE <blockquote>, as the last child — that's how Bot
+      // API 10.2's InputRichBlockBlockQuotation.credit is expressed in HTML.
+      const citeTag = credit ? `<cite>${escapeHtml(credit)}</cite>` : "";
+      return inner.trim() ? `<blockquote>${inner}${citeTag}</blockquote>` : "";
+    }
+    case "pullquote": {
+      // InputRichBlockPullQuotation — <aside>text<cite>credit</cite></aside>.
+      const text = extractRichText(node);
+      if (!text.trim()) return "";
+      const credit = node.attrs?.credit as string | undefined;
+      const citeTag = credit ? `<cite>${escapeHtml(credit)}</cite>` : "";
+      return `<aside>${text}${citeTag}</aside>`;
     }
     case "codeBlock": {
       const raw = (node.content ?? []).map((n) => n.text ?? "").join("");

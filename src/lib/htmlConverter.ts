@@ -105,16 +105,18 @@ function renderNode(node: TiptapNode): string {
     case "messageSplit":
       return "";
 
-    // Tables, audio, maps and formulas are Rich-mode only (Bot API 10.1) —
-    // publish is blocked outside Rich mode while any of these exist in the
-    // post (see PublishPanel.tsx), but no-op here too as a safety net rather
-    // than falling through to renderInline, which would garble things (a
-    // table's cell text into a run-on string; none of the others have any
-    // meaningful plain-text form at all).
+    // Tables, audio, maps, formulas and pull quotes are Rich-mode only (Bot
+    // API 10.1/10.2) — publish is blocked outside Rich mode while any of
+    // these exist in the post (see PublishPanel.tsx), but no-op here too as
+    // a safety net rather than falling through to renderInline, which would
+    // garble things (a table's cell text into a run-on string; none of the
+    // others have any meaningful plain-text form at all — <aside> has no
+    // normal-mode Telegram HTML equivalent).
     case "blockTable":
     case "blockAudio":
     case "blockMap":
     case "blockFormula":
+    case "pullquote":
       return "";
 
     // Anchors only work in Rich messages (Bot API 10.1) — no-op elsewhere.

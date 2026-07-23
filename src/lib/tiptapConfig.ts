@@ -26,6 +26,7 @@ import { AtomBlockNavigation } from "@/extensions/AtomBlockNavigation";
 import { EditorJumpShortcuts } from "@/extensions/EditorJumpShortcuts";
 import { MultiBlockSelection } from "@/extensions/MultiBlockSelection";
 import { Blockquote } from "@/extensions/Blockquote";
+import { BlockPullQuote } from "@/extensions/BlockPullQuote";
 import { MessageSplit } from "@/extensions/MessageSplit";
 import { BlockTable, TableRow, TableCell } from "@/extensions/BlockTable";
 import { BlockAudio } from "@/extensions/BlockAudio";
@@ -114,6 +115,7 @@ export function createTiptapExtensions() {
     BlockCallout,
     BlockAnchor,
     Blockquote,
+    BlockPullQuote,
     BlockTable,
     TableRow,
     TableCell,

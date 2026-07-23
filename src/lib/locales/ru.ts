@@ -292,6 +292,10 @@ export const ru = {
     "slash.formula.desc":      "Вставить математическую формулу (LaTeX)",
     "slash.formulaWarning":    "Формулы доступны только в Rich-режиме",
     "slash.formulaHint":       "Переключитесь в Rich-режим публикации",
+    "slash.pullquote":         "Выносная цитата",
+    "slash.pullquote.desc":    "Крупная центрированная цитата с подписью автора",
+    "slash.pullquoteWarning":  "Выносные цитаты доступны только в Rich-режиме",
+    "slash.pullquoteHint":     "Переключитесь в Rich-режим публикации",
 
     // ── Публикация ───────────────────────────────────────────────────────────
     "publish.button":               "Опубликовать",
@@ -327,6 +331,8 @@ export const ru = {
     "publish.mapOutsideRichLink":   "Rich",
     "publish.formulaOutsideRich":     "В посте есть формула — формулы работают только в Rich-режиме. Переключитесь на",
     "publish.formulaOutsideRichLink": "Rich",
+    "publish.pullquoteOutsideRich":     "В посте есть выносная цитата — она работает только в Rich-режиме. Переключитесь на",
+    "publish.pullquoteOutsideRichLink": "Rich",
     "publish.tooManyRichBlocks":    "Слишком много блоков в одном сообщении (максимум {n} у Telegram) — разделите пост на несколько сообщений (правой кнопкой по блоку → «Разделить сообщение здесь»).",
     "publish.mediaInSchedule":      "Опросы пока нельзя запланировать — уберите опрос или опубликуйте пост сразу.",
     "publish.defaultTitle":         "Публикация",
@@ -578,6 +584,7 @@ export const ru = {
     "quote.makeCollapsible": "Сделать сворачиваемой",
     "quote.collapsed":       "Сворачиваемая",
     "quote.collapse":        "Свернуть",
+    "quote.creditPlaceholder": "Автор",
     "preview.readMore":    "▼ Читать далее",
     "preview.collapse":    "▲ Свернуть",
     "preview.placeholder": "Начните писать…",
