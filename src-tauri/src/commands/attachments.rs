@@ -92,11 +92,21 @@ pub fn persist(
 
         let path_str = file_path.to_string_lossy().into_owned();
         let now = Utc::now().to_rfc3339();
+        // ON CONFLICT targets (draft_id, id) — the table's actual composite
+        // primary key (see migrate_v16) — not just id. id doubles as the
+        // semantic file_id that content_json's blockImage/blockVideo nodes
+        // reference, and it can legitimately repeat across DIFFERENT
+        // drafts (any template/example with fixed, non-regenerated fileIds,
+        // e.g. exampleTemplates.ts's showcase). Conflicting on id alone
+        // used to let a second draft's insert silently update the FIRST
+        // draft's row (refreshing its file bytes) without ever attaching
+        // one of its own — every later draft got zero media, live-reported
+        // 2026-07-23.
         db.execute(
             "INSERT INTO draft_media (id, draft_id, file_path, file_name, mime_type,
                                      file_size, sort_order, created_at)
              VALUES (?1,?2,?3,?4,?5,?6,?7,?8)
-             ON CONFLICT(id) DO UPDATE SET
+             ON CONFLICT(draft_id, id) DO UPDATE SET
                file_path=excluded.file_path,
                file_name=excluded.file_name,
                mime_type=excluded.mime_type,

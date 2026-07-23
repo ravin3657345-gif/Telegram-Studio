@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use reqwest::Client;
 use serde::Serialize;
-use crate::telegram::form::TgForm;
+use crate::telegram::form::{TgFieldRef, TgForm};
 use crate::telegram::types::TelegramResponse;
 
 // Each of the call paths (direct/relay × json/multipart) gets its own hard
@@ -27,9 +27,104 @@ const MULTIPART_ATTEMPT_TIMEOUT: Duration = Duration::from_secs(45);
 // of TLS-layer trickery can ever get past it — the only thing that works is
 // not connecting to that IP at all. Supabase's edge network is a different,
 // unblocked address, reachable directly with no special transport needed —
-// this is a normal reqwest call. Payload size was verified live up to
-// 120MB (well past Telegram's own 50MB cap) before wiring this in.
+// this is a normal reqwest call.
+//
+// CORRECTION 2026-07-23: the "payload size verified up to 120MB" claim
+// that used to be here was wrong — never actually re-verified after the
+// ISP apparently tightened its filtering. Live-tested this session: ANY
+// request through this Edge Function above ~25-30KB gets silently
+// interfered with (connection reset or hang to timeout), regardless of
+// content-type — and the SAME threshold hit Supabase's Storage backend
+// too when tested directly, so it isn't specific to Edge Functions either.
+// The threshold itself isn't fixed — it was reliably ~25-28KB when
+// measured, but the whole point is this can drift as the ISP retunes its
+// filtering, so don't hardcode assumptions about it lasting. See
+// `call_multipart_via_storage` below for how multipart calls route around
+// this (chunked upload), and its own doc comment for the tested limits of
+// that workaround.
 const RELAY_BASE: &str = "https://xhjxnyhvfyzyulzzxpsg.supabase.co/functions/v1/tg-relay";
+// Longer than MULTIPART_ATTEMPT_TIMEOUT — a chunked upload does many
+// sequential-ish round trips (bounded concurrency, not one request), and
+// large files can legitimately take well over a minute (live-tested: a
+// ~5MB file took 108s even with most chunks eventually landing). Bounding
+// it at all is still worth doing so a truly stuck upload doesn't hang the
+// publish flow forever.
+const CHUNKED_RELAY_TIMEOUT: Duration = Duration::from_secs(180);
+
+// Private, transient Storage bucket — see call_multipart_via_storage's doc
+// comment for why this exists. `relay-tmp/<file-uuid>/<00000, 00001, ...>`.
+const RELAY_BUCKET: &str = "relay-tmp";
+// 20KB — safety margin under the ~25-28KB interference threshold measured
+// live 2026-07-23 (see RELAY_BASE's doc comment on why that threshold isn't
+// guaranteed to hold forever).
+const CHUNK_SIZE: usize = 20 * 1024;
+// How many chunk uploads run at once. Live-tested 2026-07-23: 8 concurrent
+// held up fine through a ~1MB (50-chunk) transfer; pushing well past this
+// (undbounded concurrency, or sustained transfers over ~100KB/several
+// seconds even at bounded concurrency) started seeing failures — see
+// call_multipart_via_storage's doc comment for the exact numbers.
+const CHUNK_CONCURRENCY: usize = 8;
+const CHUNK_UPLOAD_TIMEOUT: Duration = Duration::from_secs(10);
+
+async fn upload_chunk(relay_http: Client, path: String, bytes: Vec<u8>) -> Result<String, TelegramError> {
+    let url = format!("{}/storage/v1/object/{RELAY_BUCKET}/{path}", tstudio_core::license::SUPABASE_URL);
+    let fut = async {
+        let resp = relay_http
+            .post(&url)
+            .header("apikey", tstudio_core::license::SUPABASE_ANON_KEY)
+            .header("Authorization", format!("Bearer {}", tstudio_core::license::SUPABASE_ANON_KEY))
+            .header("Content-Type", "application/octet-stream")
+            .body(bytes)
+            .send()
+            .await
+            .map_err(|e| TelegramError::Network(describe_reqwest_error(&e)))?;
+        if !resp.status().is_success() {
+            return Err(TelegramError::Network(format!("chunk upload -> {}", resp.status())));
+        }
+        Ok(())
+    };
+    match tokio::time::timeout(CHUNK_UPLOAD_TIMEOUT, fut).await {
+        Ok(Ok(())) => Ok(path),
+        Ok(Err(e)) => Err(e),
+        Err(_) => Err(TelegramError::Network("chunk upload timed out".to_string())),
+    }
+}
+
+/// Splits `bytes` into CHUNK_SIZE pieces and uploads them all to a fresh
+/// `relay-tmp/<uuid>/` prefix with bounded concurrency (CHUNK_CONCURRENCY
+/// permits via a semaphore, not a hard batch boundary — a finishing upload
+/// immediately frees its slot for the next one instead of waiting for the
+/// whole batch). Returns the chunk paths in original order (index tracked
+/// through the join, not relied on from completion order) so the Edge
+/// Function can reassemble the file correctly regardless of which chunk
+/// happened to land first.
+async fn upload_chunks(relay_http: &Client, bytes: &[u8]) -> Result<Vec<String>, TelegramError> {
+    let prefix = uuid::Uuid::new_v4();
+    let chunks: Vec<Vec<u8>> = bytes.chunks(CHUNK_SIZE).map(|c| c.to_vec()).collect();
+    let total = chunks.len();
+
+    let semaphore = std::sync::Arc::new(tokio::sync::Semaphore::new(CHUNK_CONCURRENCY));
+    let mut set = tokio::task::JoinSet::new();
+    for (i, chunk) in chunks.into_iter().enumerate() {
+        let sem = semaphore.clone();
+        let client = relay_http.clone();
+        let path = format!("{prefix}/{i:05}");
+        set.spawn(async move {
+            let _permit = sem.acquire_owned().await.expect("semaphore never closed");
+            upload_chunk(client, path, chunk).await.map(|p| (i, p))
+        });
+    }
+
+    let mut paths: Vec<Option<String>> = vec![None; total];
+    while let Some(res) = set.join_next().await {
+        let (i, path) = res.map_err(|e| TelegramError::Network(format!("chunk upload task failed: {e}")))??;
+        paths[i] = Some(path);
+    }
+    paths
+        .into_iter()
+        .collect::<Option<Vec<_>>>()
+        .ok_or_else(|| TelegramError::Network("chunk upload: a chunk went missing".to_string()))
+}
 
 /// Shared by both call paths below (direct/relay × json/multipart) — was
 /// duplicated inline in `call`/`call_multipart` before the relay fallback
@@ -255,23 +350,75 @@ impl TelegramClient {
         if !matches!(direct, Err(TelegramError::Network(_))) {
             return direct;
         }
-        log::debug!("[tg] {method} multipart failed over direct connection, retrying via Supabase relay");
-        self.with_timeout(MULTIPART_ATTEMPT_TIMEOUT, "Supabase relay", self.call_multipart_relay(method, &form)).await
+        log::debug!("[tg] {method} multipart failed over direct connection, retrying via Supabase relay (chunked storage)");
+        self.with_timeout(
+            CHUNKED_RELAY_TIMEOUT,
+            "Supabase relay (chunked storage)",
+            self.call_multipart_via_storage(method, &form),
+        )
+        .await
     }
 
-    async fn call_multipart_relay<T>(&self, method: &str, form: &TgForm) -> Result<T, TelegramError>
+    // Replaces a previous single-shot "send the whole multipart body to the
+    // relay Edge Function" attempt — provably unreliable above ~25-30KB (see
+    // RELAY_BASE's doc comment above), which is smaller than nearly any real
+    // photo. Instead: split each file part into CHUNK_SIZE pieces, upload
+    // them to the private `relay-tmp` Storage bucket with bounded
+    // concurrency (each individual request stays under the interference
+    // threshold), then send the Edge Function a small JSON descriptor
+    // (chunk paths + the plain text fields) instead of the file itself — it
+    // reassembles the chunks server-side and forwards to Telegram exactly
+    // like the old direct multipart attempt would have.
+    //
+    // Live-tested 2026-07-23, both results holding at the time of testing
+    // (the ISP's threshold isn't guaranteed stable — see RELAY_BASE's doc
+    // comment):
+    //   - Photo-sized (~1MB, 50×20KB chunks): 100% success, ~2s total —
+    //     close to a normal unblocked upload's speed.
+    //   - Video-sized (~5MB, 250×20KB chunks): only ~59% of chunks
+    //     succeeded even individually-sized-safe, taking 108s — some
+    //     cumulative-volume-or-duration trigger kicks in on top of the
+    //     per-request size one that chunking alone doesn't route around.
+    // Deliberately shipped anyway for the common case (photos) rather than
+    // gated behind a size check — for large files this is no worse than the
+    // old approach (which failed outright above ~25-30KB regardless), and
+    // occasionally still gets a large file through where the old path
+    // never could.
+    async fn call_multipart_via_storage<T>(&self, method: &str, form: &TgForm) -> Result<T, TelegramError>
     where
         T: for<'de> serde::Deserialize<'de>,
     {
-        let url = format!("{RELAY_BASE}/bot{}/{}", self.token, method);
-        log::debug!("[tg-relay] POST {} (multipart)", method);
+        log::debug!("[tg-relay] POST {} (chunked storage)", method);
+
+        let mut fields_json = serde_json::Map::new();
+        let mut files_json: Vec<serde_json::Value> = Vec::new();
+
+        for (name, field) in form.iter_fields() {
+            match field {
+                TgFieldRef::Text(value) => {
+                    fields_json.insert(name.to_string(), serde_json::Value::String(value.to_string()));
+                }
+                TgFieldRef::File { filename, mime, bytes } => {
+                    let chunk_paths = upload_chunks(&self.relay_http, bytes).await?;
+                    files_json.push(serde_json::json!({
+                        "field": name,
+                        "fileName": filename,
+                        "mimeType": mime,
+                        "chunkPaths": chunk_paths,
+                    }));
+                }
+            }
+        }
+
+        let payload = serde_json::json!({ "fields": fields_json, "files": files_json });
+        let url = format!("{RELAY_BASE}/storage/bot{}/{}", self.token, method);
 
         let resp = self
             .relay_http
             .post(&url)
             .header("apikey", tstudio_core::license::SUPABASE_ANON_KEY)
             .header("Authorization", format!("Bearer {}", tstudio_core::license::SUPABASE_ANON_KEY))
-            .multipart(form.into_reqwest()?)
+            .json(&payload)
             .send()
             .await
             .map_err(|e| TelegramError::Network(self.redact(describe_reqwest_error(&e))))?;

@@ -12,7 +12,9 @@ import { t, ti, type TranslationKey } from "@/lib/i18n";
 import { useSettingsStore } from "@/store/settingsStore";
 import type { Template, TemplateCategory } from "@/types/template";
 import { EXAMPLE_TEMPLATES, type ExampleTemplate } from "@/lib/exampleTemplates";
-import { registerFilesIntoJson, collectInlineAttachments } from "@/lib/attachmentRestore";
+import { registerFilesIntoJson } from "@/lib/attachmentRestore";
+import { fileToBase64 } from "@/lib/imageProcessing";
+import type { DraftAttachment } from "@/types/draft";
 import { accentGradient, accentGrayGradient } from "@/lib/color";
 import { useListKeyboardNav } from "@/hooks/useListKeyboardNav";
 
@@ -149,8 +151,8 @@ export function TemplatesPage() {
     // mirrors exactly what restoreAttachmentsIntoJson does for a real
     // DB-backed template's base64 attachments, just from a local file
     // instead of bytes that came over Tauri IPC.
+    const files: Record<string, File> = {};
     if (example.assets) {
-      const files: Record<string, File> = {};
       await Promise.all(
         Object.entries(example.assets).map(async ([fileId, asset]) => {
           const res = await fetch(asset.url);
@@ -161,7 +163,23 @@ export function TemplatesPage() {
       contentJson = registerFilesIntoJson(contentJson, files);
     }
     try {
-      const attachments = await collectInlineAttachments(contentJson);
+      // Deliberately NOT collectInlineAttachments(contentJson) — that reads
+      // back through the shared, mutable `fileRegistry` singleton, which
+      // live-reported 2026-07-23 turned out to race against something else
+      // clearing it (repro'd inconsistently: 0/1/3 of the showcase's 4
+      // images actually persisted across five tries) — root cause never
+      // pinned down exactly, but there's no need to route through that
+      // shared global at all here: the File objects are already sitting
+      // right here in `files`, fetched moments ago. Encoding them directly
+      // sidesteps the race entirely regardless of what was causing it.
+      const attachments: DraftAttachment[] = await Promise.all(
+        Object.entries(files).map(async ([fileId, file]) => ({
+          fileId,
+          dataBase64: await fileToBase64(file),
+          mimeType: file.type,
+          fileName: file.name,
+        })),
+      );
       const draft = await upsertDraft({ contentJson, attachments });
       navigate(`/editor/${draft.id}`);
       toast.success(ti("templates.examples.opened", { name: example.name }));

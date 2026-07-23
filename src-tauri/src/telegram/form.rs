@@ -67,6 +67,28 @@ impl Default for TgForm {
     }
 }
 
+/// Read-only view of a `TgForm` field — lets client.rs build the
+/// chunked-storage-relay JSON payload (see client.rs's `call_multipart_via_storage`)
+/// without exposing `TgField`/`fields` themselves.
+pub(crate) enum TgFieldRef<'a> {
+    Text(&'a str),
+    File { filename: &'a str, mime: &'a str, bytes: &'a [u8] },
+}
+
+impl TgForm {
+    pub(crate) fn iter_fields(&self) -> impl Iterator<Item = (&str, TgFieldRef<'_>)> {
+        self.fields.iter().map(|(name, field)| {
+            let r = match field {
+                TgField::Text(v) => TgFieldRef::Text(v),
+                TgField::File { filename, mime, bytes } => {
+                    TgFieldRef::File { filename, mime, bytes }
+                }
+            };
+            (name.as_str(), r)
+        })
+    }
+}
+
 pub struct TgPart {
     filename: String,
     mime: String,

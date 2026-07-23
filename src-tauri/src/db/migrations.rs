@@ -16,6 +16,7 @@ pub fn run(conn: &Connection) -> Result<()> {
     migrate_v13(conn)?;
     migrate_v14(conn)?;
     migrate_v15(conn)?;
+    migrate_v16(conn)?;
     seed_settings(conn)?;
     Ok(())
 }
@@ -265,6 +266,75 @@ fn migrate_v15(conn: &Connection) -> Result<()> {
     Ok(())
 }
 
+fn migrate_v16(conn: &Connection) -> Result<()> {
+    // draft_media.id used to be the sole PRIMARY KEY, but it's also reused
+    // as the semantic file_id that content_json's blockImage/blockVideo
+    // nodes reference by (commands::drafts::get_draft maps media.id straight
+    // to DraftAttachment.file_id) — so it can't just become a fresh UUID
+    // without breaking that link. Any code path that reuses the same
+    // file_id across MULTIPLE drafts silently lost its media as a result:
+    // the built-in "Витрина блоков" example template's fileIds are fixed
+    // constants, not freshly generated per use (see exampleTemplates.ts's
+    // SHOWCASE_ASSETS), so a second draft's INSERT for id='demo-collage-1'
+    // collided with whichever draft first ever used it — the ON CONFLICT
+    // UPDATE clause refreshed the file bytes/metadata but never reassigned
+    // draft_id, so that first draft silently kept absorbing every later
+    // use's files while every subsequent draft got zero of its own rows.
+    // Live-reported 2026-07-23. Normal user uploads never hit this (their
+    // file_id is already a fresh UUID per attachment via fileRegistry.add),
+    // which is why it went unnoticed until a fixed-fileId example did.
+    // Fixed by scoping the primary key to (draft_id, id) instead of id
+    // alone — the same file_id can now coexist across different drafts,
+    // each with its own row. SQLite can't ALTER a PRIMARY KEY in place, so
+    // this rebuilds the table; existing rows carry over unchanged (the
+    // four demo-* rows currently pointing at the oldest showcase draft
+    // stay valid for that draft, they just stop blocking every later one).
+    //
+    // Idempotency: `run()` re-executes every migrate_vN on every launch
+    // (same pattern as migrate_v11's `templates_exists` check below it in
+    // this file), so this only rebuilds while the table still has the OLD
+    // single-column key — a fresh `CREATE TABLE draft_media_v16` on an
+    // already-migrated database would otherwise error the moment this
+    // function ran a second time.
+    let already_migrated: bool = conn
+        .query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='draft_media' AND sql LIKE '%PRIMARY KEY (draft_id, id)%'",
+            [],
+            |r| r.get::<_, i64>(0),
+        )
+        .map(|c| c > 0)
+        .unwrap_or(false);
+    if already_migrated {
+        return Ok(());
+    }
+
+    conn.execute_batch(
+        "CREATE TABLE draft_media_v16 (
+            id          TEXT NOT NULL,
+            draft_id    TEXT NOT NULL,
+            file_path   TEXT NOT NULL,
+            file_name   TEXT NOT NULL,
+            mime_type   TEXT NOT NULL,
+            file_size   INTEGER NOT NULL,
+            width       INTEGER,
+            height      INTEGER,
+            duration    INTEGER,
+            sort_order  INTEGER NOT NULL DEFAULT 0,
+            created_at  TEXT NOT NULL,
+            PRIMARY KEY (draft_id, id),
+            FOREIGN KEY (draft_id) REFERENCES drafts(id) ON DELETE CASCADE
+        );
+        INSERT INTO draft_media_v16
+            SELECT id, draft_id, file_path, file_name, mime_type, file_size,
+                   width, height, duration, sort_order, created_at
+            FROM draft_media;
+        DROP TABLE draft_media;
+        ALTER TABLE draft_media_v16 RENAME TO draft_media;
+        CREATE INDEX IF NOT EXISTS idx_media_draft ON draft_media(draft_id, sort_order);"
+    )?;
+    Ok(())
+}
+
 fn seed_settings(conn: &Connection) -> Result<()> {
     conn.execute_batch(
         "INSERT OR IGNORE INTO settings (key, value) VALUES
@@ -321,7 +391,7 @@ CREATE TABLE IF NOT EXISTS drafts (
 );
 
 CREATE TABLE IF NOT EXISTS draft_media (
-    id          TEXT PRIMARY KEY,
+    id          TEXT NOT NULL,
     draft_id    TEXT NOT NULL,
     file_path   TEXT NOT NULL,
     file_name   TEXT NOT NULL,
@@ -332,6 +402,7 @@ CREATE TABLE IF NOT EXISTS draft_media (
     duration    INTEGER,
     sort_order  INTEGER NOT NULL DEFAULT 0,
     created_at  TEXT NOT NULL,
+    PRIMARY KEY (draft_id, id),
     FOREIGN KEY (draft_id) REFERENCES drafts(id) ON DELETE CASCADE
 );
 
