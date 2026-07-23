@@ -8,12 +8,11 @@ import { Button } from "@/components/ui/Button";
 import { SaveTemplateDialog } from "@/components/editor/SaveTemplateDialog";
 import { toast, TOAST_DURATIONS } from "@/store/uiStore";
 import { getTemplates, getTemplate, saveTemplate, deleteTemplate, upsertDraft, recordTemplateUse } from "@/lib/tauriApi";
-import { useEditorStore } from "@/store/editorStore";
 import { t, ti, type TranslationKey } from "@/lib/i18n";
 import { useSettingsStore } from "@/store/settingsStore";
 import type { Template, TemplateCategory } from "@/types/template";
 import { EXAMPLE_TEMPLATES, type ExampleTemplate } from "@/lib/exampleTemplates";
-import { registerFilesIntoJson } from "@/lib/attachmentRestore";
+import { registerFilesIntoJson, collectInlineAttachments } from "@/lib/attachmentRestore";
 import { accentGradient, accentGrayGradient } from "@/lib/color";
 import { useListKeyboardNav } from "@/hooks/useListKeyboardNav";
 
@@ -71,7 +70,6 @@ export function TemplatesPage() {
   const [loading, setLoading]     = useState(true);
   const [activeFilter, setActiveFilter] = useState<TemplateCategory | "all">("all");
   const [editingTemplate, setEditingTemplate] = useState<Template | null>(null);
-  const setContentJson = useEditorStore((s) => s.setContentJson);
   useSettingsStore((s) => s.language);
   const accentColor = useSettingsStore((s) => s.accentColor);
   const CATEGORY_META = useMemo(() => buildCategoryMeta(accentColor), [accentColor]);
@@ -126,6 +124,22 @@ export function TemplatesPage() {
     }
   }
 
+  // Live-reported 2026-07-22: using an example ("Витрина блоков" — the one
+  // with a table — was how this was actually noticed) left its content
+  // sitting in the editor store indefinitely, popping back up on totally
+  // unrelated later visits to a bare /editor (sidebar link, cold launch)
+  // that expected a blank or resumed-in-progress post instead. Root cause:
+  // this used to call setContentJson + navigate("/editor") with no
+  // draftId and no `_newPost` state, so PostEditor's isFreshSession check
+  // (see its own long comment) never fired a reset for THIS navigation —
+  // correct for that one landing, but nothing ever cleared it back out
+  // afterward either, since a bare /editor visit is deliberately treated as
+  // "resume whatever's already there," not "start fresh."
+  // Fixed by giving it a real draftId, exactly like a saved template's own
+  // handleUse below — that makes PostEditor's existing "load this specific
+  // draft" effect responsible for it (proven safe/async-correct already),
+  // instead of leaving example content floating in shared in-memory state
+  // with nothing to ever reclaim it.
   async function handleUseExample(example: ExampleTemplate) {
     let contentJson = example.contentJson;
     // Only the showcase example currently carries real images — for every
@@ -146,9 +160,14 @@ export function TemplatesPage() {
       );
       contentJson = registerFilesIntoJson(contentJson, files);
     }
-    setContentJson(contentJson);
-    navigate("/editor");
-    toast.success(ti("templates.examples.opened", { name: example.name }));
+    try {
+      const attachments = await collectInlineAttachments(contentJson);
+      const draft = await upsertDraft({ contentJson, attachments });
+      navigate(`/editor/${draft.id}`);
+      toast.success(ti("templates.examples.opened", { name: example.name }));
+    } catch {
+      toast.error(t("templates.useError"));
+    }
   }
 
   function handleDelete(e: React.MouseEvent, id: string, name: string) {

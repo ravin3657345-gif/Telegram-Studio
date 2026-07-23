@@ -31,6 +31,19 @@ function Harness({ onReady }: { onReady: (editor: Editor) => void }) {
   return editor ? <EditorContent editor={editor} /> : null;
 }
 
+// No `content` option at all — mirrors exactly how PostEditor.tsx calls
+// useEditor for a brand-new post (`content: initialContent`, undefined when
+// there's nothing to load yet), unlike Harness above which always passes an
+// explicit "<p></p>". This is the ONLY way to exercise ProseMirror's
+// auto-fill-required-content fallback (doc's `content: "block+"` with
+// nothing given), which is precisely what picked `blockTable` over
+// `paragraph` in the regression this guards against.
+function NoContentHarness({ onReady }: { onReady: (editor: Editor) => void }) {
+  const editor = useEditor({ extensions: createTiptapExtensions() });
+  useEffect(() => { if (editor) onReady(editor); }, [editor]);
+  return editor ? <EditorContent editor={editor} /> : null;
+}
+
 // Dispatches a real keydown on the editor's DOM — ProseMirror's keymap plugin
 // listens natively, so this exercises the exact same path a real keypress
 // takes, rather than calling the handler functions directly.
@@ -533,5 +546,29 @@ describe("BlockTable — doesn't conflict with Link mark's own ArrowRight exit h
     act(() => press(editor, "ArrowRight"));
     expect(editor.state.selection.$from.parent.type.name).toBe("paragraph");
     expect(linkedCellText(editor)).toBe("click");
+  });
+});
+
+// Regression guard (live-reported 2026-07-22, shipped in a real installer
+// before being caught): TableCell/BlockTable's `priority` briefly outranked
+// paragraph's own non-default priority, which made ProseMirror pick
+// `blockTable` — not `paragraph` — as the fallback content for a brand-new,
+// genuinely empty document. Every brand-new post silently started with an
+// auto-inserted 1×1 table instead of an empty paragraph. See the long
+// `priority: 1000` comments on TableCell/BlockTable for the full mechanics.
+describe("BlockTable — does not hijack a blank document's default content", () => {
+  it("a genuinely new editor (no content given at all) starts with an empty paragraph, not a table", async () => {
+    let editor!: Editor;
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    await act(async () => {
+      root.render(<NoContentHarness onReady={(e) => { editor = e; }} />);
+    });
+
+    const doc = editor.state.doc;
+    expect(doc.childCount).toBe(1);
+    expect(doc.firstChild?.type.name).toBe("paragraph");
+    expect(doc.firstChild?.textContent).toBe("");
   });
 });

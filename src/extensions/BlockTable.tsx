@@ -547,20 +547,37 @@ export const TableCell = Node.create({
   // movement is fully handled by handleTab/handleVertical/handleHorizontal
   // above, gapcursor has no business placing anything at a cell boundary.
   allowGapCursor: false,
-  // Not just "higher than the default 100": @tiptap/extension-link sets its
-  // OWN priority to 1000 (its `exitable: true` makes @tiptap/core generate a
-  // separate ArrowRight keymap plugin — see Mark.handleExit — that
-  // unconditionally inserts a space and claims the key when the caret sits
-  // at the end of linked text, e.g. a hyperlinked table cell). 1000 here
-  // would only be a TIE with Link, resolved in our favor purely by luck of
-  // extension-array position (ties fall back to array order after
-  // ExtensionManager's reverse+stable-sort — see BlockTable's own comment
-  // above `group: "block"` for the full mechanics). Bumped past it so the
-  // win is deterministic regardless of where either extension sits in
-  // tiptapConfig.ts's array. Verified directly, not assumed — see
-  // BlockTable.test.tsx's "doesn't conflict with Link mark's own ArrowRight"
-  // describe block.
-  priority: 1001,
+  // MUST stay exactly 1000 — do not "round up" this number, see the
+  // regression this caused (live-reported 2026-07-22, from a since-reverted
+  // 1001): `priority` feeds TWO separate orderings from the SAME sorted
+  // list (@tiptap/core's `this.extensions`, priority-descending, ties keep
+  // tiptapConfig.ts's array order) — the schema's node registration order
+  // (used by ProseMirror to pick a fallback node when auto-filling required
+  // content, e.g. a brand-new document's `content: "block+"`) AND, via
+  // `.plugins` reversing that same list before a second sort, the keymap
+  // plugin order. For a genuine TIE, those two orderings resolve
+  // *oppositely* relative to array position; for any two DIFFERENT
+  // priorities they agree completely (the reverse cancels out).
+  // @tiptap/extension-paragraph also sets `priority: 1000` (not the
+  // default 100!) and @tiptap/extension-link's `exitable: true` does too
+  // (see below) — 1000 here is a deliberate three-way TIE with both:
+  //   - vs paragraph: tiptapConfig.ts registers Paragraph (inside
+  //     StarterKit) before BlockTable/TableCell, so the tie's stable sort
+  //     keeps paragraph earlier in the SCHEMA's node list — exactly what a
+  //     blank document needs to default to a paragraph, not a table.
+  //   - vs link: tiptapConfig.ts registers Link before BlockTable/
+  //     TableCell too, but the KEYMAP order reverses that same list first,
+  //     flipping the tie's relative order — so TableCell's own ArrowRight
+  //     handler still runs before Link's `Mark.handleExit` (which
+  //     otherwise unconditionally inserts a space and claims the key at
+  //     the end of linked text, e.g. a hyperlinked table cell).
+  // Bumping this above 1000 breaks the paragraph tie (this extension then
+  // unambiguously outranks paragraph in the schema regardless of array
+  // position) without meaningfully improving the link race, which the tie
+  // already wins. Verified directly — see BlockTable.test.tsx's "doesn't
+  // conflict with Link mark's own ArrowRight" describe block AND "a blank
+  // document defaults to an empty paragraph, not a table".
+  priority: 1000,
 
   addAttributes() {
     return {
@@ -633,22 +650,24 @@ export const BlockTable = Node.create({
   // TableCell's addKeyboardShortcuts for why splitting it across two
   // extensions was the actual bug.
   //
-  // Mechanics of `priority` worth recording, since two earlier assumptions
-  // about it were wrong (live debugging, 2026-07-22): each extension's
-  // addKeyboardShortcuts becomes its OWN separate ProseMirror keymap()
-  // plugin, not one shared merged keymap (see @tiptap/core's
-  // ExtensionManager `get plugins()`). When several plugins bind the same
-  // key, ProseMirror tries each plugin's handler in the ORDER THOSE PLUGINS
-  // APPEAR in the final plugins array, stopping at the first one that
-  // returns true. That order is: reverse the whole `extensions` array, then
-  // a priority-descending STABLE sort (equal priority keeps the reversed
-  // order). So priority only strictly guarantees a win over LOWER-priority
-  // extensions; a TIE falls back to array position, which is exactly the
-  // kind of implicit, easy-to-silently-break dependency worth avoiding —
-  // see TableCell's `priority: 1001` for the concrete case (a real tie with
-  // @tiptap/extension-link) this bit us with.
+  // Mechanics of `priority` worth recording, since assumptions about it were
+  // wrong on two separate occasions (live debugging, 2026-07-22): each
+  // extension's addKeyboardShortcuts becomes its OWN separate ProseMirror
+  // keymap() plugin, not one shared merged keymap (see @tiptap/core's
+  // ExtensionManager `get plugins()`) — priority governs which plugin wins
+  // when several bind the same key. But priority ALSO governs the SCHEMA's
+  // node registration order (`this.extensions`, built once, shared by both
+  // `.plugins` and `.schema`) — a value that outranks paragraph's own
+  // (also non-default!) priority there makes ProseMirror pick THIS node as
+  // the fallback when auto-filling a required-but-empty content slot, e.g.
+  // a brand-new document. Bumping this past 1000 to "win" the keymap race
+  // against @tiptap/extension-link more forcefully caused exactly that: new
+  // posts started auto-inserting a 1×1 table instead of an empty paragraph.
+  // MUST stay exactly 1000 (a deliberate three-way tie with paragraph AND
+  // link) — see TableCell's `priority: 1000` for the full mechanics of why
+  // one tie value satisfies both constraints at once.
   allowGapCursor: false,
-  priority: 1001,
+  priority: 1000,
 
   parseHTML() {
     return [{ tag: "table" }];
