@@ -16,11 +16,12 @@ import { t } from "@/lib/i18n";
 // width, height} — lat/long are the correct attribute names, "latitude"/
 // "longitude" are NOT recognized and silently produce garbage coordinates).
 //
-// Real interactive picker (click/drag to place the pin) via Leaflet + OSM
-// tiles — img-src CSP in tauri.conf.json explicitly allows
-// *.tile.openstreetmap.org for this (self-hosted Leaflet JS/CSS, but the
-// tiles themselves are a legitimate runtime network fetch, same category as
-// the litterbox.catbox.moe uploads Rich mode already does for photos).
+// Real interactive picker (click/drag to place the pin) via Leaflet + CARTO
+// Voyager tiles (free, no API key/registration, OSM data underneath) — img-src
+// CSP in tauri.conf.json explicitly allows *.basemaps.cartocdn.com for this
+// (self-hosted Leaflet JS/CSS, but the tiles themselves are a legitimate
+// runtime network fetch, same category as the litterbox.catbox.moe uploads
+// Rich mode already does for photos).
 
 // Vite bundles these as hashed asset URLs — Leaflet's own CSS references the
 // marker images via relative paths that don't resolve once bundled, so the
@@ -51,9 +52,15 @@ function MapNodeView({ node, updateAttributes, deleteNode, selected }: any) {
     if (!container || mapRef.current) return;
 
     const map = L.map(container, { attributionControl: true }).setView([lat, long], zoom);
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    // Drop the "Leaflet" credit link entirely (BSD license doesn't require
+    // it — unlike the OSM/CARTO copyright text below, which stays since
+    // that one IS a condition of their free tiles). This also strips the
+    // Ukrainian-flag SVG Leaflet 1.9+ prepends to the default prefix.
+    map.attributionControl.setPrefix(false);
+    L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", {
       maxZoom: 19,
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a>',
+      subdomains: "abcd",
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions" target="_blank" rel="noreferrer">CARTO</a>',
     }).addTo(map);
 
     const marker = L.marker([lat, long], { icon: markerIcon, draggable: true }).addTo(map);

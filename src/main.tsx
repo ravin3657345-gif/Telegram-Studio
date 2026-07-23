@@ -16,6 +16,14 @@ document.addEventListener("contextmenu", (e) => {
   e.preventDefault();
 });
 
+// This is a desktop app, not a browser — clicking any <a href> (map tile
+// attribution, a link a user typed into their own post while editing, etc.)
+// must never navigate the webview itself away from the app. Blocked
+// globally, once, rather than per component that happens to render a link.
+document.addEventListener("click", (e) => {
+  if ((e.target as HTMLElement)?.closest?.("a")) e.preventDefault();
+}, true);
+
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <App />

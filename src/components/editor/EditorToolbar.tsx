@@ -50,8 +50,6 @@ interface EditorToolbarProps {
   onEmojiClick: () => void;
   onSnippetClick: () => void;
   onMediaClick: (type: "image" | "video" | "file" | "audio") => void;
-  onHtmlView: () => void;
-  showHtmlView: boolean;
   onSplitClick?: () => void;
   splitActive?: boolean;
 }
@@ -87,8 +85,6 @@ export function EditorToolbar({
   onEmojiClick,
   onSnippetClick,
   onMediaClick,
-  onHtmlView,
-  showHtmlView,
   onSplitClick,
   splitActive,
 }: EditorToolbarProps) {
@@ -258,12 +254,6 @@ export function EditorToolbar({
         }
         onMediaClick("audio");
       } },
-
-    { type: "separator" },
-
-    { type: "button", id: "html", mobilePriority: false, title: t("toolbar.html"),
-      icon: () => <span className="text-2xs font-mono font-bold leading-none">&lt;/&gt;</span>,
-      isActive: showHtmlView, onClick: onHtmlView },
 
     ...(onSplitClick
       ? ([

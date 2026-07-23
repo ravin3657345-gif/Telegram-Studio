@@ -621,6 +621,7 @@ export const TableCell = Node.create({
       ArrowLeft: ({ editor }) => handleHorizontal(editor, -1) || enterTableHorizontal(editor, -1),
       ArrowRight: ({ editor }) => handleHorizontal(editor, 1) || enterTableHorizontal(editor, 1),
       Enter: ({ editor }) => handleVertical(editor, 1),
+      "Shift-Enter": ({ editor }) => handleVertical(editor, -1),
     };
   },
 });

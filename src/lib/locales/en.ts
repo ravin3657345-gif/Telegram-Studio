@@ -184,7 +184,6 @@ export const en = {
     "toolbar.video":       "Video",
     "toolbar.audio":       "Audio",
     "toolbar.file":        "File",
-    "toolbar.html":        "HTML view",
     "toolbar.split":       "Split the post here (at the cursor)",
     "toolbar.more":        "More",
 
@@ -343,13 +342,6 @@ export const en = {
     "schedule.cancel":    "Cancel",
     "schedule.confirm":   "Schedule",
 
-    "html.title":      "HTML code",
-    "html.copy":       "Copy",
-    "html.copied":     "Copied",
-    "html.empty":      "No content",
-    "html.video":      "📹 Video",
-    "html.image":      "🖼 Image",
-    "html.text":       "📝 Text",
 
     "counter.over":       "extra characters",
     "counter.caption":    "caption",

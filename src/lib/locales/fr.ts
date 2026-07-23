@@ -128,7 +128,6 @@ export const fr = {
     "toolbar.video":       "Vidéo",
     "toolbar.audio":       "Audio",
     "toolbar.file":        "Fichier",
-    "toolbar.html":        "Vue HTML",
     "toolbar.split":       "Diviser le post ici (au curseur)",
     "toolbar.more":        "Plus",
 
@@ -287,13 +286,6 @@ export const fr = {
     "schedule.cancel":    "Annuler",
     "schedule.confirm":   "Planifier",
 
-    "html.title":      "Code HTML",
-    "html.copy":       "Copier",
-    "html.copied":     "Copié",
-    "html.empty":      "Aucun contenu",
-    "html.video":      "📹 Vidéo",
-    "html.image":      "🖼 Image",
-    "html.text":       "📝 Texte",
 
     "counter.over":       "caractères en trop",
     "counter.caption":    "légende",

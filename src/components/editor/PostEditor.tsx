@@ -15,7 +15,6 @@ import { EmojiPicker } from "./EmojiPicker";
 import { SnippetPicker } from "./SnippetPicker";
 import { CharCounter } from "./CharCounter";
 import { InlineBubbleMenu } from "./InlineBubbleMenu";
-import { HtmlViewPanel } from "./HtmlViewPanel";
 import { AttachmentZone } from "./AttachmentZone";
 import { EditorContextMenu } from "./EditorContextMenu";
 import { BlockHoverControls } from "./BlockHoverControls";
@@ -98,7 +97,6 @@ export function PostEditor({ draftId: initialDraftId, onEditorReady }: PostEdito
   const [showLinkDialog, setShowLinkDialog]   = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [showSnippetPicker, setShowSnippetPicker] = useState(false);
-  const [showHtmlView, setShowHtmlView]       = useState(false);
   const [emojiAnchor, setEmojiAnchor]         = useState<DOMRect | undefined>();
   const [snippetAnchor, setSnippetAnchor]     = useState<DOMRect | undefined>();
   const [isDraggingOver, setIsDraggingOver]   = useState(false);
@@ -562,8 +560,6 @@ export function PostEditor({ draftId: initialDraftId, onEditorReady }: PostEdito
         onEmojiClick={handleEmojiClick}
         onSnippetClick={handleSnippetClick}
         onMediaClick={handleMediaClick}
-        onHtmlView={() => setShowHtmlView((v) => !v)}
-        showHtmlView={showHtmlView}
         onSplitClick={forceSplitAtCursor}
         splitActive={splitCount > 0}
       />
@@ -674,8 +670,6 @@ export function PostEditor({ draftId: initialDraftId, onEditorReady }: PostEdito
           <AttachmentZone onAddClick={() => fileInputRef.current?.click()} />
           <CharCounter editor={editor} />
         </div>
-
-        {showHtmlView && <HtmlViewPanel onClose={() => setShowHtmlView(false)} />}
       </div>
 
       {/* Drop overlay */}

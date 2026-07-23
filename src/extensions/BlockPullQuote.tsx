@@ -9,23 +9,38 @@ import { t } from "@/lib/i18n";
 // equivalent at all.
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
+// Same visual recipe as BlockquoteView (Blockquote.tsx) — left-border
+// accent, padding, gradient, italic — matched on request so the two quote
+// blocks read as siblings in the editor. Telegram still renders <aside>'s
+// text centered regardless of our editor styling (that's the whole point of
+// the pull quote block per Bot API 10.2), so this is a look-only match, not
+// a behavior change.
 function PullQuoteView({ node, updateAttributes }: any) {
   return (
     <NodeViewWrapper
       as="aside"
       style={{
-        textAlign: "center",
-        padding: "18px 24px",
+        borderLeft: "3px solid var(--accent)",
+        padding: "6px 36px 6px 14px",
         margin: "0 0 14px",
-        borderRadius: 10,
-        background: "linear-gradient(to bottom, color-mix(in srgb, var(--accent) 6%, transparent), transparent)",
+        borderRadius: "0 6px 6px 0",
+        background: "linear-gradient(to right, color-mix(in srgb, var(--accent) 5%, transparent), transparent)",
         color: "var(--text-secondary)",
         fontStyle: "italic",
+        textAlign: "center",
       }}
     >
-      <span aria-hidden style={{ color: "var(--accent)", opacity: 0.5, fontSize: "1.4em" }}>„</span>
-      <NodeViewContent as="span" style={{ display: "inline" }} />
-      <span aria-hidden style={{ color: "var(--accent)", opacity: 0.5, fontSize: "1.4em" }}>“</span>
+      {/* A plain inline flow here was landing the quote marks and the text
+          on three separate visual lines instead of flanking the text on one
+          — some part of the NodeView plumbing between them was forcing a
+          break. A flex row sidesteps whatever that was: flex items always
+          lay out in a row regardless, `wrap` still lets a long quote wrap
+          naturally instead of forcing one unbreakable line. */}
+      <div style={{ display: "flex", flexWrap: "wrap", alignItems: "baseline", justifyContent: "center", gap: 6 }}>
+        <span aria-hidden style={{ color: "var(--accent)", opacity: 0.5, fontSize: "1.4em" }}>„</span>
+        <NodeViewContent as="span" style={{ display: "inline" }} />
+        <span aria-hidden style={{ color: "var(--accent)", opacity: 0.5, fontSize: "1.4em" }}>“</span>
+      </div>
       <input
         contentEditable={false}
         value={node.attrs.credit ?? ""}

@@ -128,7 +128,6 @@ export const es = {
     "toolbar.video":       "Vídeo",
     "toolbar.audio":       "Audio",
     "toolbar.file":        "Archivo",
-    "toolbar.html":        "Ver HTML",
     "toolbar.split":       "Dividir la publicación aquí (en el cursor)",
     "toolbar.more":        "Más",
 
@@ -287,13 +286,6 @@ export const es = {
     "schedule.cancel":    "Cancelar",
     "schedule.confirm":   "Planificar",
 
-    "html.title":      "Código HTML",
-    "html.copy":       "Copiar",
-    "html.copied":     "Copiado",
-    "html.empty":      "Sin contenido",
-    "html.video":      "📹 Vídeo",
-    "html.image":      "🖼 Imagen",
-    "html.text":       "📝 Texto",
 
     "counter.over":       "caracteres de más",
     "counter.caption":    "pie de foto",

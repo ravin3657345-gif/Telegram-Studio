@@ -189,6 +189,12 @@ describe("BlockTable — Excel-like cell navigation", () => {
     expect(selectedText(editor)).toBe("r1c0");
   });
 
+  it("Shift-Enter behaves like ArrowUp (move to the cell above)", () => {
+    act(() => press(editor, "ArrowDown")); // r0c0 -> r1c0
+    act(() => press(editor, "Enter", true)); // Shift-Enter back to r0c0
+    expect(selectedText(editor)).toBe("r0c0");
+  });
+
   // Regression (live-reported 2026-07-22): ArrowDown/Up/Tab/Enter all land
   // via selectCell(), which selects the whole cell's text — not a collapsed
   // caret. handleHorizontal used to bail out on any non-empty selection, so

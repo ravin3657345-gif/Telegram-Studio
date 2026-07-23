@@ -213,8 +213,8 @@
 .tiptap-editor-root .tiptap-hr {
   display: block !important;
   border: none !important;
-  height: 1px !important;
-  background: linear-gradient(to right, transparent, var(--border-default), transparent) !important;
+  height: 2px !important;
+  background: var(--border-strong, var(--border-default)) !important;
   margin: 20px 0 !important;
 }
 

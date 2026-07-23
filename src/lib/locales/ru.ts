@@ -190,7 +190,6 @@ export const ru = {
     "toolbar.video":       "Видео",
     "toolbar.audio":       "Аудио",
     "toolbar.file":        "Файл",
-    "toolbar.html":        "Просмотр HTML",
     "toolbar.split":       "Разделить пост здесь (по курсору)",
     "toolbar.more":        "Ещё",
 
@@ -357,13 +356,6 @@ export const ru = {
     "schedule.confirm":   "Запланировать",
 
     // ── HTML вид ─────────────────────────────────────────────────────────────
-    "html.title":      "HTML код",
-    "html.copy":       "Копировать",
-    "html.copied":     "Скопировано",
-    "html.empty":      "Нет содержимого",
-    "html.video":      "📹 Видео",
-    "html.image":      "🖼 Изображение",
-    "html.text":       "📝 Текст",
 
     // ── Счётчик символов ─────────────────────────────────────────────────────
     "counter.over":       "лишних символов",

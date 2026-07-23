@@ -264,6 +264,13 @@ select:focus-visible {
 .leaflet-bottom          { z-index: 8 !important; }
 .leaflet-control         { z-index: 8 !important; }
 
+/* Required OSM/CARTO copyright credit (see BlockMap.tsx) shrunk down so it
+   reads as a discreet corner label instead of a full-size UI line. */
+.leaflet-control-attribution {
+  font-size: 8px !important;
+  padding: 0 4px !important;
+}
+
 /* ── Radix Dialog base (see components/ui/Dialog.tsx) ─────────────────────
    Every hand-rolled modal in the app shares this shell — backdrop + centered
    card, fading in on mount via Radix's data-state attribute. Each dialog's
