@@ -9,6 +9,7 @@ import {
   createContainerHighlighter, snapshotBlockRects, createGhostFollower, flipSettle, type NestedDropInfo, type GapRef,
 } from "@/lib/blockGeometry";
 import { useSettingsStore } from "@/store/settingsStore";
+import { useIsMobileLayout } from "@/hooks/useIsMobileLayout";
 import { t } from "@/lib/i18n";
 
 interface BlockPaletteProps {
@@ -268,6 +269,7 @@ function loadCollapsedGroups(): Set<BlockGroup> {
 
 export function BlockPalette({ editor, fill }: BlockPaletteProps) {
   useSettingsStore((s) => s.language); // реактивность при смене языка — getSlashItems() читает t()
+  const isMobile = useIsMobileLayout();
   const items = getSlashItems();
   const [selected, setSelected] = useState<number | null>(null);
   const [collapsedGroups, setCollapsedGroups] = useState<Set<BlockGroup>>(loadCollapsedGroups);
@@ -474,11 +476,11 @@ export function BlockPalette({ editor, fill }: BlockPaletteProps) {
               <button
                 type="button"
                 onClick={() => toggleGroup(key)}
-                className="flex items-center gap-1.5 w-full px-1 py-1.5 text-left"
+                className={"flex items-center gap-1.5 w-full text-left " + (isMobile ? "px-1 py-2.5" : "px-1 py-1.5")}
                 style={{ background: "none", border: "none", cursor: "pointer" }}
               >
                 <ChevronDown
-                  size={11}
+                  size={isMobile ? 13 : 11}
                   style={{
                     color: "var(--text-muted)",
                     flexShrink: 0,
@@ -503,7 +505,7 @@ export function BlockPalette({ editor, fill }: BlockPaletteProps) {
                     transition={{ duration: 0.15 }}
                     style={{ overflow: "hidden" }}
                   >
-                    <div className={(fill ? "grid grid-cols-2 gap-2" : "flex flex-col gap-2") + " pb-2"}>
+                    <div className={(fill ? "grid grid-cols-2 gap-2" : "flex flex-col gap-2") + (isMobile ? " gap-2.5 pb-2" : " pb-2")}>
                       {entries.map(({ item, i }) => {
                         const isSelected = selected === i;
                         return (
@@ -511,7 +513,11 @@ export function BlockPalette({ editor, fill }: BlockPaletteProps) {
                             key={item.label}
                             onPointerDown={(e) => handleRowPointerDown(item, i, e)}
                             title={item.label}
-                            className={"palette-tile flex items-center gap-2.5 px-2.5 py-2.5 rounded-xl " + (isSelected ? "soft-ui-pressed" : "soft-ui-sm")}
+                            className={
+                              "palette-tile flex items-center rounded-xl "
+                              + (isMobile ? "gap-3 px-3 py-3.5 " : "gap-2.5 px-2.5 py-2.5 ")
+                              + (isSelected ? "soft-ui-pressed" : "soft-ui-sm")
+                            }
                             style={{
                               // bg-elevated (not bg-surface) — the tile needs to read as
                               // a distinct raised card by color too, not rely on the
@@ -524,20 +530,20 @@ export function BlockPalette({ editor, fill }: BlockPaletteProps) {
                             <span
                               className="flex items-center justify-center rounded-lg flex-shrink-0"
                               style={{
-                                width: 24,
-                                height: 24,
+                                width: isMobile ? 32 : 24,
+                                height: isMobile ? 32 : 24,
                                 backgroundColor: isSelected ? "var(--accent)" : "color-mix(in srgb, var(--accent) 12%, transparent)",
                                 transition: "background-color 0.12s",
                               }}
                             >
                               <item.icon
-                                size={12.5}
+                                size={isMobile ? 16 : 12.5}
                                 strokeWidth={1.85}
                                 style={{ color: isSelected ? "#fff" : "var(--accent)" }}
                               />
                             </span>
                             <span
-                              className={fill ? "text-2xs truncate" : "text-2xs whitespace-nowrap"}
+                              className={(fill ? "truncate" : "whitespace-nowrap") + (isMobile ? " text-sm" : " text-2xs")}
                               style={{ color: isSelected ? "var(--text-primary)" : "var(--text-secondary)", fontWeight: isSelected ? 600 : 500 }}
                             >
                               {item.label}
@@ -561,15 +567,18 @@ export function BlockPalette({ editor, fill }: BlockPaletteProps) {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 8 }}
             transition={{ duration: 0.12 }}
-            className="p-2 border-t flex-shrink-0"
+            className={(isMobile ? "p-3" : "p-2") + " border-t flex-shrink-0"}
             style={{ borderColor: "var(--border-subtle)" }}
           >
             <button
               onClick={handleInsertSelected}
-              className="soft-ui-sm flex items-center justify-center gap-1.5 w-full h-8 rounded-lg text-xs font-semibold transition-transform active:scale-[0.97]"
+              className={
+                "soft-ui-sm flex items-center justify-center gap-1.5 w-full rounded-lg font-semibold transition-transform active:scale-[0.97] "
+                + (isMobile ? "h-11 text-sm" : "h-8 text-xs")
+              }
               style={{ backgroundColor: "var(--accent)", color: "#fff", border: "none", cursor: "pointer" }}
             >
-              <Plus size={13} />
+              <Plus size={isMobile ? 16 : 13} />
               {t("palette.insert")}
             </button>
           </motion.div>

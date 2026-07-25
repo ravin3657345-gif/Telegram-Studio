@@ -4,12 +4,13 @@ import {
   Bold, Italic, Underline, Strikethrough, EyeOff,
   Quote, List, ListOrdered, Link, Smile, Image, Film,
   Heading1, Heading2, Heading3, Code2, Minus, MoreHorizontal,
-  Undo2, Redo2, Code, FileUp, Scissors,
+  Undo2, Redo2, Code, FileUp, Scissors, LayoutGrid,
   Subscript as SubscriptIcon, Superscript as SuperscriptIcon,
   Highlighter, ChevronsDownUp, Anchor, Music, ClipboardType,
 } from "lucide-react";
 import { ToolbarButton, ToolbarSeparator } from "./ToolbarButton";
 import { BottomSheet } from "@/components/ui/BottomSheet";
+import { BlockPalette } from "./BlockPalette";
 import { t } from "@/lib/i18n";
 import { useSettingsStore } from "@/store/settingsStore";
 import { useEditorStore } from "@/store/editorStore";
@@ -94,6 +95,12 @@ export function EditorToolbar({
   const toast = useUiStore((s) => s.toast);
   const isMobile = useIsMobileLayout();
   const [showMore, setShowMore] = useState(false);
+  // Desktop already has BlockPalette permanently docked in the right sidebar
+  // — this bottom sheet is purely the mobile substitute for that (no sidebar
+  // room on a phone), reusing the exact same component instead of building a
+  // second block-picker. BlockPalette's own tap-to-select-then-insert flow
+  // already works without a mouse (drag is additive, not required).
+  const [showAddBlock, setShowAddBlock] = useState(false);
 
   // Appends a short "— note" to a tooltip when this button's output looks/
   // behaves differently (or vanishes) in the current publish mode — purely
@@ -283,6 +290,15 @@ export function EditorToolbar({
           scrollbarColor: "var(--border-default) transparent",
         }}
       >
+        {isMobile && (
+          <ToolbarButton
+            title={t("palette.title")}
+            icon={LayoutGrid}
+            isActive={showAddBlock}
+            onClick={() => setShowAddBlock(true)}
+          />
+        )}
+
         {visibleEntries.map((e, i) =>
           e.type === "separator" ? (
             <ToolbarSeparator key={`sep-${i}`} />
@@ -307,6 +323,19 @@ export function EditorToolbar({
           />
         )}
       </div>
+
+      {isMobile && showAddBlock && (
+        <BottomSheet title={t("palette.title")} onOpenChange={(open) => !open && setShowAddBlock(false)} maxHeight="75vh">
+          {/* BlockPalette's `fill` mode expects a bounded-height flex parent
+              (true of its desktop home, EditorPage.tsx's right panel) — the
+              sheet body itself has no fixed height, just overflow-y:auto, so
+              `flex-1` inside BlockPalette would have nothing to grow against
+              without this explicit height. */}
+          <div style={{ height: "65vh", display: "flex" }}>
+            <BlockPalette editor={editor} fill />
+          </div>
+        </BottomSheet>
+      )}
 
       {isMobile && showMore && (
         <BottomSheet title={t("toolbar.more")} onOpenChange={(open) => !open && setShowMore(false)}>

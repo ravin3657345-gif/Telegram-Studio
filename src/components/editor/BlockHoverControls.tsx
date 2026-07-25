@@ -12,6 +12,7 @@ import {
 import { t } from "@/lib/i18n";
 import { Tooltip } from "@/components/ui/Tooltip";
 import { useIsMobileLayout } from "@/hooks/useIsMobileLayout";
+import { useKeyboardInset } from "@/hooks/useKeyboardInset";
 import { moveCurrentBlock } from "@/extensions/BlockMoveShortcuts";
 
 interface BlockHoverControlsProps {
@@ -126,6 +127,7 @@ function makeGhost(sourceEl: HTMLElement, rect: DOMRect): HTMLDivElement {
 
 export function BlockHoverControls({ editor, onOpenMenu }: BlockHoverControlsProps) {
   const isMobile = useIsMobileLayout();
+  const keyboardInset = useKeyboardInset();
   const [hoverPos, setHoverPos] = useState<number | null>(null);
   const [rect, setRect] = useState<DOMRect | null>(null);
   // Right-side "⋯" trigger only: the actual rendered text's end (Range API)
@@ -384,10 +386,19 @@ export function BlockHoverControls({ editor, onOpenMenu }: BlockHoverControlsPro
   // `left: rect.left - 52`, which routinely put the desktop cluster
   // off-screen to the left on a narrow phone.
   const MOBILE_PANEL_WIDTH = 4 * 40 + 3 * 6 + 12;
+  const MOBILE_PANEL_HEIGHT = 40 + 12;
   const mobileLeft = rect
     ? Math.max(8, Math.min(rect.left, window.innerWidth - MOBILE_PANEL_WIDTH - 8))
     : 0;
-  const mobileTop = rect ? Math.max(8, rect.top - 48) : 0;
+  // Clamped against the keyboard-occluded bottom edge too, not just the top —
+  // `rect.top` is a layout-viewport coordinate that knows nothing about the
+  // on-screen keyboard shrinking the visible area, so tapping a block near
+  // the bottom of a short document used to place this panel half-hidden
+  // behind the keyboard instead of above it.
+  const visibleBottom = window.innerHeight - keyboardInset;
+  const mobileTop = rect
+    ? Math.max(8, Math.min(rect.top - 48, visibleBottom - MOBILE_PANEL_HEIGHT - 8))
+    : 0;
 
   return createPortal(
     <AnimatePresence>

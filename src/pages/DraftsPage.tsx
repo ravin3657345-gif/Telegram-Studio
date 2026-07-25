@@ -5,6 +5,7 @@ import {
 } from "lucide-react";
 import { TopBar } from "@/components/layout/TopBar";
 import { Button } from "@/components/ui/Button";
+import { Fab } from "@/components/ui/Fab";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Spinner } from "@/components/ui/Spinner";
 import { useDraftsStore } from "@/store/draftsStore";
@@ -350,14 +351,19 @@ export function DraftsPage() {
                   )}
                 </div>
 
-                <Button
-                  variant="primary"
-                  size="sm"
-                  onClick={() => setShowChooser(true)}
-                  leftIcon={<Plus size={13} />}
-                >
-                  {t("drafts.new")}
-                </Button>
+                {/* Mobile gets a thumb-reachable FAB instead (below) —
+                    a header button needs a reach to the top of the screen,
+                    the exact ergonomics problem the FAB fixes. */}
+                {!isMobile && (
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={() => setShowChooser(true)}
+                    leftIcon={<Plus size={13} />}
+                  >
+                    {t("drafts.new")}
+                  </Button>
+                )}
               </div>
             </div>
 
@@ -406,6 +412,8 @@ export function DraftsPage() {
           </div>
         )}
       </div>
+
+      {isMobile && <Fab icon={Plus} label={t("drafts.new")} onClick={() => setShowChooser(true)} />}
 
       {showChooser && <NewPostChooserDialog onClose={() => setShowChooser(false)} />}
     </>

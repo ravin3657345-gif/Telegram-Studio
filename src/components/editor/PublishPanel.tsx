@@ -18,6 +18,7 @@ import { collectInlineAttachments } from "@/lib/attachmentRestore";
 import { useAttachmentStore } from "@/store/attachmentStore";
 import { t, ti } from "@/lib/i18n";
 import { useSettingsStore } from "@/store/settingsStore";
+import { useIsMobileLayout } from "@/hooks/useIsMobileLayout";
 import { toast, useUiStore } from "@/store/uiStore";
 import { fileToBase64, normalizeImageToJpeg } from "@/lib/imageProcessing";
 import type { PublishResult } from "@/types/publish";
@@ -33,6 +34,7 @@ export function PublishPanel({ draftId }: PublishPanelProps) {
           toggleChannel, setStatus, setResults, setError, reset } = usePublishStore();
   const { contentJson, postTitle, includeTitle, publishMode, setPublishMode, editingHistoryId, setEditingHistoryId, draftTitle, setDraftId, draftStatus, lastSavedAt } = useEditorStore();
   useSettingsStore((s) => s.language);
+  const isMobile = useIsMobileLayout();
   const bumpHistory      = useUiStore((s) => s.bumpHistory);
   const attachedFiles    = useAttachmentStore((s) => s.files);
   const clearAttachments = useAttachmentStore((s) => s.clearAll);
@@ -540,8 +542,8 @@ export function PublishPanel({ draftId }: PublishPanelProps) {
   return (
     <>
       <div className="flex flex-col" style={{ flex: "1 1 auto", minHeight: 0 }}>
-      <div className="flex flex-col gap-3 px-4 pt-4 pb-3 flex-1 overflow-y-auto" style={{ minHeight: 0 }}>
-        <p className="text-2xs font-semibold uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>
+      <div className={"flex flex-col flex-1 overflow-y-auto " + (isMobile ? "gap-4 px-4 pt-5 pb-3" : "gap-3 px-4 pt-4 pb-3")} style={{ minHeight: 0 }}>
+        <p className={isMobile ? "text-xs font-semibold uppercase tracking-wide" : "text-2xs font-semibold uppercase tracking-wide"} style={{ color: "var(--text-muted)" }}>
           {t("publish.section")}
         </p>
 
@@ -554,19 +556,22 @@ export function PublishPanel({ draftId }: PublishPanelProps) {
 
         {/* Channel list */}
         <div>
-          <p className="text-2xs mb-1.5" style={{ color: "var(--text-muted)" }}>{t("publish.channels")}</p>
+          <p className={isMobile ? "text-xs mb-2" : "text-2xs mb-1.5"} style={{ color: "var(--text-muted)" }}>{t("publish.channels")}</p>
           {channels.length === 0 ? (
             <p className="text-2xs italic" style={{ color: "var(--text-muted)" }}>
               {t("publish.noChannels")}
             </p>
           ) : (
-            <div className="flex flex-col gap-1.5">
+            <div className={isMobile ? "flex flex-col gap-2" : "flex flex-col gap-1.5"}>
               {channels.map((ch) => {
                 const checked = selectedChannelIds.includes(ch.id);
                 return (
                   <label
                     key={ch.id}
-                    className="publish-channel-row flex items-center gap-2.5 cursor-pointer rounded-lg px-2.5 py-2 transition-colors"
+                    className={
+                      "publish-channel-row flex items-center cursor-pointer rounded-lg transition-colors "
+                      + (isMobile ? "gap-3 px-3 py-3" : "gap-2.5 px-2.5 py-2")
+                    }
                     style={{
                       backgroundColor: checked ? "color-mix(in srgb, var(--accent) 10%, transparent)" : "var(--bg-elevated)",
                       border: `1.5px solid ${checked ? "var(--accent)" : "var(--border-default)"}`,
@@ -577,7 +582,7 @@ export function PublishPanel({ draftId }: PublishPanelProps) {
                     <input type="checkbox" checked={checked} onChange={() => toggleChannel(ch.id)} className="sr-only" />
                     <span
                       style={{
-                        width: 18, height: 18, borderRadius: 5, flexShrink: 0,
+                        width: isMobile ? 22 : 18, height: isMobile ? 22 : 18, borderRadius: 6, flexShrink: 0,
                         display: "flex", alignItems: "center", justifyContent: "center",
                         backgroundColor: checked ? "var(--accent)" : "transparent",
                         border: `2px solid ${checked ? "var(--accent)" : "var(--border-default)"}`,
@@ -585,13 +590,13 @@ export function PublishPanel({ draftId }: PublishPanelProps) {
                       }}
                     >
                       {checked && (
-                        <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
+                        <svg width={isMobile ? 12 : 10} height={isMobile ? 10 : 8} viewBox="0 0 10 8" fill="none">
                           <path d="M1 4L3.5 6.5L9 1" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
                         </svg>
                       )}
                     </span>
-                    <span className="text-xs font-medium truncate" style={{ color: checked ? "var(--text-primary)" : "var(--text-secondary)" }}>{ch.title}</span>
-                    {ch.username && <span className="text-2xs ml-auto flex-shrink-0" style={{ color: "var(--text-muted)" }}>@{ch.username}</span>}
+                    <span className={"font-medium truncate " + (isMobile ? "text-sm" : "text-xs")} style={{ color: checked ? "var(--text-primary)" : "var(--text-secondary)" }}>{ch.title}</span>
+                    {ch.username && <span className={"ml-auto flex-shrink-0 " + (isMobile ? "text-xs" : "text-2xs")} style={{ color: "var(--text-muted)" }}>@{ch.username}</span>}
                   </label>
                 );
               })}
@@ -602,20 +607,25 @@ export function PublishPanel({ draftId }: PublishPanelProps) {
         {/* Publish mode selector — hidden when editing a published post (mode is locked) */}
         {!editingHistoryId ? (
           <div data-tour="format-switcher">
-            <p className="text-2xs mb-1.5" style={{ color: "var(--text-muted)" }}>{t("publish.format")}</p>
-            <div className="flex flex-col gap-1">
+            <p className={isMobile ? "text-xs mb-2" : "text-2xs mb-1.5"} style={{ color: "var(--text-muted)" }}>{t("publish.format")}</p>
+            <div className={isMobile ? "flex gap-2" : "flex flex-col gap-1"}>
               {([
-                { id: "normal", icon: <Send size={11}/>,   label: t("publish.normal"), hint: normalHint },
-                { id: "rich",   icon: <Layers size={11}/>, label: t("publish.rich"),   hint: t("publish.rich.hint") },
+                { id: "normal", icon: <Send size={isMobile ? 14 : 11}/>,   label: t("publish.normal"), hint: normalHint },
+                { id: "rich",   icon: <Layers size={isMobile ? 14 : 11}/>, label: t("publish.rich"),   hint: t("publish.rich.hint") },
               ] as const).map(({ id, icon, label, hint }) => (
                 <label
                   key={id}
                   title={hint}
-                  className="publish-format-row flex items-center gap-2 cursor-pointer rounded-md px-2 py-1.5 transition-colors"
+                  className={
+                    "publish-format-row cursor-pointer transition-colors "
+                    + (isMobile
+                      ? "flex-1 flex flex-col items-center gap-1 py-2.5 rounded-lg text-center"
+                      : "flex items-center gap-2 rounded-md px-2 py-1.5")
+                  }
                   style={{
                     backgroundColor: publishMode === id ? "color-mix(in srgb, var(--accent) 8%, transparent)" : "transparent",
-                    border: `1px solid ${publishMode === id ? "color-mix(in srgb, var(--accent) 30%, transparent)" : "var(--border-default)"}`,
-                    borderRadius: 6,
+                    border: `${publishMode === id ? 1.5 : 1}px solid ${publishMode === id ? "var(--accent)" : "var(--border-default)"}`,
+                    borderRadius: isMobile ? 10 : 6,
                   }}
                 >
                   <input
@@ -624,10 +634,15 @@ export function PublishPanel({ draftId }: PublishPanelProps) {
                     value={id}
                     checked={publishMode === id}
                     onChange={() => setPublishMode(id)}
-                    className="accent-blue-500 w-3 h-3 flex-shrink-0"
+                    className={isMobile ? "sr-only" : "accent-blue-500 w-3 h-3 flex-shrink-0"}
                   />
                   <span style={{ color: publishMode === id ? "var(--accent)" : "var(--text-muted)", flexShrink: 0 }}>{icon}</span>
-                  <span className="text-xs font-medium leading-tight min-w-0" style={{ color: publishMode === id ? "var(--accent)" : "var(--text-primary)" }}>{label}</span>
+                  <span
+                    className={"font-medium leading-tight min-w-0 " + (isMobile ? "text-sm font-semibold" : "text-xs")}
+                    style={{ color: publishMode === id ? "var(--accent)" : "var(--text-primary)" }}
+                  >
+                    {label}
+                  </span>
                 </label>
               ))}
             </div>
@@ -870,12 +885,12 @@ export function PublishPanel({ draftId }: PublishPanelProps) {
       {/* Buttons — pinned footer, always visible regardless of how tall the
           scrollable content above is (channel list, warnings, etc.) */}
       <div
-        className="flex flex-col gap-2 px-4 pt-3 pb-4 flex-shrink-0"
+        className={"flex flex-col gap-2 flex-shrink-0 " + (isMobile ? "px-4 pt-4 pb-5" : "px-4 pt-3 pb-4")}
         style={{ borderTop: "1px solid var(--border-subtle)" }}
       >
         {editingHistoryId ? (
           <Button
-            variant="primary" size="sm" fullWidth
+            variant="primary" size={isMobile ? "lg" : "sm"} fullWidth
             disabled={updating || !contentJson}
             leftIcon={updating ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
             onClick={handleUpdate}

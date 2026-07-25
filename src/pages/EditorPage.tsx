@@ -15,7 +15,6 @@ import { toast } from "@/store/uiStore";
 import { t, ti } from "@/lib/i18n";
 import { useSettingsStore } from "@/store/settingsStore";
 import { useIsMobileLayout } from "@/hooks/useIsMobileLayout";
-import { useKeyboardInset } from "@/hooks/useKeyboardInset";
 import type { TemplateCategory } from "@/types/template";
 import type { LucideIcon } from "lucide-react";
 
@@ -336,16 +335,8 @@ function MobileEditorBody({
     { id: "publish", label: t("editor.tabPublish"), icon: Send },
   ];
 
-  // No visualViewport handling existed anywhere in the app before this (see
-  // useKeyboardInset's doc comment) — without it, the publish button/toolbar
-  // stayed at their normal position while the on-screen keyboard covered
-  // them, on WebView configs where the window itself doesn't resize for the
-  // keyboard. Applied to the whole tab body rather than per-panel: only the
-  // active panel is visible at a time anyway, same net effect either way.
-  const keyboardInset = useKeyboardInset();
-
   return (
-    <div className="flex flex-col flex-1 overflow-hidden" style={{ paddingBottom: keyboardInset }}>
+    <div className="flex flex-col flex-1 overflow-hidden">
       {/* Tab switcher */}
       <div
         className="flex flex-shrink-0 border-b"

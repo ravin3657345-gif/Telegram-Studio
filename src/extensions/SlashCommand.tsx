@@ -419,7 +419,27 @@ function createMobileSheet(content: HTMLElement, onDismiss: () => void) {
   overlay.addEventListener("click", (e) => { if (e.target === overlay) onDismiss(); });
   document.body.appendChild(overlay);
 
-  return { destroy: () => overlay.remove() };
+  // No React tree here to use useKeyboardInset — same underlying gap it
+  // exists for (this WebView's layout viewport doesn't shrink for the
+  // on-screen keyboard), so `bottom: 0` alone leaves the sheet partly behind
+  // the keyboard instead of resting on top of it.
+  const vv = window.visualViewport;
+  function updateInset() {
+    if (!vv) return;
+    const occluded = Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop));
+    sheet.style.bottom = `${occluded}px`;
+  }
+  updateInset();
+  vv?.addEventListener("resize", updateInset);
+  vv?.addEventListener("scroll", updateInset);
+
+  return {
+    destroy: () => {
+      vv?.removeEventListener("resize", updateInset);
+      vv?.removeEventListener("scroll", updateInset);
+      overlay.remove();
+    },
+  };
 }
 
 // ─── Extension ────────────────────────────────────────────────────────────────

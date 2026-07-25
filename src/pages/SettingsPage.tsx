@@ -25,7 +25,7 @@ const NAV_ITEMS: Array<{ key: NavSection; icon: React.ReactNode; labelKey: strin
 // ── Accent color presets ──────────────────────────────────────────────────────
 
 const ACCENT_PRESETS: Array<{ color: string; labelKey: TranslationKey }> = [
-  { color: "#2c87c9", labelKey: "settings.color.blue" },
+  { color: "#3b6fe0", labelKey: "settings.color.blue" },
   { color: "#7a4fe0", labelKey: "settings.color.purple" },
   { color: "#3f9d5f", labelKey: "settings.color.green" },
   { color: "#c77d33", labelKey: "settings.color.orange" },
@@ -116,6 +116,7 @@ export function SettingsPage() {
 
 
 function AppearanceSection() {
+  const isMobile            = useIsMobileLayout();
   const theme              = useSettingsStore((s) => s.theme);
   const setTheme           = useSettingsStore((s) => s.setTheme);
   const language           = useSettingsStore((s) => s.language);
@@ -243,7 +244,7 @@ function AppearanceSection() {
 
         {/* ── Accent color ─────────────────────────────────────────── */}
         <Field label={t("settings.accentColor")}>
-          <div className="flex items-center gap-2">
+          <div className={isMobile ? "flex items-center gap-3" : "flex items-center gap-2"}>
             {ACCENT_PRESETS.map(({ color, labelKey }) => {
               const isSelected = accentColor === color;
               return (
@@ -251,7 +252,7 @@ function AppearanceSection() {
                   key={color}
                   onClick={() => setAccentColor(color)}
                   title={t(labelKey)}
-                  className="w-7 h-7 rounded-full transition-transform"
+                  className={(isMobile ? "w-9 h-9" : "w-7 h-7") + " rounded-full transition-transform"}
                   style={{
                     backgroundColor: color,
                     outline: isSelected ? `2px solid ${color}` : "none",
@@ -376,8 +377,8 @@ function AppearanceSection() {
 // tiny dot.
 
 const DESIGN_OPTIONS: Array<{ id: DesignTheme; nameKey: TranslationKey; swatch: [string, string, string] }> = [
-  { id: "standard", nameKey: "settings.design.standard", swatch: ["#ffffff", "#2c87c9", "#37352f"] },
-  { id: "soft",     nameKey: "settings.design.soft",     swatch: ["#f7f5f1", "#2c87c9", "#37352f"] },
+  { id: "standard", nameKey: "settings.design.standard", swatch: ["#ffffff", "#3b6fe0", "#37352f"] },
+  { id: "soft",     nameKey: "settings.design.soft",     swatch: ["#f7f5f1", "#3b6fe0", "#37352f"] },
 ];
 
 function DesignThemeDialog({
@@ -547,10 +548,11 @@ function NotificationsStub() {
 // ── Primitives ────────────────────────────────────────────────────────────────
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  const isMobile = useIsMobileLayout();
   return (
     <div>
       <h2
-        className="text-xs font-semibold uppercase tracking-widest mb-3"
+        className={"text-xs font-semibold uppercase tracking-widest " + (isMobile ? "mb-2.5" : "mb-3")}
         style={{ color: "var(--text-muted)" }}
       >
         {title}

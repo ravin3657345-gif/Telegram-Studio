@@ -153,15 +153,15 @@ describe("BlockTable — Excel-like cell navigation", () => {
     expect(selectedText(editor)).toBe("r0c0");
   });
 
-  it("Tab at the very last cell grows the table by one row", () => {
+  it("Tab at the very last cell stays put (no-op, doesn't grow the table)", () => {
     const rowsBefore = (editor.state.doc.firstChild as import("@tiptap/pm/model").Node).childCount;
     act(() => press(editor, "Tab")); // r0c0 -> r0c1
     act(() => press(editor, "Tab")); // -> r1c0
     act(() => press(editor, "Tab")); // -> r1c1 (last cell)
-    act(() => press(editor, "Tab")); // -> grows a new row, lands on its first cell
+    act(() => press(editor, "Tab")); // no-op, stays at r1c1
     const table = editor.state.doc.firstChild as import("@tiptap/pm/model").Node;
-    expect(table.childCount).toBe(rowsBefore + 1);
-    expect(selectedText(editor)).toBe(""); // new cell is empty
+    expect(table.childCount).toBe(rowsBefore);
+    expect(selectedText(editor)).toBe("r1c1");
   });
 
   it("ArrowDown moves to the same column, one row down", () => {

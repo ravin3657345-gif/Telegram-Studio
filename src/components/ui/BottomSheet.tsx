@@ -1,6 +1,7 @@
 import * as RadixDialog from "@radix-ui/react-dialog";
 import type { ReactNode } from "react";
 import { VisuallyHidden } from "./Dialog";
+import { useKeyboardInset } from "@/hooks/useKeyboardInset";
 
 /**
  * Mobile counterpart to Dialog.tsx — same Radix primitive (focus trap,
@@ -21,11 +22,18 @@ interface BottomSheetProps {
 }
 
 export function BottomSheet({ onOpenChange, children, title, maxHeight = "70vh" }: BottomSheetProps) {
+  // `bottom: 0` in CSS pins this to the layout viewport's edge, which this
+  // WebView doesn't shrink for an on-screen keyboard (same underlying gap as
+  // `.app-root`'s 100dvh — see useKeyboardInset's doc comment) — without
+  // this, the sheet renders partly/fully behind the keyboard instead of
+  // sitting on top of it.
+  const keyboardInset = useKeyboardInset();
+
   return (
     <RadixDialog.Root open onOpenChange={onOpenChange}>
       <RadixDialog.Portal>
         <RadixDialog.Overlay className="bottom-sheet-overlay" />
-        <RadixDialog.Content className="bottom-sheet-content" style={{ maxHeight }}>
+        <RadixDialog.Content className="bottom-sheet-content" style={{ maxHeight, bottom: keyboardInset }}>
           <VisuallyHidden>
             <RadixDialog.Title>{title}</RadixDialog.Title>
           </VisuallyHidden>

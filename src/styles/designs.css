@@ -30,9 +30,9 @@
   --text-muted:     #9b9a97;
   --text-inverse:   #ffffff;
 
-  --accent:         #2c87c9;
-  --accent-hover:   #1a76b8;
-  --accent-subtle:  rgba(44, 135, 201, 0.10);
+  --accent:         #3b6fe0;
+  --accent-hover:   #2f5fd6;
+  --accent-subtle:  rgba(59, 111, 224, 0.10);
 
   --shadow-sm: 0 1px 3px rgba(13, 39, 80, 0.06);
   --shadow-md: 0 4px 12px rgba(13, 39, 80, 0.08);

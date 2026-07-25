@@ -2,7 +2,8 @@
    <link> in index.html silently never loaded in the packaged app, since the
    CSP's font-src/style-src only allow 'self' (see project_csp_no_cdn memory:
    same failure mode as the emoji-mart CDN bug). Both include Cyrillic. */
-@import "@fontsource-variable/geist";
+@import "@fontsource-variable/public-sans";
+@import "@fontsource-variable/manrope";
 @import "@fontsource-variable/geist-mono";
 @import "./theme.css";
 @import "./tiptap.css";
@@ -39,11 +40,18 @@ body,
 #root {
   height: 100%;
   overflow: hidden;
-  font-family: "Geist Variable", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+  font-family: "Public Sans Variable", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
   font-size: 13px;
   line-height: 20px;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/* Headings/titles use Manrope (bolder, tighter tracking) — Public Sans stays
+   the body/UI font everywhere else. Matches the Canvas.dc redesign (Manrope
+   500-800 for headings, Public Sans 400-700 for body). */
+h1, h2, h3, h4, h5, h6 {
+  font-family: "Manrope Variable", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
 }
 
 body {

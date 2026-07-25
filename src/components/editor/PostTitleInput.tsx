@@ -5,6 +5,7 @@ import { t } from "@/lib/i18n";
 import { useSettingsStore } from "@/store/settingsStore";
 import { useIsMobileLayout } from "@/hooks/useIsMobileLayout";
 import { useIsLandscape } from "@/hooks/useIsLandscape";
+import { useKeyboardInset } from "@/hooks/useKeyboardInset";
 
 const MAX_CHARS = 100;
 
@@ -23,7 +24,12 @@ export function PostTitleInput() {
   // whenever isMobile is false) then combined afterward.
   const isMobile = useIsMobileLayout();
   const isLandscape = useIsLandscape();
-  const compact = isMobile && isLandscape;
+  // Same squeeze applies once the on-screen keyboard is up in portrait — the
+  // full-size title (18/14px padding + text-2xl) stays fixed at the top
+  // while the keyboard eats the bottom, leaving very little room for the
+  // actual content the user is typing (live-reported 2026-07-24).
+  const keyboardInset = useKeyboardInset();
+  const compact = isMobile && (isLandscape || keyboardInset > 0);
 
   function handleChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
     const val = e.target.value.replace(/\n/g, "");

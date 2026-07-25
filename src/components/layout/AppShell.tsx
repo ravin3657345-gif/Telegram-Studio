@@ -8,11 +8,18 @@ import { useChannelsStore, dedupeChannels } from "@/store/channelsStore";
 import { useDraftsStore } from "@/store/draftsStore";
 import { getBots, getChannels, getDrafts } from "@/lib/tauriApi";
 import { useIsMobileLayout } from "@/hooks/useIsMobileLayout";
+import { useKeyboardInset } from "@/hooks/useKeyboardInset";
 import { ensureNotificationPermission } from "@/lib/notifications";
 
 export function AppShell() {
   const location = useLocation();
   const isMobile = useIsMobileLayout();
+  // `.app-root`'s 100dvh doesn't reliably shrink for the on-screen keyboard
+  // on Android WebView — without this, the bottom tab bar and whatever's at
+  // the bottom of the current page render underneath the keyboard instead of
+  // being pushed above it. Applied once here (not per-page) so every mobile
+  // screen gets it, not just the editor.
+  const keyboardInset = useKeyboardInset();
   const setBots     = useChannelsStore((s) => s.setBots);
   const setChannels = useChannelsStore((s) => s.setChannels);
   const setDrafts   = useDraftsStore((s) => s.setDrafts);
@@ -35,7 +42,7 @@ export function AppShell() {
   }, []);
 
   return (
-    <div className="app-shell" style={{ flexDirection: isMobile ? "column" : "row" }}>
+    <div className="app-shell" style={{ flexDirection: isMobile ? "column" : "row", paddingBottom: isMobile ? keyboardInset : 0 }}>
       {!isMobile && <Sidebar />}
       <div className="content-area">
         <div

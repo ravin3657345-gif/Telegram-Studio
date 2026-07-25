@@ -69,7 +69,7 @@ export const useSettingsStore = create<SettingsState>()(
       defaultChannelId:     "",
       showCharCounter:      true,
       confirmBeforePublish: true,
-      accentColor:          "#2c87c9",
+      accentColor:          "#3b6fe0",
       largeFontEditor:      false,
       showTelegramPreview:  true,
       sidebarWidget:        "clock",
@@ -122,7 +122,7 @@ export const useSettingsStore = create<SettingsState>()(
           document.documentElement.setAttribute("data-theme", resolved);
           document.documentElement.setAttribute("data-design", state.designTheme ?? "standard");
           setI18nLanguage(state.language ?? "ru");
-          if (state.accentColor && state.accentColor !== "#2c87c9") {
+          if (state.accentColor && state.accentColor !== "#3b6fe0") {
             document.documentElement.style.setProperty("--accent", state.accentColor);
             document.documentElement.style.setProperty("--accent-hover", darkenHex(state.accentColor));
           }

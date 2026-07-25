@@ -5,7 +5,9 @@ import { TopBar } from "@/components/layout/TopBar";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Spinner } from "@/components/ui/Spinner";
 import { Button } from "@/components/ui/Button";
+import { Fab } from "@/components/ui/Fab";
 import { SaveTemplateDialog } from "@/components/editor/SaveTemplateDialog";
+import { useIsMobileLayout } from "@/hooks/useIsMobileLayout";
 import { toast, TOAST_DURATIONS } from "@/store/uiStore";
 import { getTemplates, getTemplate, saveTemplate, deleteTemplate, upsertDraft, recordTemplateUse } from "@/lib/tauriApi";
 import { t, ti, type TranslationKey } from "@/lib/i18n";
@@ -21,7 +23,7 @@ import { useListKeyboardNav } from "@/hooks/useListKeyboardNav";
 // ── Category metadata ─────────────────────────────────────────────────────────
 // Gradients are hue-rotated from the user's own accent color (Settings →
 // Appearance) instead of a fixed independent palette — offsets are tuned so
-// the DEFAULT accent (#2c87c9) reproduces the original blue/purple/green/
+// the DEFAULT accent (#3b6fe0) reproduces the original blue/purple/green/
 // orange/gray look exactly; picking a different accent shifts all five
 // together instead of leaving them stuck on the old default hue.
 
@@ -68,6 +70,7 @@ function buildCategoryMeta(
 
 export function TemplatesPage() {
   const navigate   = useNavigate();
+  const isMobile   = useIsMobileLayout();
   const [templates, setTemplates] = useState<Template[]>([]);
   const [loading, setLoading]     = useState(true);
   const [activeFilter, setActiveFilter] = useState<TemplateCategory | "all">("all");
@@ -257,9 +260,12 @@ export function TemplatesPage() {
     <>
       <TopBar
         actions={
-          <Button variant="primary" size="sm" leftIcon={<Plus size={13} />} onClick={() => navigate("/editor", { state: { _createTemplate: Date.now() } })}>
-            {t("templates.createTemplate")}
-          </Button>
+          // Mobile gets a thumb-reachable FAB instead (below).
+          !isMobile ? (
+            <Button variant="primary" size="sm" leftIcon={<Plus size={13} />} onClick={() => navigate("/editor", { state: { _createTemplate: Date.now() } })}>
+              {t("templates.createTemplate")}
+            </Button>
+          ) : undefined
         }
       />
 
@@ -404,6 +410,14 @@ export function TemplatesPage() {
           </div>
         )}
       </div>
+
+      {isMobile && (
+        <Fab
+          icon={Plus}
+          label={t("templates.createTemplate")}
+          onClick={() => navigate("/editor", { state: { _createTemplate: Date.now() } })}
+        />
+      )}
 
       {editingTemplate && (
         <SaveTemplateDialog

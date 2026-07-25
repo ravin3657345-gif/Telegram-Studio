@@ -71,6 +71,11 @@ const quote = (expandable: boolean, ...blocks: unknown[]) => ({
   attrs: { expandable },
   content: blocks,
 });
+const pullquote = (text: string, credit: string) => ({
+  type: "pullquote",
+  attrs: { credit },
+  content: [{ type: "text", text }],
+});
 const check = (checked: boolean, text: string) => ({
   type: "checkItem",
   attrs: { checked },
@@ -202,11 +207,17 @@ export const EXAMPLE_TEMPLATES: ExampleTemplate[] = [
       heading(2, "🎨 Витрина возможностей Rich-режима"),
       p("Так выглядит пост, собранный в Telegram Studio из блоков — без единой строчки HTML или Markdown."),
       p(bold("жирный"), " ", italic("курсив"), " ", underline("подчёркнутый"), " ", strike("зачёркнутый"), " ", spoiler("спойлер"), " ", highlight("маркер"), " и ", inlineCode("инлайн-код")),
-      quote(false, p("Обычная цитата — для пояснений и врезок.")),
+      {
+        type: "blockquote",
+        attrs: { expandable: false, credit: "Редакция" },
+        content: [p("Обычная цитата — для пояснений и врезок, с подписью автора.")],
+      },
       quote(false,
         p(bold("Форматирование"), " работает и внутри цитаты"),
         quote(false, p("а внутри неё — ещё одна, вложенная")),
       ),
+      p("А выносная цитата — крупнее и по центру, для эффектных высказываний:"),
+      pullquote("Лучший способ предсказать будущее — создать его самому.", "Питер Друкер"),
       check(true, "Собрать пост в редакторе"),
       check(false, "Опубликовать в канал"),
       {
@@ -261,6 +272,13 @@ export const EXAMPLE_TEMPLATES: ExampleTemplate[] = [
             type: "tableRow",
             content: [
               { type: "tableCell", attrs: { header: false }, content: [{ type: "text", text: "Карты, формулы (LaTeX)" }] },
+              { type: "tableCell", attrs: { header: false }, content: [{ type: "text", text: "Да" }] },
+            ],
+          },
+          {
+            type: "tableRow",
+            content: [
+              { type: "tableCell", attrs: { header: false }, content: [{ type: "text", text: "Выносная цитата, подпись автора у цитаты" }] },
               { type: "tableCell", attrs: { header: false }, content: [{ type: "text", text: "Да" }] },
             ],
           },

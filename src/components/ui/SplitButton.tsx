@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { Spinner } from "./Spinner";
+import { useIsMobileLayout } from "@/hooks/useIsMobileLayout";
 
 // Adapted from Watermelon UI's split-button.tsx (registry.watermelon.sh) —
 // kept the single-pill shape and press micro-interaction, dropped its
@@ -30,12 +31,10 @@ interface SplitButtonProps {
   secondary: SplitButtonAction[];
 }
 
-export function SplitButton({ primary, secondary }: SplitButtonProps) {
+// Desktop: single pill, primary + slim hover-reveal icon segments side by side.
+function DesktopSplitButton({ primary, secondary }: SplitButtonProps) {
   return (
-    <div
-      className="flex w-full rounded-md overflow-hidden"
-      style={{ height: 28, border: "1px solid var(--border-default)" }}
-    >
+    <div className="flex w-full rounded-md overflow-hidden" style={{ height: 28, border: "1px solid var(--border-default)" }}>
       <button
         type="button"
         onClick={primary.onClick}
@@ -49,10 +48,6 @@ export function SplitButton({ primary, secondary }: SplitButtonProps) {
         {primary.label}
       </button>
 
-      {/* Slim segments, icon-only at rest — each label reveals on hover via a
-          max-width transition (pure CSS, matches the app's existing
-          press/hover idiom instead of pulling in framer-motion for a case
-          this simple). */}
       {secondary.map((action, i) => (
         <button
           key={i}
@@ -61,19 +56,13 @@ export function SplitButton({ primary, secondary }: SplitButtonProps) {
           disabled={action.disabled}
           title={action.iconOnly ? action.label : undefined}
           className="group flex items-center justify-center gap-1.5 px-2.5 text-xs font-medium transition-all active:scale-[0.97] disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100"
-          style={{
-            backgroundColor: "var(--bg-elevated)",
-            color: "var(--text-secondary)",
-            borderLeft: "1px solid var(--border-default)",
-          }}
+          style={{ backgroundColor: "var(--bg-elevated)", color: "var(--text-secondary)", borderLeft: "1px solid var(--border-default)" }}
           onMouseEnter={(e) => { if (!action.disabled) e.currentTarget.style.backgroundColor = "var(--bg-hover)"; }}
           onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = "var(--bg-elevated)"; }}
         >
           {action.loading ? <Spinner size={13} /> : action.icon}
           {!action.iconOnly && (
-            <span
-              className="max-w-0 overflow-hidden whitespace-nowrap opacity-0 transition-all duration-200 group-hover:max-w-[100px] group-hover:opacity-100"
-            >
+            <span className="max-w-0 overflow-hidden whitespace-nowrap opacity-0 transition-all duration-200 group-hover:max-w-[100px] group-hover:opacity-100">
               {action.label}
             </span>
           )}
@@ -81,4 +70,51 @@ export function SplitButton({ primary, secondary }: SplitButtonProps) {
       ))}
     </div>
   );
+}
+
+// Mobile: no hover, so no reveal-on-hover to fall back on — and cramming
+// every label into one row alongside the primary button doesn't fit on a
+// phone (measured: "Опубликовать" + "Запланировать" + "Сохранить как
+// шаблон" together want ~470px, well past a ~360px content width). Primary
+// gets its own full-width row (finger-sized, 44px); secondary actions share
+// a second row below, each with room to show icon + label instead of being
+// unlabeled forever.
+function MobileSplitButton({ primary, secondary }: SplitButtonProps) {
+  return (
+    <div className="flex flex-col gap-2 w-full">
+      <button
+        type="button"
+        onClick={primary.onClick}
+        disabled={primary.disabled}
+        className="flex items-center justify-center gap-2 text-sm font-semibold text-white rounded-lg transition-all active:scale-[0.97] disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100"
+        style={{ height: 44, backgroundColor: "var(--accent)" }}
+      >
+        {primary.loading ? <Spinner size={14} /> : primary.icon}
+        {primary.label}
+      </button>
+
+      {secondary.length > 0 && (
+        <div className="flex gap-2">
+          {secondary.map((action, i) => (
+            <button
+              key={i}
+              type="button"
+              onClick={action.onClick}
+              disabled={action.disabled}
+              className="flex-1 flex items-center justify-center gap-1.5 px-2 text-xs font-medium rounded-lg transition-all active:scale-[0.97] disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100 min-w-0"
+              style={{ height: 40, backgroundColor: "var(--bg-elevated)", color: "var(--text-secondary)", border: "1px solid var(--border-default)" }}
+            >
+              {action.loading ? <Spinner size={13} /> : action.icon}
+              <span className="truncate">{action.label}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function SplitButton(props: SplitButtonProps) {
+  const isMobile = useIsMobileLayout();
+  return isMobile ? <MobileSplitButton {...props} /> : <DesktopSplitButton {...props} />;
 }

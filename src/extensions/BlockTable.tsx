@@ -277,12 +277,6 @@ function selectCell(tr: Transaction, cellPos: number, cellNode: PMNode) {
   tr.setSelection(TextSelection.create(tr.doc, start, start + cellNode.content.size));
 }
 
-function createEmptyRow(editor: Editor, cols: number): PMNode {
-  const { schema } = editor.state;
-  const cells = Array.from({ length: cols }, () => schema.nodes.tableCell.create({ header: false }));
-  return schema.nodes.tableRow.create(null, cells);
-}
-
 // Moves the selection to just outside the table (above/below), inserting an
 // empty paragraph there first if the table is the first/last node in the
 // doc — mirrors how other atom-ish blocks in this editor let you escape by
@@ -429,10 +423,10 @@ function enterTableHorizontal(editor: Editor, dir: -1 | 1): boolean {
 }
 
 // Tab / Shift-Tab: next/previous cell, row-major, wrapping at row edges.
-// Tabbing past the last cell of the last row grows the table by one row
-// (finite table, so there's no "next row" to land on already like a real
-// spreadsheet — matches the same convention Google Docs/Notion tables use).
-// Shift-Tab at the very first cell is a no-op (nothing to move to).
+// Both ends are a no-op — Tab at the very last cell and Shift-Tab at the
+// very first cell just stay put, matching plain Excel range behavior (a
+// real Excel Table object grows a row here, but this editor deliberately
+// doesn't — see the reverted "grows the table" behavior this replaced).
 function handleTab(editor: Editor, reverse: boolean): boolean {
   const info = findCurrentCell(editor.state);
   if (!info) return false;
@@ -444,20 +438,12 @@ function handleTab(editor: Editor, reverse: boolean): boolean {
   if (targetCol >= cols) { targetCol = 0; targetRow += 1; }
   if (targetCol < 0) { targetCol = cols - 1; targetRow -= 1; }
 
-  if (targetRow < 0) return true; // Shift-Tab at the first cell — swallow, stay put
+  if (targetRow < 0 || targetRow >= table.childCount) return true; // swallow, stay put
 
+  const target = cellAt(tablePos, table, targetRow, targetCol);
+  if (!target) return true;
   const tr = editor.state.tr;
-  if (targetRow >= table.childCount) {
-    const insertPos = tablePos + table.nodeSize - 1; // end of table content, after the last row
-    tr.insert(insertPos, createEmptyRow(editor, cols));
-    const newTable = tr.doc.nodeAt(tablePos);
-    const target = newTable && cellAt(tablePos, newTable, targetRow, 0);
-    if (target) selectCell(tr, target.cellPos, target.cellNode);
-  } else {
-    const target = cellAt(tablePos, table, targetRow, targetCol);
-    if (!target) return true;
-    selectCell(tr, target.cellPos, target.cellNode);
-  }
+  selectCell(tr, target.cellPos, target.cellNode);
   editor.view.dispatch(tr);
   return true;
 }
