@@ -53,7 +53,14 @@ jobs:
           cache: npm
 
       - name: Install dependencies
-        run: npm ci
+        # Not `npm ci`: npm 11's lockfile generation marks
+        # platform-incompatible optional deps (e.g. @esbuild/netbsd-arm64)
+        # with "extraneous": true instead of "optional": true, so `npm ci`
+        # treats them as required and fails with EBADPLATFORM on any OS
+        # that isn't the one the lockfile was generated on. `npm install`
+        # re-evaluates platform compatibility live instead of trusting that
+        # field, and still installs from the lockfile's pinned versions.
+        run: npm install
 
       - name: Run tests
         run: npm test

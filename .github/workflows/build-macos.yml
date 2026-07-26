@@ -31,7 +31,9 @@ jobs:
           workspaces: src-tauri -> target
 
       - name: Install frontend dependencies
-        run: npm ci
+        # See test.yml for why `npm ci` is avoided here (npm 11 lockfile bug
+        # with cross-platform optional deps like @esbuild/*).
+        run: npm install
 
       - name: Build universal macOS app (.app + .dmg)
         run: npx tauri build --target universal-apple-darwin
