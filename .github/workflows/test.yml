@@ -6,6 +6,17 @@ on:
   pull_request:
   workflow_dispatch: {}
 
+env:
+  # .cargo/config.toml and .npmrc hardcode Windows-only absolute paths
+  # (D:/cargo-tgt, D:/TElega POST/.build/npm-cache) needed locally to dodge a
+  # windres bug from the project's own space-containing path — see
+  # project_build_path memory. On Unix those paths' bare "D:" collides with
+  # ":" as the PATH-list separator ("failed to join paths from
+  # $LD_LIBRARY_PATH"). Env vars override config-file values, so this
+  # neutralizes both without touching the files real local dev depends on.
+  CARGO_TARGET_DIR: target
+  npm_config_cache: ${{ github.workspace }}/.npm-cache
+
 jobs:
   rust-core:
     name: tstudio-core tests (${{ matrix.os }})

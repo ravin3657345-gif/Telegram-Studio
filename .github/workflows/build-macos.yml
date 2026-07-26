@@ -3,6 +3,12 @@ name: Build macOS
 on:
   workflow_dispatch: {}
 
+env:
+  # See test.yml for why these override .cargo/config.toml and .npmrc's
+  # Windows-only absolute paths (they break on Unix's ":" path-list separator).
+  CARGO_TARGET_DIR: target
+  npm_config_cache: ${{ github.workspace }}/.npm-cache
+
 jobs:
   build-macos:
     runs-on: macos-latest
