@@ -18,6 +18,10 @@ import { moveCurrentBlock } from "@/extensions/BlockMoveShortcuts";
 interface BlockHoverControlsProps {
   editor: Editor;
   onOpenMenu: (blockPos: number, x: number, y: number) => void;
+  /** False while this editor instance is hidden behind another mobile tab.
+   * The controls portal to document.body, so they must be torn down
+   * explicitly here instead of relying on a display:none ancestor. */
+  active?: boolean;
 }
 
 const DRAG_THRESHOLD = 5;
@@ -125,7 +129,7 @@ function makeGhost(sourceEl: HTMLElement, rect: DOMRect): HTMLDivElement {
   return wrap;
 }
 
-export function BlockHoverControls({ editor, onOpenMenu }: BlockHoverControlsProps) {
+export function BlockHoverControls({ editor, onOpenMenu, active = true }: BlockHoverControlsProps) {
   const isMobile = useIsMobileLayout();
   const keyboardInset = useKeyboardInset();
   const [hoverPos, setHoverPos] = useState<number | null>(null);
@@ -164,6 +168,12 @@ export function BlockHoverControls({ editor, onOpenMenu }: BlockHoverControlsPro
   // stays open (no HIDE_DELAY timer — nothing to "leave") until the next tap
   // either selects a different block or lands outside any block (closes).
   useEffect(() => {
+    // Not the visible tab (mobile Editor/Preview/Publish switcher) — nothing
+    // to track, and any stale hover from before the tab switch must be
+    // cleared since the portal would otherwise keep floating over whichever
+    // tab is now showing.
+    if (!active) { setHover(null, null, null); return; }
+
     const view = editor.view;
 
     if (isMobile) {
@@ -195,7 +205,7 @@ export function BlockHoverControls({ editor, onOpenMenu }: BlockHoverControlsPro
       cancelHide();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editor, isMobile]);
+  }, [editor, isMobile, active]);
 
   // ── Keep the controls glued to the hovered block as it grows/shrinks —
   // without this, typing into a block (without moving the mouse) leaves the
@@ -396,8 +406,15 @@ export function BlockHoverControls({ editor, onOpenMenu }: BlockHoverControlsPro
   // the bottom of a short document used to place this panel half-hidden
   // behind the keyboard instead of above it.
   const visibleBottom = window.innerHeight - keyboardInset;
+  const MOBILE_GAP = 8;
+  // Fully above or fully below the tapped block, never overlapping it — the
+  // old fixed "-48px" offset covered the top few px of short blocks (single
+  // line of text) instead of floating clear of them. Falls back to below
+  // the block when there isn't room above (block sits near the top edge).
   const mobileTop = rect
-    ? Math.max(8, Math.min(rect.top - 48, visibleBottom - MOBILE_PANEL_HEIGHT - 8))
+    ? rect.top - MOBILE_PANEL_HEIGHT - MOBILE_GAP >= 8
+      ? Math.max(8, rect.top - MOBILE_PANEL_HEIGHT - MOBILE_GAP)
+      : Math.min(rect.bottom + MOBILE_GAP, visibleBottom - MOBILE_PANEL_HEIGHT - 8)
     : 0;
 
   return createPortal(

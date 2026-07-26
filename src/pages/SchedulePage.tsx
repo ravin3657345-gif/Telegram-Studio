@@ -12,6 +12,7 @@ import { useDraftsStore } from "@/store/draftsStore";
 import { useEditorStore } from "@/store/editorStore";
 import type { ScheduledPostInfo } from "@/types/publish";
 import { WEEKDAY_BASE_DATES, buildCalendarGrid, sameDay } from "@/lib/calendarGrid";
+import { useIsMobileLayout } from "@/hooks/useIsMobileLayout";
 
 // Cells stay a fixed height regardless of how many posts land on one day —
 // past this many, the rest fold into a "+N ещё" chip that opens the full
@@ -61,6 +62,7 @@ function chipStyle(kind: CalendarKind) {
 
 export function SchedulePage() {
   const navigate                  = useNavigate();
+  const isMobile                  = useIsMobileLayout();
   const [posts, setPosts]         = useState<ScheduledPostInfo[]>([]);
   const [history, setHistory]     = useState<HistoryItemLite[]>([]);
   const [loading, setLoading]     = useState(true);
@@ -206,15 +208,21 @@ export function SchedulePage() {
         }
       />
 
-      <div className="page-content" style={{ padding: "24px" }}>
+      <div className="page-content" style={{ padding: isMobile ? "12px" : "24px" }}>
         {loading ? (
           <div className="flex justify-center py-20">
             <Spinner size={24} color="var(--text-muted)" />
           </div>
         ) : (
-          <div style={{ maxWidth: 900 }}>
+          <div style={{ maxWidth: isMobile ? "100%" : 900 }}>
             {/* ── Calendar header ─────────────────────────────────────── */}
-            <div className="flex items-center justify-between mb-4">
+            {/* Mobile: month-nav row and legend stack instead of sharing one
+                row — squeezed together they used to force the whole row
+                (including the month title) wider than the screen, which
+                pushed the calendar grid into horizontal scroll and wrapped
+                "Июль 2026" into three lines fighting the nav/legend for
+                space. */}
+            <div className={isMobile ? "flex flex-col gap-2 mb-3" : "flex items-center justify-between mb-4"}>
               <div className="flex items-center gap-3">
                 <h1 className="text-xl font-bold" style={{ color: "var(--text-primary)" }}>
                   {new Date(viewYear, viewMonth, 1).toLocaleDateString(language, { month: "long", year: "numeric" }).replace(/^./, c => c.toUpperCase())}
@@ -256,10 +264,13 @@ export function SchedulePage() {
 
               {/* Legend */}
               <div
-                className="flex items-center gap-4 rounded-lg border"
+                className="flex items-center rounded-lg border"
                 style={{
-                  fontSize: 12.5,
-                  padding: "6px 12px",
+                  fontSize: isMobile ? 11 : 12.5,
+                  padding: isMobile ? "5px 8px" : "6px 12px",
+                  gap: isMobile ? 10 : 16,
+                  flexWrap: isMobile ? "wrap" : "nowrap",
+                  alignSelf: isMobile ? "flex-start" : undefined,
                   backgroundColor: "var(--bg-elevated)",
                   borderColor: "var(--border-default)",
                 }}
@@ -289,9 +300,9 @@ export function SchedulePage() {
                   return (
                   <div
                     key={i}
-                    className="text-center py-2"
+                    className={isMobile ? "text-center py-1" : "text-center py-2"}
                     style={{
-                      fontSize: 11,
+                      fontSize: isMobile ? 9.5 : 11,
                       fontWeight: 600,
                       color: i >= 5 ? "#b08a8a" : "var(--text-muted)",
                       letterSpacing: "0.03em",
@@ -318,11 +329,11 @@ export function SchedulePage() {
                     <div
                       key={idx}
                       style={{
-                        minHeight: 96,
+                        minHeight: isMobile ? 60 : 96,
                         borderRight: colIndex < 6 ? "1px solid var(--border-subtle)" : "none",
                         borderBottom: idx < grid.length - 7 ? "1px solid var(--border-subtle)" : "none",
                         backgroundColor: day ? "var(--bg-surface)" : "var(--bg-elevated)",
-                        padding: "6px 6px 4px",
+                        padding: isMobile ? "3px 3px 2px" : "6px 6px 4px",
                       }}
                     >
                       {day && (
@@ -330,8 +341,9 @@ export function SchedulePage() {
                           {/* Day number */}
                           <div className="flex justify-end mb-1">
                             <span
-                              className="w-6 h-6 flex items-center justify-center rounded-full text-xs font-medium"
+                              className={isMobile ? "w-5 h-5 flex items-center justify-center rounded-full font-medium" : "w-6 h-6 flex items-center justify-center rounded-full text-xs font-medium"}
                               style={{
+                                fontSize: isMobile ? 10.5 : undefined,
                                 color: isToday ? "#fff" : isWeekend ? "#b08a8a" : "var(--text-secondary)",
                                 backgroundColor: isToday ? "var(--accent)" : "transparent",
                               }}

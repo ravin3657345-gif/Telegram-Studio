@@ -150,7 +150,7 @@ export function EditorPage() {
         <>
           {/* Kept mounted (hidden) so its draft-load effect still runs — that's
               what populated draftStatus/publishMode in the first place. */}
-          <div style={{ display: "none" }}><PostEditor draftId={draftId} /></div>
+          <div style={{ display: "none" }}><PostEditor draftId={draftId} active={false} /></div>
           <ScheduledRichLockedPanel onUnlock={handleUnlockScheduledRich} unlocking={unlocking} />
         </>
       ) : (
@@ -367,7 +367,7 @@ function MobileEditorBody({
         className="flex-col flex-1 overflow-hidden"
         style={{ display: activeTab === "editor" ? "flex" : "none" }}
       >
-        <PostEditor draftId={draftId} />
+        <PostEditor draftId={draftId} active={activeTab === "editor"} />
       </div>
 
       {/* Preview panel */}

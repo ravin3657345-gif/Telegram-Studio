@@ -45,6 +45,10 @@ body,
   line-height: 20px;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  /* Disables pinch-zoom/double-tap-zoom on the Android WebView — some
+     WebViews ignore the viewport meta's user-scalable=no, this is the
+     CSS-level backstop. pan-x/pan-y keep normal scrolling working. */
+  touch-action: pan-x pan-y;
 }
 
 /* Headings/titles use Manrope (bolder, tighter tracking) — Public Sans stays

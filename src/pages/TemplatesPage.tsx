@@ -269,7 +269,8 @@ export function TemplatesPage() {
         }
       />
 
-      <div className="page-content" style={{ padding: "0 0 40px" }}>
+      {/* Extra bottom padding on mobile clears the fixed FAB (see DraftsPage) */}
+      <div className="page-content" style={{ padding: isMobile ? "0 0 140px" : "0 0 40px" }}>
         {loading ? (
           <div className="flex justify-center py-20">
             <Spinner size={24} color="var(--text-muted)" />

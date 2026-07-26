@@ -206,7 +206,10 @@ export function DraftsPage() {
         }
       />
 
-      <div className="page-content" style={{ padding: "0 0 24px" }}>
+      {/* Extra bottom padding on mobile clears the fixed FAB (bottom: 74,
+          52px tall) — otherwise the last card's delete button renders right
+          under it instead of the list scrolling clear above. */}
+      <div className="page-content" style={{ padding: isMobile ? "0 0 140px" : "0 0 24px" }}>
         {isLoading ? (
           <div className="flex justify-center py-20">
             <Spinner size={24} color="var(--text-muted)" />

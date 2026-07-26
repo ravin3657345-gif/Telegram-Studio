@@ -79,9 +79,14 @@ interface PostEditorProps {
    * place of the Telegram preview when it's toggled off) — the editor
    * instance itself is only ever created here. */
   onEditorReady?: (editor: Editor | null) => void;
+  /** False when this PostEditor is mounted but hidden behind another mobile
+   * tab (display:none) — BlockHoverControls portals to document.body, so it
+   * would otherwise stay visible/interactive floating over the Preview/
+   * Publish tabs instead of disappearing with its display:none parent. */
+  active?: boolean;
 }
 
-export function PostEditor({ draftId: initialDraftId, onEditorReady }: PostEditorProps) {
+export function PostEditor({ draftId: initialDraftId, onEditorReady, active = true }: PostEditorProps) {
   const containerRef  = useRef<HTMLDivElement>(null);
   const draftLoadedRef = useRef(false);
 
@@ -635,6 +640,7 @@ export function PostEditor({ draftId: initialDraftId, onEditorReady }: PostEdito
               <InlineBubbleMenu editor={editor} onLinkClick={() => setShowLinkDialog(true)} />
               <BlockHoverControls
                 editor={editor}
+                active={active}
                 onOpenMenu={(blockPos, x, y) => {
                   const node = editor.state.doc.nodeAt(blockPos);
                   if (node) {

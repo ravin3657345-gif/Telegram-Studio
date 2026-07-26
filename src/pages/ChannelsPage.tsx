@@ -17,6 +17,7 @@ import { useSettingsStore } from "@/store/settingsStore";
 import type { Channel } from "@/types/channel";
 import { Dialog, DialogTitle, DialogDescription } from "@/components/ui/Dialog";
 import { useListKeyboardNav } from "@/hooks/useListKeyboardNav";
+import { useIsMobileLayout } from "@/hooks/useIsMobileLayout";
 
 
 interface ChannelStats {
@@ -198,6 +199,7 @@ function ChannelCard({ channel, selected, onDelete }: { channel: Channel; select
   const [editingBot,  setEditingBot]  = useState(false);
   const [changingBot, setChangingBot] = useState(false);
   const { bots, updateChannelBot: storeUpdateBot } = useChannelsStore();
+  const isMobile = useIsMobileLayout();
   useSettingsStore((s) => s.language);
 
   async function handleBotChange(newBotId: string) {
@@ -272,8 +274,12 @@ function ChannelCard({ channel, selected, onDelete }: { channel: Channel; select
         backgroundColor: "var(--bg-surface)", overflow: "hidden",
       }}
     >
-      {/* Header */}
-      <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "14px 16px" }}>
+      {/* Header — on mobile the actions cluster (Статистика/Удалить) wraps
+          onto its own row instead of squeezing into the same row as the
+          title, which used to crush the channel name down to a couple of
+          truncated characters (both buttons have fixed, non-shrinkable
+          content). */}
+      <div style={{ display: "flex", flexWrap: isMobile ? "wrap" : "nowrap", alignItems: "center", gap: 14, padding: "14px 16px" }}>
         <div style={{
           width: 42, height: 42, borderRadius: "50%", flexShrink: 0,
           backgroundColor: "var(--accent)", color: "#fff",
@@ -341,7 +347,12 @@ function ChannelCard({ channel, selected, onDelete }: { channel: Channel; select
           </div>
         </div>
 
-        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        <div
+          style={{
+            display: "flex", alignItems: "center", gap: 6,
+            ...(isMobile ? { flex: "1 1 100%", justifyContent: "flex-end" } : {}),
+          }}
+        >
           <button
             onClick={loadStats}
             style={{
