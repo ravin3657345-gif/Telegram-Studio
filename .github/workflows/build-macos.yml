@@ -38,6 +38,48 @@ jobs:
       - name: Build universal macOS app (.app + .dmg)
         run: npx tauri build --target universal-apple-darwin
 
+      - name: Smoke test — launch the built app
+        # No real Mac is available to click through the app by hand, so this
+        # is the closest thing to "does it even open" verification: run the
+        # bundle's actual binary directly (not via `open`/Finder, so a fresh
+        # local build has no com.apple.quarantine xattr to trip Gatekeeper on)
+        # and confirm the process is still alive a few seconds later instead
+        # of having crashed immediately (missing dylib, bad code signature,
+        # panic during startup init, etc.).
+        timeout-minutes: 2
+        run: |
+          set -e
+          APP_PATH=$(ls -d src-tauri/target/universal-apple-darwin/release/bundle/macos/*.app | head -n1)
+          echo "App bundle: $APP_PATH"
+          BINARY_NAME=$(ls "$APP_PATH/Contents/MacOS")
+          BINARY_PATH="$APP_PATH/Contents/MacOS/$BINARY_NAME"
+          echo "Binary: $BINARY_PATH"
+
+          "$BINARY_PATH" > app-smoke-test.log 2>&1 &
+          PID=$!
+          sleep 5
+
+          if kill -0 "$PID" 2>/dev/null; then
+            echo "App still running after 5s (PID $PID) — looks healthy."
+            kill "$PID"
+          else
+            echo "::error::App exited/crashed within 5s of launch"
+            wait "$PID" 2>/dev/null || true
+            echo "--- stdout/stderr ---"
+            cat app-smoke-test.log || true
+            echo "--- recent crash reports ---"
+            find "$HOME/Library/Logs/DiagnosticReports" -maxdepth 1 \( -name "*.crash" -o -name "*.ips" \) -newer "$APP_PATH" -exec cat {} \; 2>/dev/null || true
+            exit 1
+          fi
+
+      - name: Upload smoke test log (only if it failed)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-smoke-test-log
+          path: app-smoke-test.log
+          if-no-files-found: ignore
+
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
