@@ -77,7 +77,11 @@ pub(crate) fn legacy_machine_id() -> String {
     {
         windows_machine_guid().unwrap_or_else(|| "fallback-windows-id".to_string())
     }
-    #[cfg(not(windows))]
+    #[cfg(target_os = "macos")]
+    {
+        macos_hardware_uuid().unwrap_or_else(|| "fallback-macos-id".to_string())
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
     {
         std::fs::read_to_string("/etc/machine-id")
             .or_else(|_| std::fs::read_to_string("/var/lib/dbus/machine-id"))
@@ -93,6 +97,47 @@ fn windows_machine_guid() -> Option<String> {
     let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
     let key = hklm.open_subkey(r"SOFTWARE\Microsoft\Cryptography").ok()?;
     key.get_value("MachineGuid").ok()
+}
+
+// ── macOS hardware UUID ────────────────────────────────────────────────────────
+//
+// Without this, macOS fell through to the generic Linux-oriented branch below,
+// found neither `/etc/machine-id` nor `/var/lib/dbus/machine-id` (both Linux-only
+// paths), and silently returned the same static "fallback-unix-id" string on
+// EVERY Mac — which would have made every Mac's token-encryption key identical
+// and, worse, made every Mac collide onto the same license machine fingerprint
+// (see license.rs::hardware_fingerprint, which falls back to this exact
+// function on non-Windows). `IOPlatformUUID` is a real per-machine identifier
+// that survives OS reinstalls, analogous to Windows' SMBIOS UUID.
+
+#[cfg(target_os = "macos")]
+fn macos_hardware_uuid() -> Option<String> {
+    let output = std::process::Command::new("ioreg")
+        .args(["-rd1", "-c", "IOPlatformExpertDevice"])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    parse_ioplatform_uuid(&String::from_utf8_lossy(&output.stdout))
+}
+
+/// Extracts the value of the `"IOPlatformUUID" = "..."` line from `ioreg -rd1
+/// -c IOPlatformExpertDevice` output. Split out from `macos_hardware_uuid` so
+/// the string-parsing logic can be unit-tested on any platform, not just
+/// exercised (untestable, since `ioreg` doesn't exist) on macOS.
+#[cfg(target_os = "macos")]
+fn parse_ioplatform_uuid(text: &str) -> Option<String> {
+    let line = text.lines().find(|l| l.contains("IOPlatformUUID"))?;
+    let after_eq = line.split_once('=')?.1;
+    let mut parts = after_eq.split('"');
+    parts.next(); // text before the value's opening quote
+    let value = parts.next()?.trim();
+    if value.is_empty() {
+        None
+    } else {
+        Some(value.to_string())
+    }
 }
 
 fn encrypt_legacy(plaintext: &str) -> Result<String, String> {
@@ -257,5 +302,45 @@ mod tests {
     fn enc_prefixed_needs_migration_to_dpapi_on_windows() {
         let enc = encrypt_legacy(SAMPLE).unwrap();
         assert!(needs_migration(&enc), "ENC tokens should migrate to DPAPI on Windows");
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn parses_real_ioreg_style_output() {
+        let sample = r#"+-o IOPlatformExpertDevice  <class IOPlatformExpertDevice, id 0x100000268>
+    "IOPlatformSerialNumber" = "C02ABCDEFGH"
+    "IOPlatformUUID" = "1F2AB3C4-5678-90AB-CDEF-1234567890AB"
+    "IOPlatformUUID-extra-decoy" = "should-not-match-this-one"
+"#;
+        assert_eq!(
+            parse_ioplatform_uuid(sample),
+            Some("1F2AB3C4-5678-90AB-CDEF-1234567890AB".to_string())
+        );
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn missing_uuid_line_returns_none() {
+        let sample = "\"IOPlatformSerialNumber\" = \"C02ABCDEFGH\"\n";
+        assert_eq!(parse_ioplatform_uuid(sample), None);
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn empty_or_malformed_value_returns_none_not_panic() {
+        assert_eq!(parse_ioplatform_uuid("\"IOPlatformUUID\" = \"\"\n"), None);
+        assert_eq!(parse_ioplatform_uuid("\"IOPlatformUUID\" no equals sign here\n"), None);
+        assert_eq!(parse_ioplatform_uuid(""), None);
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn real_macos_hardware_uuid_is_stable_across_calls() {
+        // Exercises the real `ioreg` call end-to-end — this is the whole point
+        // of running this crate's tests on an actual macOS CI runner instead of
+        // only trusting the string-parsing tests above.
+        let a = macos_hardware_uuid();
+        let b = macos_hardware_uuid();
+        assert_eq!(a, b, "hardware UUID should be stable within the same run");
     }
 }

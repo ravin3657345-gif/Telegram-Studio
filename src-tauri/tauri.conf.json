@@ -23,7 +23,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; script-src 'self' 'unsafe-inline' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://asset.localhost https://*.basemaps.cartocdn.com; font-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost https://asset.localhost; media-src 'self' blob: data: https://asset.localhost; frame-ancestors 'none'; base-uri 'self';",
+      "csp": "default-src 'self'; script-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://asset.localhost https://*.basemaps.cartocdn.com; font-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost https://asset.localhost; media-src 'self' blob: data: https://asset.localhost; frame-ancestors 'none'; base-uri 'self';",
       "assetProtocol": {
         "enable": true,
         "scope": ["**"]
@@ -39,13 +39,9 @@
       "icons/32x32.png",
       "icons/128x128.png",
       "icons/128x128@2x.png",
-      "icons/icon.ico"
+      "icons/icon.ico",
+      "icons/icon.icns"
     ],
-    "resources": {
-      "WebView2Loader.dll": ".",
-      "vendor/windivert/x64/WinDivert.dll": ".",
-      "vendor/windivert/x64/WinDivert64.sys": "."
-    },
     "windows": {
       "webviewInstallMode": {
         "type": "downloadBootstrapper"

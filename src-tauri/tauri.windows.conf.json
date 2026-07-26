@@ -1,0 +1,10 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "bundle": {
+    "resources": {
+      "WebView2Loader.dll": ".",
+      "vendor/windivert/x64/WinDivert.dll": ".",
+      "vendor/windivert/x64/WinDivert64.sys": "."
+    }
+  }
+}

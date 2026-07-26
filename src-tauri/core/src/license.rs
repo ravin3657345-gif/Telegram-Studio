@@ -127,7 +127,9 @@ pub fn legacy_machine_id_hash() -> String {
 /// changing it would make existing users' stored tokens undecryptable.
 /// Falls back to legacy_machine_id() if the SMBIOS UUID can't be read (e.g.
 /// a locked-down VM) — won't survive a reinstall in that fallback case, but
-/// better than failing activation outright.
+/// better than failing activation outright. On macOS, legacy_machine_id()
+/// itself now reads the real IOPlatformUUID (see crypto.rs), so this is a
+/// real per-machine identifier there too, not a generic stand-in.
 fn hardware_fingerprint() -> String {
     #[cfg(windows)]
     {
