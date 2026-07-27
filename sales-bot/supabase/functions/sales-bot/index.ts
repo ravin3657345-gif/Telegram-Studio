@@ -273,6 +273,24 @@ const MAIN_KEYBOARD = {
   ],
 };
 
+// Постоянная клавиатура под полем ввода (Reply Keyboard) — второй, отдельный
+// от MAIN_KEYBOARD слой навигации. В отличие от инлайн-кнопок (привязаны к
+// одному сообщению, "уезжают" вверх по мере переписки), эта висит всегда,
+// пока её явно не убрать. Один sendMessage может нести только ОДИН тип
+// reply_markup — inline_keyboard и keyboard нельзя совместить в одном
+// сообщении, поэтому она отправляется отдельным коротким сообщением следом
+// за основным текстом /start (см. handleStart). Нажатие такой кнопки просто
+// присылает её текст как обычное сообщение от пользователя — сравнение по
+// точному тексту в handleUpdate ниже, как с /command-ами.
+const REPLY_KEYBOARD = {
+  keyboard: [
+    [{ text: "💳 Купить" }],
+    [{ text: "📸 Скриншоты" }, { text: "🎬 Демо" }, { text: "🔑 Мой ключ" }],
+    [{ text: "❓ Как это работает" }, { text: "📥 Обновление" }],
+  ],
+  resize_keyboard: true,
+};
+
 // ── Хендлеры покупателя ──────────────────────────────────────────────────
 
 async function handleStart(chatId: number) {
@@ -290,6 +308,11 @@ async function handleStart(chatId: number) {
       "💳 <b>Разовая покупка.</b> Заплатили один раз — программа остаётся с вами. Важные обновления бот пришлёт сам, как только выйдут.\n\n" +
       "👇 Посмотрите живое демо Rich-режима кнопкой ниже — займёт 10 секунд.",
     reply_markup: MAIN_KEYBOARD,
+  });
+  await api("sendMessage", {
+    chat_id: chatId,
+    text: "Меню всегда под рукой ⬇️",
+    reply_markup: REPLY_KEYBOARD,
   });
 }
 
@@ -681,6 +704,14 @@ async function handleUpdate(update: any, config: BotConfig) {
   if (update.message?.text?.startsWith("/broadcast") && isAdmin(config, update.message.chat.id)) {
     return handleAdminBroadcastStart(update.message.chat.id, update.message.text.slice("/broadcast".length));
   }
+  // Нажатия постоянной клавиатуры (REPLY_KEYBOARD) — Telegram присылает их
+  // как обычный текст сообщения, сравниваем по точному совпадению с кнопкой.
+  if (update.message?.text === "💳 Купить") return handleBuy(update.message.chat.id, config);
+  if (update.message?.text === "📸 Скриншоты") return handleScreenshots(update.message.chat.id);
+  if (update.message?.text === "🎬 Демо") return handleDemo(update.message.chat.id);
+  if (update.message?.text === "🔑 Мой ключ") return handleMyKey(update.message.chat.id, update.message.from.id, config);
+  if (update.message?.text === "❓ Как это работает") return handleHelp(update.message.chat.id, config);
+  if (update.message?.text === "📥 Обновление") return handleGetUpdate(update.message.chat.id, update.message.from.id, config);
   if (update.callback_query) return handleCallbackQuery(update.callback_query, config);
   if (update.pre_checkout_query) return handlePreCheckout(update.pre_checkout_query);
   if (update.message?.successful_payment) return handleSuccessfulPayment(update.message, config);
