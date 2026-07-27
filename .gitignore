@@ -15,27 +15,23 @@ src-tauri/android-release.properties
 # Compiled dev tool (source: src-tauri/tools/keygen/src/main.rs)
 /keygen.exe
 
-# for-testers/ — built installers, test keys and archives for manual
-# distribution to testers. Real releases go to D:\Релиз, not the repo.
-for-testers/*.msi
-for-testers/*.rar
-for-testers/*.zip
-for-testers/keygen.exe
-for-testers/KEY.txt
+# for-testers/ — built installers, test keys, archives and instructions for
+# manual distribution to testers. Not part of the app itself.
+for-testers/
 
 # Android debug APK — huge, rebuilt on demand
 for-testers-android/*.apk
 
+# Old compiled installer artifacts — real releases go to D:\Релиз, not the repo
+dist-release/
+
 # Claude Code local settings/lock files — machine-specific
 .claude/
 
-# Sales bot — token.txt holds a real bot secret, the launcher exe is a
-# compiled artifact (source: src-tauri/tools/sales-bot-launcher/src/main.rs)
-sales-bot/token.txt
-sales-bot/*.exe
-sales-bot/*.lnk
-sales-bot/control-panel/panel-icon-badged.*
-sales-bot/control-panel/src-tauri/target/
+# Sales bot — a separate commercial tool (bot, control panel, Supabase
+# functions) with real business/personal data (pricing, seller's Telegram
+# id, tokens) baked into its config and screenshots. Not part of the app.
+sales-bot/
 
 # OS
 .DS_Store
