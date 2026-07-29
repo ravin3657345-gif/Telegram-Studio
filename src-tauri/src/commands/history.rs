@@ -318,43 +318,88 @@ pub async fn execute_pending_deletes(state: &AppState) {
     let pending: Vec<(String, String, i64, String)> = {
         let Ok(db) = state.db.lock() else { return };
         let Ok(mut stmt) = db.prepare(
-            "SELECT h.id, c.telegram_id, h.telegram_msg_id, b.token
+            "SELECT h.id, c.telegram_id, h.telegram_msg_id, h.bot_id
              FROM publication_history h
              JOIN channels c ON c.id = h.channel_id
-             JOIN bots b ON b.id = h.bot_id
              WHERE h.delete_at IS NOT NULL
                AND h.delete_at <= ?1
                AND h.status = 'published'",
         ) else { return };
 
-        stmt.query_map(rusqlite::params![now], |row| {
-            Ok((
-                row.get::<_, String>(0)?,
-                row.get::<_, String>(1)?,
-                row.get::<_, i64>(2)?,
-                row.get::<_, String>(3)?,
-            ))
-        })
-        .ok()
-        .map(|rows| rows.flatten().collect())
-        .unwrap_or_default()
+        let rows: Vec<(String, String, i64, String)> = stmt
+            .query_map(rusqlite::params![now], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, i64>(2)?,
+                    row.get::<_, String>(3)?,
+                ))
+            })
+            .ok()
+            .map(|rows| rows.flatten().collect())
+            .unwrap_or_default();
+
+        // Tokens are stored ENCRYPTED at rest ("DPAPI:0100…" / "ENC:…", see
+        // crypto.rs) — they must go through bots_q::get_token, which decrypts.
+        // This used to JOIN bots and read `b.token` straight out of SQL, so the
+        // ciphertext itself was handed to TelegramClient::new and ended up in
+        // the request URL as the bot-token path segment. Telegram then answered
+        // every single delete with a bare 404 `{"ok":false,"description":"Not
+        // Found"}` — which reads like "the message is gone" but actually means
+        // "no such API path", because the token segment was garbage. Publishing
+        // never hit this: those paths all load bots via bots_q (which decrypts),
+        // so this one raw query was the only place with the bug.
+        rows.into_iter()
+            .filter_map(|(id, chat_id, msg_id, bot_id)| match bots_q::get_token(&db, &bot_id) {
+                Ok(Some(token)) => Some((id, chat_id, msg_id, token)),
+                _ => {
+                    log::warn!("[delete] no usable token for bot {bot_id}, skipping history {id}");
+                    None
+                }
+            })
+            .collect()
     };
 
     for (id, chat_id, msg_id, token) in pending {
         let client = crate::telegram::client::TelegramClient::new(&token);
         match crate::telegram::methods::delete_message(&client, &chat_id, msg_id).await {
             Ok(_) => {
-                if let Ok(db) = state.db.lock() {
-                    let _ = db.execute(
-                        "UPDATE publication_history SET status='deleted', delete_at=NULL WHERE id=?1",
-                        rusqlite::params![id],
-                    );
-                }
+                mark_deleted(state, &id);
                 log::info!("[delete] deleted msg {} in {}", msg_id, chat_id);
             }
             Err(e) => {
-                log::warn!("[delete] failed to delete msg {} in {}: {}", msg_id, chat_id, e);
+                let err_str = e.to_string();
+                if tstudio_core::retry::is_permanent_telegram_error(&err_str) {
+                    // Bot kicked / lost rights / etc — retrying can never
+                    // succeed, and without this the row keeps its delete_at
+                    // forever and gets retried on EVERY 60s tick for the life
+                    // of the app. The message may well still be sitting in the
+                    // channel though, so don't claim it's deleted: just stop
+                    // retrying (clear delete_at), status stays 'published'.
+                    abandon_delete(state, &id);
+                    log::warn!("[delete] giving up on msg {} in {} (permanent error): {}", msg_id, chat_id, err_str);
+                } else {
+                    log::warn!("[delete] failed to delete msg {} in {}: {}", msg_id, chat_id, err_str);
+                }
             }
         }
+    }
+}
+
+fn mark_deleted(state: &AppState, id: &str) {
+    if let Ok(db) = state.db.lock() {
+        let _ = db.execute(
+            "UPDATE publication_history SET status='deleted', delete_at=NULL WHERE id=?1",
+            rusqlite::params![id],
+        );
+    }
+}
+
+fn abandon_delete(state: &AppState, id: &str) {
+    if let Ok(db) = state.db.lock() {
+        let _ = db.execute(
+            "UPDATE publication_history SET delete_at=NULL WHERE id=?1",
+            rusqlite::params![id],
+        );
     }
 }
