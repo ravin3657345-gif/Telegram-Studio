@@ -93,6 +93,58 @@
     <p class="desc">Живой журнал — новая запись после каждой сборки, опубликованной в бот. Обновляется на этой же странице.</p>
   </div>
 
+  <!-- ═══ 1.8.5 — 2026-07-29 ═══ -->
+  <div class="entry">
+    <div class="entry-head">
+      <span class="entry-version">1.8.5</span>
+      <span class="entry-date">29 июля 2026</span>
+    </div>
+    <p class="entry-status"><span class="dot"></span>собрано и опубликовано в боте</p>
+
+    <div class="section">
+      <div class="section-rail"><div class="glyph"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M12 11v6"/></svg></div></div>
+      <div class="section-body">
+        <p class="section-title">Отложенное удаление постов — не работало вообще, починено</p>
+        <ul class="change-list">
+          <li>Планировщик брал токен бота напрямую из базы, где тот лежит зашифрованным, и подставлял в адрес запроса шифротекст вместо токена. Telegram отвечал <code>404 Not Found</code> — что выглядит как «сообщение не найдено», а на деле значит «нет такого метода API». В итоге ни один пост не удалялся, а запись оставалась в очереди и повторяла попытку каждую минуту бесконечно</li>
+          <li>Публикацию это не задевало: она берёт ботов через слой, который расшифровывает токен — этот запрос был единственным в проекте, читавшим токен в обход него</li>
+          <li>При действительно постоянной ошибке (бота выгнали, отозвали права) попытки теперь прекращаются, но пост <strong>не</strong> помечается удалённым — сообщение может всё ещё быть в канале</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-rail"><div class="glyph"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></div></div>
+      <div class="section-body">
+        <p class="section-title">История публикаций</p>
+        <ul class="change-list">
+          <li>В меню отложенного удаления добавлен пункт «Удалить сейчас» — раньше минимальным вариантом был час</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-rail"><div class="glyph"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div></div>
+      <div class="section-body">
+        <p class="section-title">Безопасность</p>
+        <ul class="change-list">
+          <li>Токены ботов больше не передаются в интерфейс в открытом виде при обычной загрузке списка — только маска фиксированной длины (чтобы не выдавать и длину токена). Настоящее значение запрашивается отдельно и только по явному нажатию «показать»/«скопировать»</li>
+          <li>Убрана неиспользуемая внутренняя команда чтения произвольного файла с диска</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-rail"><div class="glyph"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="5" rx="1.5"/><rect x="5" y="11" width="14" height="4" rx="1.5"/><rect x="7" y="17" width="10" height="3" rx="1.5"/></svg></div></div>
+      <div class="section-body">
+        <p class="section-title">Мелочи</p>
+        <ul class="change-list">
+          <li>При удалении нескольких черновиков подряд плашки «Черновик удалён» больше не заполняют весь экран — одновременно показывается не больше трёх</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
   <!-- ═══ 1.8.4 — 2026-07-23 ═══ -->
   <div class="entry">
     <div class="entry-head">
