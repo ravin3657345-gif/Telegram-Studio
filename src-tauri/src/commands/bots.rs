@@ -16,6 +16,20 @@ pub struct BotInfo {
     pub username: Option<String>,
 }
 
+/// Bot tokens are only ever needed in full on the Rust side (to call the
+/// Telegram API) — the frontend only displays a masked form and copies the
+/// real value on explicit user action (`reveal_bot_token`). Sending the full
+/// token on every passive `get_bots()`/`add_bot()` load put it in JS memory
+/// unnecessarily, reachable by anything that can run script in the WebView.
+/// Fixed-length mask (not proportional to the real token length) so the
+/// token's length isn't leaked either.
+fn mask_token(token: &str) -> String {
+    match token.split_once(':') {
+        Some((id, _)) => format!("{id}:••••••••••••••••••••"),
+        None => "••••••••••••••••••••".to_string(),
+    }
+}
+
 fn check_token_format(token: &str) -> Result<(), String> {
     let parts: Vec<&str> = token.splitn(2, ':').collect();
     let valid = parts.len() == 2
@@ -67,7 +81,24 @@ pub async fn get_bots(state: tauri::State<'_, AppState>) -> Result<Vec<Bot>, Str
         }
     }
 
+    for bot in &mut bots {
+        bot.token = mask_token(&bot.token);
+    }
+
     Ok(bots)
+}
+
+/// Real token, fetched only on an explicit user action (show/copy in
+/// BotsPage) — never as part of a passive list load.
+#[tauri::command]
+pub async fn reveal_bot_token(
+    bot_id: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<String, String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    bots_q::get_token(&db, &bot_id)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "Бот не найден".to_string())
 }
 
 #[tauri::command]
@@ -94,12 +125,15 @@ pub async fn add_bot(
     let db = state.db.lock().map_err(|e| e.to_string())?;
 
     // Если бот с таким токеном уже есть — вернуть его без ошибки
-    if let Ok(Some(existing)) = bots_q::find_by_token(&db, &bot.token) {
+    if let Ok(Some(mut existing)) = bots_q::find_by_token(&db, &bot.token) {
+        existing.token = mask_token(&existing.token);
         return Ok(existing);
     }
 
     bots_q::insert(&db, &bot).map_err(|e| e.to_string())?;
-    Ok(bot)
+    let mut masked_bot = bot;
+    masked_bot.token = mask_token(&masked_bot.token);
+    Ok(masked_bot)
 }
 
 #[tauri::command]

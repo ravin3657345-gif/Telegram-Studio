@@ -22,6 +22,11 @@ export const validateBotToken = (token: string): Promise<BotInfo> =>
 export const getBots = (): Promise<Bot[]> =>
   invoke("get_bots");
 
+// Bot.token from getBots()/addBot() is already masked server-side — this
+// fetches the real value, only called from an explicit show/copy action.
+export const revealBotToken = (botId: string): Promise<string> =>
+  invoke("reveal_bot_token", { botId });
+
 export const addBot = (token: string): Promise<Bot> =>
   invoke("add_bot", { token });
 

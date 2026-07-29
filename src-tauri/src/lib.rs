@@ -125,6 +125,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::bots::validate_bot_token,
             commands::bots::get_bots,
+            commands::bots::reveal_bot_token,
             commands::bots::add_bot,
             commands::bots::delete_bot,
             commands::channels::get_channels,
@@ -160,7 +161,6 @@ pub fn run() {
             commands::history::get_history_for_edit,
             commands::dashboard::get_channel_dashboard,
             commands::dashboard::get_today_stats,
-            commands::fs_utils::read_file_as_base64,
             commands::license::get_license_status,
             commands::license::activate_license,
             commands::winbypass::enable_windows_bypass,

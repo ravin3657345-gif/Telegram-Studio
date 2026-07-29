@@ -4,7 +4,6 @@ pub mod license;
 pub mod channels;
 pub mod dashboard;
 pub mod drafts;
-pub mod fs_utils;
 pub mod history;
 pub mod publish;
 pub mod settings;

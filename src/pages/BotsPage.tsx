@@ -1,10 +1,9 @@
-import { Bot, Plus, Trash2, Eye, EyeOff, CheckCircle, AlertCircle, Loader } from "lucide-react";
+import { Bot, Plus, Trash2, Eye, EyeOff, Copy, Check, CheckCircle, AlertCircle, Loader } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { TopBar } from "@/components/layout/TopBar";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { CopyButton } from "@/components/ui/CopyButton";
 import { useChannelsStore } from "@/store/channelsStore";
-import { validateBotToken, addBot, deleteBot, getBots } from "@/lib/tauriApi";
+import { validateBotToken, addBot, deleteBot, getBots, revealBotToken } from "@/lib/tauriApi";
 import { toast } from "@/store/uiStore";
 import { t, ti } from "@/lib/i18n";
 import { useSettingsStore } from "@/store/settingsStore";
@@ -189,8 +188,42 @@ function AddBotModal({ onClose, onAdded }: AddBotModalProps) {
 function BotCard({ bot, selected, onDelete }: { bot: BotType; selected: boolean; onDelete: () => void }) {
   const [showToken, setShowToken] = useState(false);
   const [deleting, setDeleting]   = useState(false);
-  const masked = bot.token.replace(/:.+/, ":••••••••••••••••••••");
+  // bot.token from getBots()/addBot() is already masked server-side — the
+  // real value is fetched (and cached here) only on explicit reveal/copy.
+  const [realToken, setRealToken] = useState<string | null>(null);
+  const [copied, setCopied]       = useState(false);
   useSettingsStore((s) => s.language);
+
+  async function getRealToken(): Promise<string> {
+    if (realToken) return realToken;
+    const token = await revealBotToken(bot.id);
+    setRealToken(token);
+    return token;
+  }
+
+  async function handleToggleShowToken() {
+    if (!showToken) {
+      try {
+        await getRealToken();
+      } catch (e) {
+        toast.error(String(e));
+        return;
+      }
+    }
+    setShowToken((v) => !v);
+  }
+
+  async function handleCopyToken(e: React.MouseEvent) {
+    e.stopPropagation();
+    try {
+      const token = await getRealToken();
+      await navigator.clipboard.writeText(token);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    } catch (e) {
+      toast.error(String(e));
+    }
+  }
 
   async function handleDelete() {
     if (!confirm(ti("bots.confirmDelete", { username: bot.username }))) return;
@@ -250,15 +283,21 @@ function BotCard({ bot, selected, onDelete }: { bot: BotType; selected: boolean;
           flex: 1, fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
           color: "var(--text-secondary)", fontFamily: "monospace",
         }}>
-          {showToken ? bot.token : masked}
+          {showToken && realToken ? realToken : bot.token}
         </code>
         <button
-          onClick={() => setShowToken((v) => !v)}
+          onClick={handleToggleShowToken}
           style={{ background: "none", border: "none", cursor: "pointer", padding: 2, color: "var(--text-muted)" }}
         >
           {showToken ? <EyeOff size={14} /> : <Eye size={14} />}
         </button>
-        <CopyButton value={bot.token} title={t("bots.copyToken")} size={13} />
+        <button
+          onClick={handleCopyToken}
+          title={t("bots.copyToken")}
+          style={{ background: "none", border: "none", cursor: "pointer", padding: 2, color: copied ? "var(--success)" : "var(--text-muted)" }}
+        >
+          {copied ? <Check size={13} /> : <Copy size={13} />}
+        </button>
       </div>
 
       {/* Footer */}
