@@ -25,6 +25,12 @@ export const TOAST_DURATIONS: Record<ToastType, number> = {
   warning: 6000,
 };
 
+// Cap on simultaneously visible toasts — deleting many drafts in a row (each
+// fires its own delete-with-undo toast) used to stack every single one with
+// no limit, burying the whole screen. Oldest drops first when the cap is hit,
+// same as most toast libraries' default behavior.
+const MAX_VISIBLE_TOASTS = 3;
+
 interface UiState {
   toasts: ToastItem[];
   historyVersion: number;
@@ -42,7 +48,9 @@ export const useUiStore = create<UiState>((set) => ({
 
   toast: (type, title, description, action) => {
     const id = String(++toastCounter);
-    set((s) => ({ toasts: [...s.toasts, { id, type, title, description, action }] }));
+    set((s) => ({
+      toasts: [...s.toasts, { id, type, title, description, action }].slice(-MAX_VISIBLE_TOASTS),
+    }));
   },
 
   dismissToast: (id) =>
