@@ -29,6 +29,7 @@ interface HistoryItem {
 
 function getDeleteOptions() {
   return [
+    { label: t("history.deleteNow"),    hours: 0  },
     { label: t("history.deleteIn1h"),   hours: 1  },
     { label: t("history.deleteIn6h"),   hours: 6  },
     { label: t("history.deleteIn24h"),  hours: 24 },
@@ -73,9 +74,10 @@ export function HistoryPage() {
   useEffect(load, [historyVersion]);
 
   async function handleScheduleDelete(item: HistoryItem, hours: number | null) {
-    const deleteAt = hours
-      ? new Date(Date.now() + hours * 3600_000).toISOString()
-      : null;
+    // hours === 0 means "delete now" — must stay distinct from null
+    // ("cancel pending deletion"), so this can't collapse to `hours ? ... :
+    // null`, that treats 0 as falsy and would silently cancel instead.
+    const deleteAt = hours === null ? null : new Date(Date.now() + hours * 3600_000).toISOString();
     try {
       await invoke("schedule_post_delete", {
         payload: { historyId: item.id, deleteAt },
@@ -83,7 +85,9 @@ export function HistoryPage() {
       setItems((prev) =>
         prev.map((it) => (it.id === item.id ? { ...it, deleteAt } : it))
       );
-      if (deleteAt) {
+      if (hours === 0) {
+        toast.success(t("history.deleteNowScheduled"));
+      } else if (deleteAt) {
         const d = new Date(deleteAt).toLocaleString("ru", {
           day: "numeric", month: "short", hour: "2-digit", minute: "2-digit",
         });
