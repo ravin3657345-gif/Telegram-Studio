@@ -58,6 +58,9 @@
   .entry-date { font-size: 12.5px; color: var(--text-faint); font-variant-numeric: tabular-nums; }
   .entry-status { display: flex; align-items: center; gap: 5px; font-size: 12px; color: var(--success); margin-bottom: 18px; }
   .entry-status .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--success); flex-shrink: 0; }
+  /* Optional one-line framing above an entry's sections, for releases whose
+     character isn't obvious from the section titles alone. */
+  .entry-lead { font-size: 13.5px; color: var(--text-muted); margin: -6px 0 20px; max-width: 62ch; }
 
   .section { display: flex; gap: 16px; margin-bottom: 18px; }
   .section:last-child { margin-bottom: 0; }
@@ -91,6 +94,64 @@
     <p class="eyebrow">Telegram Studio</p>
     <h1>Журнал изменений</h1>
     <p class="desc">Живой журнал — новая запись после каждой сборки, опубликованной в бот. Обновляется на этой же странице.</p>
+  </div>
+
+  <!-- ═══ 1.8.6 — 2026-08-01 ═══ -->
+  <div class="entry">
+    <div class="entry-head">
+      <span class="entry-version">1.8.6</span>
+      <span class="entry-date">1 августа 2026</span>
+    </div>
+    <p class="entry-status"><span class="dot"></span>собрано и опубликовано в боте</p>
+
+    <p class="entry-lead">Сборка целиком про исправления — новых возможностей нет. Нашлись при сплошной проверке кода, часть — прямо в рабочем журнале приложения.</p>
+
+    <div class="section">
+      <div class="section-rail"><div class="glyph"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4 20-7z"/></svg></div></div>
+      <div class="section-body">
+        <p class="section-title">Публикация теряла содержимое поста</p>
+        <ul class="change-list">
+          <li>Пост из одной картинки и одного файла уходил в канал как голый файл: и картинка, и весь текст пропадали молча. Самый частый способ на это наткнуться — прикрепить файл нижней панелью к посту, в котором уже есть картинка</li>
+          <li>Если при отправке нескольких вложений связь обрывалась на середине, повтор отправлял заново и то, что уже ушло — в канал прилетал дубль альбома. Теперь повтор делается для каждого файла отдельно, а не для поста целиком</li>
+          <li>Больше десяти картинок в одном сообщении: одиннадцатая и дальше просто исчезали. Теперь уходят следующим альбомом</li>
+          <li>То же самое в режиме Rich: пятнадцать картинок в одной карусели доходили как десять. Теперь делятся на карусель из десяти и карусель из пяти</li>
+          <li>Анимированный GIF в режиме Rich отправлялся с пометкой «фотография», из-за чего мог прийти неподвижной картинкой</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-rail"><div class="glyph"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 5v14c0 1.66-4 3-9 3s-9-1.34-9-3V5"/><path d="M3 12c0 1.66 4 3 9 3s9-1.34 9-3"/></svg></div></div>
+      <div class="section-body">
+        <p class="section-title">Каналы и боты не удалялись</p>
+        <ul class="change-list">
+          <li>Удаление канала или бота, через который хоть раз что-то публиковалось, обрывалось ошибкой базы данных. Теперь удаляются, а записи в истории сохраняются — история остаётся архивом того, что было отправлено, даже если канала уже нет</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-rail"><div class="glyph"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg></div></div>
+      <div class="section-body">
+        <p class="section-title">Отложенное удаление зацикливалось</p>
+        <ul class="change-list">
+          <li>Если сообщение к моменту удаления уже было убрано вручную, приложение считало это временным сбоем и повторяло попытку каждую минуту — бесконечно, переживая перезапуски. В журнале одного из устройств такая запись накрутила 66 попыток за двое суток. Теперь это засчитывается как успех: сообщения в канале нет, а значит цель достигнута</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-rail"><div class="glyph"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="5" rx="1.5"/><rect x="5" y="11" width="14" height="4" rx="1.5"/><rect x="7" y="17" width="10" height="3" rx="1.5"/></svg></div></div>
+      <div class="section-body">
+        <p class="section-title">Мелочи</p>
+        <ul class="change-list">
+          <li>Списки ботов и каналов обновляются одним заходом, а не по очереди. При недоступном Telegram страница открывалась тем дольше, чем больше у вас ботов; теперь ожидание одинаковое независимо от их количества</li>
+          <li>Ссылка с кавычкой в адресе больше не ломает Rich-пост</li>
+          <li>Файлы удалённых черновиков и шаблонов удаляются с диска. Раньше картинки и видео оставались лежать навсегда</li>
+          <li>Если ни один файл поста не удалось прочитать, публикация честно сообщает об ошибке вместо отправки в канал пустого сообщения с одним заголовком</li>
+        </ul>
+      </div>
+    </div>
   </div>
 
   <!-- ═══ 1.8.5 — 2026-07-29 ═══ -->
