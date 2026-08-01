@@ -41,10 +41,30 @@ pub fn validate(attachments: &[DraftAttachmentPayload]) -> Result<(), String> {
 /// would otherwise let a crafted payload write arbitrary bytes to an
 /// arbitrary path on disk. Real ids are always client/server-generated
 /// UUIDs, which this charset accepts unchanged.
-fn is_safe_path_segment(s: &str) -> bool {
+pub fn is_safe_path_segment(s: &str) -> bool {
     !s.is_empty()
         && s.len() <= 100
         && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+}
+
+/// Deletes a draft's/template's on-disk media directory. The `draft_media`
+/// ROWS go away on their own via the ON DELETE CASCADE from drafts, but the
+/// files they pointed at used to just stay on disk forever — a deleted post
+/// with a 40 MB video left that 40 MB behind permanently, and the autosave
+/// prune that trims past DRAFT_MAX_COUNT leaked silently on every overflow.
+/// Best-effort: a missing directory or a locked file is not worth failing a
+/// delete over. Goes through `is_safe_path_segment` for the same reason
+/// `persist` does — `owner_id` becomes a raw path segment.
+pub fn remove_media_dir(app_dir: &Path, owner_id: &str) {
+    if !is_safe_path_segment(owner_id) {
+        return;
+    }
+    let dir = app_dir.join("draft_media").join(owner_id);
+    if let Err(e) = std::fs::remove_dir_all(&dir) {
+        if e.kind() != std::io::ErrorKind::NotFound {
+            log::warn!("[attachments] could not remove {}: {e}", dir.display());
+        }
+    }
 }
 
 /// Writes each attachment to `{app_dir}/draft_media/{owner_id}/` and upserts

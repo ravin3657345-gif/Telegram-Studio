@@ -7,6 +7,7 @@
 // reading an already-sent rich message, not something you construct to send.
 
 import { miniHtmlToTelegramHtml } from "./miniHtml";
+import { TELEGRAM_MAX_MEDIA_GROUP } from "./constants";
 import { ANCHOR_TOP_NAME } from "@/extensions/BlockAnchor";
 
 interface TiptapMark { type: string; attrs?: Record<string, unknown> }
@@ -87,14 +88,21 @@ function convertBlockList(
       ) {
         run.push(nodes[++i]);
       }
-      const isGroup = run.length > 1;
       const tags = run.map((n) => renderRichMediaTag(n, photos, () => counter.n++));
-      if (isGroup) {
+      if (tags.length > 1) {
         const layout = (run[0].attrs?.groupLayout as string) ?? "collage";
-        if (layout === "slideshow") {
-          parts.push(`<tg-slideshow>${tags.join("")}</tg-slideshow>`);
-        } else {
-          parts.push(`<tg-collage>${tags.join("")}</tg-collage>`);
+        const wrapper = layout === "slideshow" ? "tg-slideshow" : "tg-collage";
+        // One <tg-collage>/<tg-slideshow> holds at most TELEGRAM_MAX_MEDIA_GROUP items —
+        // same cap as sendMediaGroup. A longer run used to go out as a single
+        // oversized wrapper and Telegram silently kept only the first 10,
+        // dropping the rest with no error (live-reported 2026-08-01: 15 photos
+        // in one slideshow arrived as 10). Emit consecutive wrappers instead.
+        for (let s = 0; s < tags.length; s += TELEGRAM_MAX_MEDIA_GROUP) {
+          const chunk = tags.slice(s, s + TELEGRAM_MAX_MEDIA_GROUP);
+          // A trailing chunk of one is emitted bare — a "group" of a single
+          // item is pointless and Telegram treats a lone item in a wrapper
+          // inconsistently.
+          parts.push(chunk.length > 1 ? `<${wrapper}>${chunk.join("")}</${wrapper}>` : chunk[0]);
         }
       } else {
         parts.push(tags[0]);
@@ -305,7 +313,10 @@ function extractRichText(node: TiptapNode): string {
         case "highlight":   text = `<mark>${text}</mark>`; break;
         case "link": {
           const href = mark.attrs?.href as string | undefined;
-          if (href) text = `<a href="${href}">${text}</a>`;
+          // Escaped, not interpolated raw: a quote anywhere in the URL used to
+          // close the attribute early and hand Telegram malformed HTML, which
+          // it rejects for the whole message.
+          if (href) text = `<a href="${escapeAttr(href)}">${text}</a>`;
           break;
         }
       }
@@ -323,4 +334,10 @@ function escapeHtml(str: string): string {
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
+}
+
+// escapeHtml plus the double quote — only needed for values going inside an
+// HTML attribute, where an unescaped quote terminates the attribute.
+function escapeAttr(str: string): string {
+  return escapeHtml(str).replace(/"/g, "&quot;");
 }

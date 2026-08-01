@@ -243,4 +243,59 @@ describe("tiptapToRichHtml", () => {
     );
     expect(html).toBe("");
   });
+
+  it("splits a media run longer than 10 into consecutive slideshows", () => {
+    // Telegram keeps only the first 10 items of one <tg-slideshow> and drops
+    // the rest without an error — live-reported with 15 photos.
+    const img = (i: number) => ({
+      type: "blockImage",
+      attrs: { fileId: `f${i}`, fileName: `${i}.jpg`, mimeType: "image/jpeg", groupLayout: "slideshow" },
+    });
+    const { html, photos } = tiptapToRichHtml(
+      doc(...Array.from({ length: 15 }, (_, i) => img(i))),
+    );
+    expect(photos).toHaveLength(15);
+    const groups = html.match(/<tg-slideshow>/g) ?? [];
+    expect(groups).toHaveLength(2);
+    // 10 + 5, and every photo still referenced exactly once
+    expect((html.match(/<img /g) ?? [])).toHaveLength(15);
+    expect(html.startsWith("<tg-slideshow>")).toBe(true);
+  });
+
+  it("emits a trailing single leftover photo bare, not wrapped in a group", () => {
+    const img = (i: number) => ({
+      type: "blockImage",
+      attrs: { fileId: `f${i}`, fileName: `${i}.jpg`, mimeType: "image/jpeg", groupLayout: "collage" },
+    });
+    const { html } = tiptapToRichHtml(doc(...Array.from({ length: 11 }, (_, i) => img(i))));
+    expect((html.match(/<tg-collage>/g) ?? [])).toHaveLength(1);
+    expect((html.match(/<img /g) ?? [])).toHaveLength(11);
+    // the 11th sits outside the closed collage
+    expect(html.endsWith('</tg-collage><img src="tg://photo?id=img_10"/>')).toBe(true);
+  });
+
+  it("leaves a run of exactly 10 as a single group", () => {
+    const img = (i: number) => ({
+      type: "blockImage",
+      attrs: { fileId: `f${i}`, fileName: `${i}.jpg`, mimeType: "image/jpeg", groupLayout: "slideshow" },
+    });
+    const { html } = tiptapToRichHtml(doc(...Array.from({ length: 10 }, (_, i) => img(i))));
+    expect((html.match(/<tg-slideshow>/g) ?? [])).toHaveLength(1);
+  });
+
+  it("escapes quotes and ampersands inside a link href", () => {
+    // An unescaped quote closed the attribute early and handed Telegram
+    // malformed HTML, which it rejects for the whole message.
+    const { html } = tiptapToRichHtml(
+      doc({
+        type: "paragraph",
+        content: [{
+          type: "text",
+          text: "тут",
+          marks: [{ type: "link", attrs: { href: 'https://x.com/?a=1&b="2"' } }],
+        }],
+      }),
+    );
+    expect(html).toBe('<p><a href="https://x.com/?a=1&amp;b=&quot;2&quot;">тут</a></p>');
+  });
 });

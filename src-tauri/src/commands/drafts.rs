@@ -136,13 +136,27 @@ pub async fn upsert_draft(
             )
             .unwrap_or(0);
         if count > DRAFT_MAX_COUNT {
-            db.execute(
-                "DELETE FROM drafts WHERE kind = 'draft' AND status = 'draft' AND id NOT IN (
-                    SELECT id FROM drafts WHERE kind = 'draft' AND status = 'draft'
-                    ORDER BY updated_at DESC LIMIT ?1
-                )",
-                rusqlite::params![DRAFT_MAX_COUNT],
-            ).ok();
+            // Collect the doomed ids first so their media directories can be
+            // removed too — the draft_media ROWS cascade away with the draft,
+            // but the files on disk don't, and this prune runs unattended on
+            // autosave, so leaked media here accumulates invisibly.
+            let doomed: Vec<String> = db
+                .prepare(
+                    "SELECT id FROM drafts WHERE kind = 'draft' AND status = 'draft' AND id NOT IN (
+                        SELECT id FROM drafts WHERE kind = 'draft' AND status = 'draft'
+                        ORDER BY updated_at DESC LIMIT ?1
+                    )",
+                )
+                .and_then(|mut s| {
+                    s.query_map(rusqlite::params![DRAFT_MAX_COUNT], |r| r.get(0))
+                        .map(|rows| rows.filter_map(|r| r.ok()).collect())
+                })
+                .unwrap_or_default();
+
+            for id in &doomed {
+                db.execute("DELETE FROM drafts WHERE id = ?1", rusqlite::params![id]).ok();
+                attachments::remove_media_dir(&state.app_dir, id);
+            }
         }
 
         Ok(draft)
@@ -166,5 +180,9 @@ pub async fn delete_draft(
     state: tauri::State<'_, AppState>,
 ) -> Result<(), String> {
     let db = state.db.lock().map_err(|e| e.to_string())?;
-    q::delete(&db, &draft_id).map_err(|e| e.to_string())
+    q::delete(&db, &draft_id).map_err(|e| e.to_string())?;
+    // draft_media rows cascade off the drafts row; the files they point at
+    // do not, and used to be left behind on disk permanently.
+    attachments::remove_media_dir(&state.app_dir, &draft_id);
+    Ok(())
 }

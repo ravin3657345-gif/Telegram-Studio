@@ -290,6 +290,40 @@ pub async fn send_rich_message(
     html: &str,
     media: &[RichMediaPart],
 ) -> Result<TgMessage, TelegramError> {
+    // Drop references to media that never made it into `media`. Callers strip
+    // placeholders for attachments THEY failed to process, but an attachment
+    // can also go missing before it ever reaches Rust — a file evicted from
+    // the frontend's fileRegistry is skipped client-side while its
+    // `tg://photo?id=…` tag stays in the HTML. Telegram then rejects the whole
+    // message with RICH_MESSAGE_PHOTO_NO_MEDIA_FOUND, losing an otherwise fine
+    // post over one absent image. Guarding here rather than in each caller
+    // covers every send path (immediate, republish, scheduled) at once.
+    let known: std::collections::HashSet<&str> = media.iter().map(|m| m.id.as_str()).collect();
+    let mut html = html.to_string();
+    let mut dropped = 0usize;
+    for id in tstudio_core::rich_html::referenced_media_ids(&html) {
+        if !known.contains(id.as_str()) {
+            log::warn!("[rich] dropping reference to missing media {id}");
+            html = remove_img_placeholder(&html, &id);
+            dropped += 1;
+        }
+    }
+
+    // Losing SOME media still degrades gracefully above, but losing every last
+    // attachment means nothing actually arrived — the frontend's fileRegistry
+    // was emptied, or the files were evicted. Carrying on there posts a bubble
+    // containing only the title to a real channel, which is worse than
+    // failing: the user sees "published", the channel gets a stub, and there
+    // is no hint anything went wrong. Live-reported 2026-08-01.
+    if dropped > 0 && media.is_empty() {
+        return Err(TelegramError::Api(
+            "Файлы поста не найдены — переоткройте черновик и попробуйте ещё раз".to_string(),
+        ));
+    }
+
+    let html = strip_empty_media_groups(html.trim());
+    let html = html.as_str();
+
     if html.is_empty() {
         return Err(TelegramError::Api("Rich message HTML пустой".to_string()));
     }

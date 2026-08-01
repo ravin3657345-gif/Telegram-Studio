@@ -8,3 +8,4 @@ pub mod backup_retention;
 pub mod crypto;
 pub mod license;
 pub mod retry;
+pub mod rich_html;

@@ -123,9 +123,41 @@ fn build_keyboard(buttons: &[Vec<ButtonPayload>]) -> Option<InlineKeyboardMarkup
     Some(InlineKeyboardMarkup { inline_keyboard: rows })
 }
 
+/// One photo or video as its own message. Also used for the trailing item of
+/// an 11-plus-item run (see `publish_to_channel`) — sendMediaGroup requires
+/// 2..=10 items, so a leftover chunk of exactly one has to go out this way.
+async fn send_single_media(
+    client: &TelegramClient,
+    chat_id: &str,
+    item: &MediaItem,
+    caption: &str,
+    keyboard: Option<&InlineKeyboardMarkup>,
+) -> Result<i64, String> {
+    let msg = if item.media_type == "image" {
+        with_retry(|| async move {
+            methods::send_photo(client, chat_id, item, caption, "HTML", keyboard)
+                .await.map_err(|e| e.to_string())
+        }).await?
+    } else {
+        with_retry(|| async move {
+            methods::send_video(client, chat_id, item, caption, "HTML", keyboard)
+                .await.map_err(|e| e.to_string())
+        }).await?
+    };
+    Ok(msg.message_id)
+}
+
 // pub(crate) — also called from scheduler::process_pending to send scheduled
 // posts that carry persisted media, reusing the same photo/video/document
 // branching logic as immediate publish instead of duplicating it.
+//
+// Retries live on each individual Telegram call below, NOT around this whole
+// function: a post with an album plus two documents is several sequential
+// sends, so retrying the function wholesale re-sent everything that had
+// already succeeded and posted the album twice whenever a later document hit
+// a transient error. Per-call retry is also safe in a way the outer one never
+// was — each Telegram send is atomic, so a retried call either lands once or
+// not at all.
 pub(crate) async fn publish_to_channel(
     client: &TelegramClient,
     telegram_chat_id: &str,
@@ -143,42 +175,52 @@ pub(crate) async fn publish_to_channel(
         .collect();
 
     let mut last_msg_id: i64 = 0;
+    let caption_html = payload.content_html.as_str();
 
     if photo_video.is_empty() && docs.is_empty() {
         // Text-only
-        let msg = methods::send_message(
-            client, telegram_chat_id, &payload.content_html, "HTML", kb_ref,
-        ).await.map_err(|e| e.to_string())?;
+        let msg = with_retry(|| async move {
+            methods::send_message(client, telegram_chat_id, caption_html, "HTML", kb_ref)
+                .await.map_err(|e| e.to_string())
+        }).await?;
         last_msg_id = msg.message_id;
-    } else if photo_video.len() == 1 && docs.is_empty() {
-        // Single photo or video
-        let item = photo_video[0];
-        let msg = if item.media_type == "image" {
-            methods::send_photo(client, telegram_chat_id, item, &payload.content_html, "HTML", kb_ref)
-                .await.map_err(|e| e.to_string())?
-        } else {
-            methods::send_video(client, telegram_chat_id, item, &payload.content_html, "HTML", kb_ref)
-                .await.map_err(|e| e.to_string())?
-        };
-        last_msg_id = msg.message_id;
+    } else if photo_video.len() == 1 {
+        // Single photo or video. Deliberately NOT gated on `docs.is_empty()`:
+        // with a document alongside it, that gate left the lone photo matching
+        // no branch at all, so the photo was dropped AND the caption went
+        // nowhere (the document loop below only captions when there are no
+        // photos) — a post of one image plus one file sent nothing but a bare
+        // untitled file.
+        last_msg_id = send_single_media(client, telegram_chat_id, photo_video[0], caption_html, kb_ref).await?;
     } else if photo_video.len() > 1 {
-        // Photo/video group (album) — max 10
-        let group: Vec<MediaItem> = photo_video.iter().map(|&m| m.clone()).take(10).collect();
-        let msgs = methods::send_media_group(
-            client, telegram_chat_id, &group, &payload.content_html, "HTML",
-        ).await.map_err(|e| e.to_string())?;
-        last_msg_id = msgs.first().map(|m| m.message_id).unwrap_or(0);
+        // Photo/video album. Telegram caps one sendMediaGroup at 10 items, so
+        // longer runs go out as consecutive albums instead of being silently
+        // truncated to the first 10. Caption rides the first album only.
+        let all: Vec<MediaItem> = photo_video.iter().map(|&m| m.clone()).collect();
+        for (gi, group) in all.chunks(10).enumerate() {
+            let caption = if gi == 0 { caption_html } else { "" };
+            last_msg_id = if group.len() == 1 {
+                send_single_media(client, telegram_chat_id, &group[0], caption, None).await?
+            } else {
+                let msgs = with_retry(|| async move {
+                    methods::send_media_group(client, telegram_chat_id, group, caption, "HTML")
+                        .await.map_err(|e| e.to_string())
+                }).await?;
+                msgs.first().map(|m| m.message_id).unwrap_or(last_msg_id)
+            };
+        }
     }
 
     // Documents always go as individual sendDocument calls.
     // Caption and keyboard only on first doc when no photo/video group was sent.
     for (i, doc) in docs.iter().enumerate() {
         let is_first_no_photos = i == 0 && photo_video.is_empty();
-        let caption = if is_first_no_photos { &payload.content_html } else { "" };
+        let caption = if is_first_no_photos { caption_html } else { "" };
         let kb_for_doc = if is_first_no_photos { kb_ref } else { None };
-        let msg = methods::send_document(
-            client, telegram_chat_id, doc, caption, "HTML", kb_for_doc,
-        ).await.map_err(|e| e.to_string())?;
+        let msg = with_retry(|| async move {
+            methods::send_document(client, telegram_chat_id, doc, caption, "HTML", kb_for_doc)
+                .await.map_err(|e| e.to_string())
+        }).await?;
         last_msg_id = msg.message_id;
     }
 
@@ -332,7 +374,10 @@ pub async fn publish_post(
 
         'bots: for bot in &ordered_bots {
             let client = TelegramClient::new(&bot.token);
-            match with_retry(|| publish_to_channel(&client, &channel.telegram_id, &payload)).await {
+            // No with_retry here — publish_to_channel retries each individual
+            // Telegram call internally, see its doc comment for why wrapping
+            // the whole multi-send function duplicated already-sent messages.
+            match publish_to_channel(&client, &channel.telegram_id, &payload).await {
                 Ok(msg_id) => {
                     r = BotTryResult {
                         bot_id:       Some(bot.id.clone()),
@@ -561,11 +606,7 @@ pub async fn publish_rich_post(
         let processed = if is_video || is_audio {
             Ok((raw, p.mime_type.clone(), p.file_name.clone()))
         } else {
-            crate::image_utils::normalize_to_jpeg(raw, &p.file_name).map(|(jpeg, _, _)| {
-                let jpeg = crate::image_utils::compress_to_limit(jpeg, 5 * 1024 * 1024);
-                let name = p.file_name.replace(|c: char| !c.is_ascii_alphanumeric() && c != '.', "_") + ".jpg";
-                (jpeg, "image/jpeg".to_string(), name)
-            })
+            crate::image_utils::prepare_rich_image(raw, &p.file_name, 5 * 1024 * 1024)
         };
 
         match processed {
@@ -1006,11 +1047,7 @@ pub async fn republish_rich_post(
         let processed = if is_video || is_audio {
             Ok((raw, p.mime_type.clone(), p.file_name.clone()))
         } else {
-            crate::image_utils::normalize_to_jpeg(raw, &p.file_name).map(|(jpeg, _, _)| {
-                let jpeg = crate::image_utils::compress_to_limit(jpeg, 5 * 1024 * 1024);
-                let name = p.file_name.replace(|c: char| !c.is_ascii_alphanumeric() && c != '.', "_") + ".jpg";
-                (jpeg, "image/jpeg".to_string(), name)
-            })
+            crate::image_utils::prepare_rich_image(raw, &p.file_name, 5 * 1024 * 1024)
         };
 
         match processed {

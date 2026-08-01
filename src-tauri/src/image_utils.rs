@@ -119,6 +119,38 @@ pub fn compress_to_limit(bytes: Vec<u8>, max_bytes: usize) -> Vec<u8> {
     bytes
 }
 
+/// Prepares one image attachment for a Rich Message upload: normalize, then
+/// compress to `max_bytes`. Returns (bytes, mime_type, file_name).
+///
+/// Single source of truth for all four Rich upload paths (publish_rich_post,
+/// republish_rich_post, scheduler::load_scheduled_rich_media). Each used to
+/// inline this and hardcode `"image/jpeg"` + a `".jpg"` name regardless of
+/// what `normalize_to_jpeg` actually returned — which silently mislabelled
+/// GIFs, the one format normalize_to_jpeg deliberately passes through
+/// unconverted to keep the animation. Telegram got animated GIF bytes
+/// announced as a JPEG photo.
+pub fn prepare_rich_image(
+    bytes: Vec<u8>,
+    original_name: &str,
+    max_bytes: usize,
+) -> Result<(Vec<u8>, String, String), String> {
+    let (data, mime, name) = normalize_to_jpeg(bytes, original_name)?;
+    // Re-encoding a GIF would decode only its first frame and drop the
+    // animation, so an over-limit GIF is sent as-is and left for Telegram to
+    // accept or reject rather than silently flattened.
+    let data = if mime == "image/gif" { data } else { compress_to_limit(data, max_bytes) };
+    Ok((data, mime.to_string(), sanitize_upload_name(&name)))
+}
+
+/// Strips anything but ASCII alphanumerics and dots out of a file name before
+/// it goes into a multipart part — Cyrillic/emoji names have been seen to
+/// upset the Bot API's multipart parsing.
+fn sanitize_upload_name(name: &str) -> String {
+    let cleaned: String = name
+        .replace(|c: char| !c.is_ascii_alphanumeric() && c != '.', "_");
+    if cleaned.starts_with('.') || cleaned.is_empty() { format!("image{cleaned}") } else { cleaned }
+}
+
 fn ensure_ext(name: &str, ext: &str) -> String {
     let p = std::path::Path::new(name);
     if p.extension().and_then(|e| e.to_str()).map(|e| e.eq_ignore_ascii_case(ext)) == Some(true) {

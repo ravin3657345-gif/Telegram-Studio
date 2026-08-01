@@ -68,16 +68,38 @@ pub async fn get_bots(state: tauri::State<'_, AppState>) -> Result<Vec<Bot>, Str
     // Refresh each bot's display name/username from a fresh getMe call, so a
     // rename in @BotFather shows up without re-adding the bot. Best-effort —
     // an unreachable/revoked bot just keeps its cached name.
-    for bot in &mut bots {
-        let client = TelegramClient::new(&bot.token);
-        let Ok(user) = methods::get_me(&client).await else { continue };
+    //
+    // Fired concurrently, not in a `for` loop: an unreachable Telegram costs
+    // ~15s direct plus ~15s on the Supabase relay fallback PER CALL, so a
+    // sequential loop made this command block for 30s × bot count with the
+    // Bots page showing nothing the whole time. Concurrently the worst case is
+    // one call's latency regardless of how many bots there are.
+    let refreshed: Vec<(String, crate::telegram::types::TgUser)> = {
+        let mut set = tokio::task::JoinSet::new();
+        for bot in &bots {
+            let (id, token) = (bot.id.clone(), bot.token.clone());
+            set.spawn(async move {
+                let client = TelegramClient::new(&token);
+                methods::get_me(&client).await.ok().map(|u| (id, u))
+            });
+        }
+        let mut out = Vec::new();
+        while let Some(res) = set.join_next().await {
+            if let Ok(Some(pair)) = res { out.push(pair); }
+        }
+        out
+    };
 
-        let new_username = user.username.unwrap_or_else(|| user.first_name.clone());
-        if user.first_name != bot.name || new_username != bot.username {
-            let db = state.db.lock().map_err(|e| e.to_string())?;
-            let _ = bots_q::update_info(&db, &bot.id, &user.first_name, &new_username);
-            bot.name = user.first_name;
-            bot.username = new_username;
+    if !refreshed.is_empty() {
+        let db = state.db.lock().map_err(|e| e.to_string())?;
+        for (id, user) in refreshed {
+            let Some(bot) = bots.iter_mut().find(|b| b.id == id) else { continue };
+            let new_username = user.username.unwrap_or_else(|| user.first_name.clone());
+            if user.first_name != bot.name || new_username != bot.username {
+                let _ = bots_q::update_info(&db, &bot.id, &user.first_name, &new_username);
+                bot.name = user.first_name;
+                bot.username = new_username;
+            }
         }
     }
 

@@ -25,32 +25,52 @@ pub async fn get_channels(
     // user having to remove and re-add the channel. Best-effort: a network
     // hiccup or a channel the bot lost access to just keeps the cached data —
     // it must never make the whole list fail to load.
-    for ch in &mut channels {
-        let token = {
-            let db = state.db.lock().map_err(|e| e.to_string())?;
-            bots_q::get_token(&db, &ch.bot_id).ok().flatten()
-        };
-        let Some(token) = token else { continue };
+    //
+    // Fired concurrently for the same reason as get_bots' getMe refresh: an
+    // unreachable Telegram costs ~15s direct plus ~15s on the relay fallback
+    // per call, and sequentially that multiplied by the channel count into a
+    // minutes-long blank Channels page.
+    let refreshed: Vec<(String, crate::telegram::types::TgChat)> = {
+        let mut set = tokio::task::JoinSet::new();
+        for ch in &channels {
+            let token = {
+                let db = state.db.lock().map_err(|e| e.to_string())?;
+                bots_q::get_token(&db, &ch.bot_id).ok().flatten()
+            };
+            let Some(token) = token else { continue };
+            let (id, telegram_id) = (ch.id.clone(), ch.telegram_id.clone());
+            set.spawn(async move {
+                let client = TelegramClient::new(&token);
+                methods::get_chat(&client, &telegram_id).await.ok().map(|c| (id, c))
+            });
+        }
+        let mut out = Vec::new();
+        while let Some(res) = set.join_next().await {
+            if let Ok(Some(pair)) = res { out.push(pair); }
+        }
+        out
+    };
 
-        let client = TelegramClient::new(&token);
-        let Ok(chat) = methods::get_chat(&client, &ch.telegram_id).await else { continue };
+    if !refreshed.is_empty() {
+        let db = state.db.lock().map_err(|e| e.to_string())?;
+        for (id, chat) in refreshed {
+            let Some(ch) = channels.iter_mut().find(|c| c.id == id) else { continue };
+            let new_title = chat.title.unwrap_or_else(|| ch.title.clone());
+            let changed = new_title != ch.title
+                || chat.username != ch.username
+                || chat.description != ch.description
+                || chat.member_count != ch.member_count;
 
-        let new_title = chat.title.unwrap_or_else(|| ch.title.clone());
-        let changed = new_title != ch.title
-            || chat.username != ch.username
-            || chat.description != ch.description
-            || chat.member_count != ch.member_count;
-
-        if changed {
-            let db = state.db.lock().map_err(|e| e.to_string())?;
-            let _ = channels_q::update_info(
-                &db, &ch.id, &new_title,
-                chat.username.as_deref(), chat.description.as_deref(), chat.member_count,
-            );
-            ch.title = new_title;
-            ch.username = chat.username;
-            ch.description = chat.description;
-            ch.member_count = chat.member_count;
+            if changed {
+                let _ = channels_q::update_info(
+                    &db, &ch.id, &new_title,
+                    chat.username.as_deref(), chat.description.as_deref(), chat.member_count,
+                );
+                ch.title = new_title;
+                ch.username = chat.username;
+                ch.description = chat.description;
+                ch.member_count = chat.member_count;
+            }
         }
     }
 

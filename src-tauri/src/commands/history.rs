@@ -368,18 +368,27 @@ pub async fn execute_pending_deletes(state: &AppState) {
                 log::info!("[delete] deleted msg {} in {}", msg_id, chat_id);
             }
             Err(e) => {
+                use tstudio_core::retry::DeleteOutcome;
                 let err_str = e.to_string();
-                if tstudio_core::retry::is_permanent_telegram_error(&err_str) {
-                    // Bot kicked / lost rights / etc — retrying can never
-                    // succeed, and without this the row keeps its delete_at
-                    // forever and gets retried on EVERY 60s tick for the life
-                    // of the app. The message may well still be sitting in the
-                    // channel though, so don't claim it's deleted: just stop
-                    // retrying (clear delete_at), status stays 'published'.
-                    abandon_delete(state, &id);
-                    log::warn!("[delete] giving up on msg {} in {} (permanent error): {}", msg_id, chat_id, err_str);
-                } else {
-                    log::warn!("[delete] failed to delete msg {} in {}: {}", msg_id, chat_id, err_str);
+                match tstudio_core::retry::classify_delete_error(&err_str) {
+                    DeleteOutcome::AlreadyGone => {
+                        // Someone removed it by hand, or an earlier tick's
+                        // delete landed but its response was lost. Either way
+                        // that IS the outcome this row was asking for.
+                        mark_deleted(state, &id);
+                        log::info!("[delete] msg {} in {} was already gone", msg_id, chat_id);
+                    }
+                    DeleteOutcome::GiveUp => {
+                        // Bot kicked / lost rights / message too old to delete.
+                        // The message may well still be sitting in the channel,
+                        // so don't claim it's deleted: just stop retrying
+                        // (clear delete_at), status stays 'published'.
+                        abandon_delete(state, &id);
+                        log::warn!("[delete] giving up on msg {} in {}: {}", msg_id, chat_id, err_str);
+                    }
+                    DeleteOutcome::Retry => {
+                        log::warn!("[delete] failed to delete msg {} in {}: {}", msg_id, chat_id, err_str);
+                    }
                 }
             }
         }

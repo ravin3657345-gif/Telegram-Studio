@@ -329,10 +329,7 @@ fn load_scheduled_rich_media(db: &rusqlite::Connection, post_id: &str) -> (Vec<m
         let processed = if is_video || is_audio {
             Ok((bytes, mime_type.clone(), file_name.clone()))
         } else {
-            crate::image_utils::normalize_to_jpeg(bytes, &file_name).map(|(jpeg, _, name)| {
-                let jpeg = crate::image_utils::compress_to_limit(jpeg, 5 * 1024 * 1024);
-                (jpeg, "image/jpeg".to_string(), name)
-            })
+            crate::image_utils::prepare_rich_image(bytes, &file_name, 5 * 1024 * 1024)
         };
 
         match processed {

@@ -183,10 +183,15 @@ pub async fn delete_template(
     state: tauri::State<'_, AppState>,
 ) -> Result<(), String> {
     let db = state.db.lock().map_err(|e| e.to_string())?;
-    db.execute(
+    let removed = db.execute(
         "DELETE FROM drafts WHERE id = ?1 AND kind = 'template'",
         rusqlite::params![template_id],
     )
     .map_err(|e| e.to_string())?;
+    // Same on-disk media leak as delete_draft — a template is just a
+    // kind='template' row in the same table, with the same draft_media files.
+    if removed > 0 {
+        crate::commands::attachments::remove_media_dir(&state.app_dir, &template_id);
+    }
     Ok(())
 }

@@ -17,6 +17,7 @@ pub fn run(conn: &Connection) -> Result<()> {
     migrate_v14(conn)?;
     migrate_v15(conn)?;
     migrate_v16(conn)?;
+    migrate_v17(conn)?;
     seed_settings(conn)?;
     Ok(())
 }
@@ -331,6 +332,65 @@ fn migrate_v16(conn: &Connection) -> Result<()> {
         DROP TABLE draft_media;
         ALTER TABLE draft_media_v16 RENAME TO draft_media;
         CREATE INDEX IF NOT EXISTS idx_media_draft ON draft_media(draft_id, sort_order);"
+    )?;
+    Ok(())
+}
+
+fn migrate_v17(conn: &Connection) -> Result<()> {
+    // Drop publication_history's FKs to channels(id) and bots(id). They had no
+    // ON DELETE clause, so with `PRAGMA foreign_keys=ON` (set by SCHEMA, on the
+    // one long-lived connection) deleting a channel or a bot that had ever
+    // published ANYTHING failed outright with "FOREIGN KEY constraint failed" —
+    // and a bot delete failed twice over, since channels cascade off bots and
+    // history references those channels too. Reproduced against a real user
+    // database, 2026-08-01.
+    //
+    // Removing the constraints rather than cascading the delete is deliberate:
+    // history is the archive of what was actually sent, and it must outlive the
+    // channel it was sent to. Every read path was already written for a missing
+    // channel — get_history LEFT JOINs channels and COALESCEs the title,
+    // get_history_for_edit and republish_rich_post both surface "канал не
+    // найден" — so the FKs were enforcing an invariant the rest of the code had
+    // already stopped relying on.
+    //
+    // Idempotency: `run()` re-executes every migrate_vN on each launch, so the
+    // guard keys off the constraints still being present (same approach as
+    // migrate_v16's PRIMARY KEY check).
+    let already_migrated: bool = conn
+        .query_row(
+            "SELECT COUNT(*) FROM sqlite_master
+             WHERE type='table' AND name='publication_history' AND sql NOT LIKE '%FOREIGN KEY%'",
+            [],
+            |r| r.get::<_, i64>(0),
+        )
+        .map(|c| c > 0)
+        .unwrap_or(false);
+    if already_migrated {
+        return Ok(());
+    }
+
+    conn.execute_batch(
+        "CREATE TABLE publication_history_v17 (
+            id              TEXT PRIMARY KEY,
+            draft_id        TEXT,
+            channel_id      TEXT NOT NULL,
+            bot_id          TEXT NOT NULL,
+            telegram_msg_id INTEGER,
+            content_json    TEXT NOT NULL,
+            status          TEXT NOT NULL,
+            error_message   TEXT,
+            published_at    TEXT NOT NULL,
+            delete_at       TEXT,
+            publish_mode    TEXT NOT NULL DEFAULT 'normal'
+        );
+        INSERT INTO publication_history_v17
+            SELECT id, draft_id, channel_id, bot_id, telegram_msg_id, content_json,
+                   status, error_message, published_at, delete_at, publish_mode
+            FROM publication_history;
+        DROP TABLE publication_history;
+        ALTER TABLE publication_history_v17 RENAME TO publication_history;
+        CREATE INDEX IF NOT EXISTS idx_history_pub     ON publication_history(published_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_history_channel ON publication_history(channel_id);"
     )?;
     Ok(())
 }

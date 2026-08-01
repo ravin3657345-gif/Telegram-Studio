@@ -43,6 +43,38 @@ pub fn parse_retry_after_secs(msg: &str) -> Option<u64> {
     }
 }
 
+/// What a failed scheduled *deletion* should do next. Deletion needs its own
+/// classification because its failures do not map onto send failures: the one
+/// error that matters most here ("message to delete not found") is not a
+/// failure at all, it means the message already isn't there.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DeleteOutcome {
+    /// The message is already gone — record the deletion as done.
+    AlreadyGone,
+    /// Retrying can never succeed. Stop trying, but don't claim the message
+    /// was deleted — it may well still be sitting in the channel.
+    GiveUp,
+    /// Transient (network, 5xx, flood wait) — try again on a later tick.
+    Retry,
+}
+
+/// Classifies a `deleteMessage` failure.
+///
+/// `AlreadyGone` used to be lumped in with `Retry`, and since nothing ever
+/// cleared the row's `delete_at`, one such message re-fired a Telegram call
+/// every 60 seconds indefinitely, across restarts. Observed in a real user's
+/// log: 66 identical failures for a single message over two days.
+pub fn classify_delete_error(msg: &str) -> DeleteOutcome {
+    let lower = msg.to_lowercase();
+    if lower.contains("message to delete not found") {
+        DeleteOutcome::AlreadyGone
+    } else if lower.contains("message can't be deleted") || is_permanent_telegram_error(msg) {
+        DeleteOutcome::GiveUp
+    } else {
+        DeleteOutcome::Retry
+    }
+}
+
 /// What the scheduler should do with a post after a transient send failure.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RetryDecision {
@@ -165,5 +197,48 @@ mod tests {
     fn parse_retry_after_returns_none_for_malformed_number() {
         assert_eq!(parse_retry_after_secs("Too Many Requests: retry after soon"), None);
         assert_eq!(parse_retry_after_secs("Too Many Requests: retry after"), None);
+    }
+
+    #[test]
+    fn an_already_deleted_message_is_not_retried() {
+        // The exact string seen looping 66 times in a real user log.
+        assert_eq!(
+            classify_delete_error("Ошибка Telegram API: Bad Request: message to delete not found"),
+            DeleteOutcome::AlreadyGone
+        );
+    }
+
+    #[test]
+    fn an_undeletable_message_gives_up_without_claiming_success() {
+        assert_eq!(
+            classify_delete_error("Bad Request: message can't be deleted"),
+            DeleteOutcome::GiveUp
+        );
+    }
+
+    #[test]
+    fn losing_channel_access_gives_up() {
+        assert_eq!(
+            classify_delete_error("Forbidden: bot was kicked from the channel chat"),
+            DeleteOutcome::GiveUp
+        );
+    }
+
+    #[test]
+    fn a_network_blip_still_retries() {
+        assert_eq!(classify_delete_error("operation timed out"), DeleteOutcome::Retry);
+        assert_eq!(
+            classify_delete_error("Too Many Requests: retry after 30"),
+            DeleteOutcome::Retry
+        );
+        assert_eq!(classify_delete_error(""), DeleteOutcome::Retry);
+    }
+
+    #[test]
+    fn delete_classification_is_case_insensitive() {
+        assert_eq!(
+            classify_delete_error("BAD REQUEST: MESSAGE TO DELETE NOT FOUND"),
+            DeleteOutcome::AlreadyGone
+        );
     }
 }
