@@ -31,6 +31,7 @@ export function SaveTemplateDialog({ onConfirm, onClose, initialName, initialCat
 
   return (
     <Dialog
+      mobileSheet
       onOpenChange={(open) => !open && onClose()}
       style={{
         width: 320,

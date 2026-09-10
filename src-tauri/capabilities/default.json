@@ -12,6 +12,7 @@
     "core:path:default",
     "core:event:default",
     "core:tray:default",
-    "notification:default"
+    "notification:default",
+    "opener:default"
   ]
 }

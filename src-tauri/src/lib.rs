@@ -23,6 +23,11 @@ use tauri::Manager;
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_notification::init())
+        // Opens external URLs/files in the OS default handler ("Открыть в
+        // Telegram" in History, future link actions). The webview can't do
+        // this itself — main.tsx deliberately blocks all external <a href>
+        // navigation, so the opener plugin is the only sanctioned path out.
+        .plugin(tauri_plugin_opener::init())
         .plugin(
             tauri_plugin_log::Builder::new()
                 .level(log::LevelFilter::Info)

@@ -16,6 +16,9 @@ interface SidebarItemProps {
   label: string;
   badge?: number;
   dataTour?: string;
+  /** Match the route exactly — needed for the "/" dashboard link, which
+   * would otherwise be "active" on every page. */
+  end?: boolean;
   /** Secondary action button rendered beside the row (not inside the
    * NavLink — nesting a second interactive element inside an <a> is invalid
    * HTML and would fire both click handlers at once). Currently only the
@@ -23,10 +26,11 @@ interface SidebarItemProps {
   action?: SidebarItemAction;
 }
 
-export function SidebarItem({ to, icon: Icon, label, badge, dataTour, action }: SidebarItemProps) {
+export function SidebarItem({ to, icon: Icon, label, badge, dataTour, end, action }: SidebarItemProps) {
   const link = (
     <NavLink
       to={to}
+      end={end}
       data-tour={dataTour}
       className={({ isActive }) =>
         clsx(

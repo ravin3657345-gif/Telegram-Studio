@@ -3,6 +3,7 @@ import { KeyRound, Loader2, CheckCircle2 } from "lucide-react";
 import { getLicenseStatus, activateLicense } from "@/lib/tauriApi";
 import { t } from "@/lib/i18n";
 import { useSettingsStore } from "@/store/settingsStore";
+import { useIsMobileLayout } from "@/hooks/useIsMobileLayout";
 
 interface Props {
   children: React.ReactNode;
@@ -10,6 +11,7 @@ interface Props {
 
 export function LicenseGate({ children }: Props) {
   useSettingsStore((s) => s.language);
+  const isMobile = useIsMobileLayout();
   const [checking, setChecking]   = useState(true);
   const [activated, setActivated] = useState(false);
   const [key, setKey]             = useState("");
@@ -67,28 +69,29 @@ export function LicenseGate({ children }: Props) {
         position: "fixed", inset: 0, zIndex: 9999,
         backgroundColor: "var(--bg-app)",
         display: "flex", flexDirection: "column",
-        alignItems: "center", justifyContent: "center",
-        padding: 24,
+        alignItems: "center",
+        justifyContent: isMobile ? "flex-start" : "center",
+        padding: isMobile ? 16 : 24,
+        overflowY: "auto",
       }}
     >
       {/* Logo */}
-      <div
+      <img
+        src="/icon.png"
+        width={64}
+        height={64}
+        alt=""
+        draggable={false}
         style={{
-          width: 64, height: 64, borderRadius: 18, marginBottom: 24,
-          backgroundColor: "var(--accent)",
-          display: "flex", alignItems: "center", justifyContent: "center",
+          borderRadius: 18, marginBottom: isMobile ? 20 : 24,
           boxShadow: "0 8px 24px rgba(0,0,0,0.18)",
         }}
-      >
-        <svg width="30" height="30" viewBox="0 0 16 16" fill="none">
-          <path d="M8 1L14 4.5V11.5L8 15L2 11.5V4.5L8 1Z" fill="white" />
-        </svg>
-      </div>
+      />
 
-      <h1 style={{ fontSize: 22, fontWeight: 700, color: "var(--text-primary)", marginBottom: 6 }}>
+      <h1 style={{ fontSize: isMobile ? 20 : 22, fontWeight: 700, color: "var(--text-primary)", marginBottom: 6 }}>
         Telegram Studio
       </h1>
-      <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 36, textAlign: "center" }}>
+      <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: isMobile ? 24 : 36, textAlign: "center" }}>
         {t("license.subtitle")}
       </p>
 
@@ -99,7 +102,7 @@ export function LicenseGate({ children }: Props) {
           backgroundColor: "var(--bg-surface)",
           border: "1px solid var(--border-subtle)",
           borderRadius: 16,
-          padding: "28px 28px 24px",
+          padding: isMobile ? "20px 20px 18px" : "28px 28px 24px",
           boxShadow: "0 4px 24px rgba(0,0,0,0.1)",
         }}
       >

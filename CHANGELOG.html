@@ -96,6 +96,121 @@
     <p class="desc">Живой журнал — новая запись после каждой сборки, опубликованной в бот. Обновляется на этой же странице.</p>
   </div>
 
+  <!-- ═══ 1.9.0.1 — 2026-08-17 ═══ -->
+  <div class="entry">
+    <div class="entry-head">
+      <span class="entry-version">1.9.0.1</span>
+      <span class="entry-date">17 августа 2026</span>
+    </div>
+    <p class="entry-status"><span class="dot"></span>собрано и опубликовано в боте</p>
+
+    <p class="entry-lead">Небольшое обновление внешнего вида: иконка приложения теперь единая во всех местах, кнопка «Сохранить как шаблон» ведёт себя как остальные, а панель блоков в редакторе получила новый дизайн плиток.</p>
+
+    <div class="section">
+      <div class="section-rail"><div class="glyph"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg></div></div>
+      <div class="section-body">
+        <p class="section-title">Иконка приложения</p>
+        <ul class="change-list">
+          <li>В шапке окна вместо синего ромба-заглушки теперь настоящий логотип (синие «карточки») — тот же, что в панели задач и в трее</li>
+          <li>То же исправление на экране активации лицензии, в онбординге и в «О программе»</li>
+          <li>Android-иконки перегенерированы из реального дизайна: раньше на телефоне был устаревший синий квадрат с буквой «T»</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-rail"><div class="glyph"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><path d="M17 21v-8H7v8"/><path d="M7 3v5h8"/></svg></div></div>
+      <div class="section-body">
+        <p class="section-title">Кнопки публикации</p>
+        <ul class="change-list">
+          <li>«Сохранить как шаблон» раскрывается при наведении, как «Запланировать», и сдвигает соседние кнопки — раньше была только иконка с подсказкой</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-rail"><div class="glyph"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg></div></div>
+      <div class="section-body">
+        <p class="section-title">Панель блоков в редакторе</p>
+        <ul class="change-list">
+          <li>Плитки теперь показывают мини-превью того блока, в который превращаются: заголовок — как заголовок, код — моноширинной плашкой, цитата — с полосой слева, опрос — карточкой с вариантами, медиа — плейсхолдером</li>
+          <li>У «Плашки» и «Разделителя» превью появилось (раньше они были пустыми), «Выносная цитата» теперь выглядит как настоящий блок — с кавычками и подписью автора</li>
+          <li>Все плитки одной высоты; медиа-плейсхолдеры читаются и в светлой, и в тёмной теме</li>
+          <li>Новый стиль плиток: матовое стекло с размытием и лёгкой тенью; при наведении плитка приподнимается и подсвечивается</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ 1.9.0 — 2026-08-16 ═══ -->
+  <div class="entry">
+    <div class="entry-head">
+      <span class="entry-version">1.9.0</span>
+      <span class="entry-date">16 августа 2026</span>
+    </div>
+    <p class="entry-status"><span class="dot"></span>собрано и опубликовано в боте</p>
+
+    <p class="entry-lead">Крупное обновление: мобильная версия доведена до полноценной (одно приложение под современные ARM-телефоны), плюс три десктопных улучшения — главная страница, тёмная тема «Мягкой структуры» и ссылки на посты в Истории.</p>
+
+    <div class="section">
+      <div class="section-rail"><div class="glyph"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="2" width="12" height="20" rx="2"/><path d="M10 18h4"/></svg></div></div>
+      <div class="section-body">
+        <p class="section-title">Мобильная версия (Android, arm64)</p>
+        <ul class="change-list">
+          <li>Убран зум 75%: интерфейс рендерится 1:1, текст и кнопки сразу крупнее на треть</li>
+          <li>Тач-цели и шрифты переведены под палец — 44px в портрете, 40px в ландшафте</li>
+          <li>Навигация: нижняя панель в портрете, левый рельс в ландшафте — хром больше не съедает высоту</li>
+          <li>Редактор в ландшафте стал двухпанельным: слева редактор, справа публикация</li>
+          <li>Все диалоги (добавление канала/бота, планирование, подтверждения, шаблон) переведены в нижние шторки</li>
+          <li>Клавиатура больше не перекрывает поля (<code>adjustResize</code>), edge-to-edge на Android</li>
+          <li>Длинные списки виртуализированы, анимации облегчены на Android</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-rail"><div class="glyph"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5L12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/><path d="M9 21v-6h6v6"/></svg></div></div>
+      <div class="section-body">
+        <p class="section-title">Главная (дашборд)</p>
+        <ul class="change-list">
+          <li>Приложение открывается на новой главной вместо пустого редактора: статистика за день, ближайшие публикации, последние черновики, кнопки «Новый пост» и «В очередь»</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-rail"><div class="glyph"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg></div></div>
+      <div class="section-body">
+        <p class="section-title">Тёмная тема «Мягкой структуры»</p>
+        <ul class="change-list">
+          <li>Оформление «Мягкая структура» больше не заперто в светлой теме — у него появилась тёмная палитра, переключается вместе с темой</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-rail"><div class="glyph"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg></div></div>
+      <div class="section-body">
+        <p class="section-title">История публикаций</p>
+        <ul class="change-list">
+          <li>У опубликованных постов появились кнопки «Скопировать ссылку» (<code>t.me/…</code>) и «Открыть в Telegram» — работают для каналов с username и для приватных</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-rail"><div class="glyph"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></svg></div></div>
+      <div class="section-body">
+        <p class="section-title">Добивка мобильного UI</p>
+        <ul class="change-list">
+          <li>Действия, доступные раньше только по наведению (редактировать/удалить в шаблонах, отмена записи в планировщике), на телефоне видны всегда</li>
+          <li>Нативные <code>window.confirm</code> заменены на диалоги-шторки — удаление бота и канала</li>
+          <li>Крупные кнопки форматирования, поиска и шапки — палец не промахивается</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
   <!-- ═══ 1.8.6 — 2026-08-01 ═══ -->
   <div class="entry">
     <div class="entry-head">

@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Search } from "lucide-react";
 import { useCommandPaletteItems } from "@/hooks/useCommandPaletteItems";
+import { useIsMobileLayout } from "@/hooks/useIsMobileLayout";
+import { useKeyboardInset } from "@/hooks/useKeyboardInset";
 import { t } from "@/lib/i18n";
 
 // Adapted from Watermelon UI's command-search-base.tsx (registry.watermelon.sh)
@@ -35,6 +37,8 @@ export function CommandPalette() {
   const [activeIndex, setActiveIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const items = useCommandPaletteItems();
+  const isMobile = useIsMobileLayout();
+  const keyboardInset = useKeyboardInset();
 
   useEffect(() => {
     function handleGlobalKeyDown(e: KeyboardEvent) {
@@ -50,6 +54,14 @@ export function CommandPalette() {
     window.addEventListener("keydown", handleGlobalKeyDown);
     return () => window.removeEventListener("keydown", handleGlobalKeyDown);
   }, [open]);
+
+  // Mobile: the TopBar search button opens the palette via this custom event
+  // (no keyboard shortcut exists on a phone).
+  useEffect(() => {
+    function handleOpen() { setOpen(true); }
+    window.addEventListener("telegramstudio:open-palette", handleOpen);
+    return () => window.removeEventListener("telegramstudio:open-palette", handleOpen);
+  }, []);
 
   useEffect(() => {
     if (!open) { setQuery(""); setActiveIndex(0); return; }
@@ -108,18 +120,29 @@ export function CommandPalette() {
             style={{ position: "fixed", inset: 0, zIndex: 100, backgroundColor: "rgba(0,0,0,0.35)", backdropFilter: "blur(2px)" }}
           />
           <motion.div
-            initial={{ opacity: 0, scale: 0.97, y: -8 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.97, y: -8 }}
-            transition={{ type: "spring", duration: 0.25, bounce: 0.15 }}
+            initial={isMobile ? { opacity: 0, y: "100%" } : { opacity: 0, scale: 0.97, y: -8 }}
+            animate={isMobile ? { opacity: 1, y: 0 } : { opacity: 1, scale: 1, y: 0 }}
+            exit={isMobile ? { opacity: 0, y: "100%" } : { opacity: 0, scale: 0.97, y: -8 }}
+            transition={{ type: "spring", duration: 0.25, bounce: isMobile ? 0 : 0.15 }}
             onClick={(e) => e.stopPropagation()}
-            style={{
-              position: "fixed", top: "18%", left: "50%", transform: "translateX(-50%)",
-              zIndex: 101, width: "100%", maxWidth: 480,
-              backgroundColor: "var(--bg-elevated)", border: "1px solid var(--border-default)",
-              borderRadius: 12, boxShadow: "0 24px 48px rgba(0,0,0,0.28)",
-              display: "flex", flexDirection: "column", maxHeight: "60vh", overflow: "hidden",
-            }}
+            style={
+              isMobile
+                ? {
+                    position: "fixed", left: 0, right: 0, bottom: 0, top: "auto",
+                    zIndex: 101, width: "100%", maxWidth: "none",
+                    backgroundColor: "var(--bg-elevated)", border: "1px solid var(--border-default)", borderBottom: "none",
+                    borderRadius: "16px 16px 0 0", boxShadow: "0 -8px 32px rgba(0,0,0,0.3)",
+                    display: "flex", flexDirection: "column", maxHeight: "80vh", overflow: "hidden",
+                    paddingBottom: keyboardInset,
+                  }
+                : {
+                    position: "fixed", top: "18%", left: "50%", transform: "translateX(-50%)",
+                    zIndex: 101, width: "100%", maxWidth: 480,
+                    backgroundColor: "var(--bg-elevated)", border: "1px solid var(--border-default)",
+                    borderRadius: 12, boxShadow: "0 24px 48px rgba(0,0,0,0.28)",
+                    display: "flex", flexDirection: "column", maxHeight: "60vh", overflow: "hidden",
+                  }
+            }
           >
             <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 16px", borderBottom: "1px solid var(--border-subtle)" }}>
               <Search size={16} style={{ color: "var(--text-muted)", flexShrink: 0 }} />

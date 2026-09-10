@@ -43,6 +43,30 @@ const MULTIPART_ATTEMPT_TIMEOUT: Duration = Duration::from_secs(45);
 // this (chunked upload), and its own doc comment for the tested limits of
 // that workaround.
 const RELAY_BASE: &str = "https://xhjxnyhvfyzyulzzxpsg.supabase.co/functions/v1/tg-relay";
+
+// Средний уровень резервирования: Cloudflare Worker (исходник в
+// cf-worker/tg-relay/worker.js, инструкция по развёртыванию —
+// cf-worker/tg-relay/DEPLOY.md). Серверлесс-транзит в api.telegram.org на
+// адресе *.workers.dev (или на собственном домене за Cloudflare —
+// рекомендуется, см. DEPLOY.md). Зачем он между прямым путём и
+// Supabase-релеем:
+//   - Бесплатный тариф Workers принимает тела до 100 МБ, поэтому файлы
+//     идут ОДНИМ запросом — без 20-КБ чанкования, которое на
+//     Supabase-пути упирается в ISP-порог (~25–30 КБ на запрос) и
+//     ненадёжен для видео (см. RELAY_BASE doc + doc у
+//     call_multipart_via_storage).
+//   - Секретный путь скрывает воркер от сканеров; X-TG-Relay-Key
+//     (сравнивается с CF_RELAY_KEY) не даёт ему стать открытым прокси.
+//   - Провайдер мог заблокировать Supabase целиком, но не Cloudflare, и
+//     наоборот — резервные уровни по разным инфраструктурам.
+// Развёрнутый пользователем адрес; если воркер ещё не развёрнут, путь
+// просто никогда не succeed-нет и цепочка провалится дальше на
+// Supabase-релей как раньше.
+const CF_RELAY_BASE: &str = "https://tg-relay.ravin3657345.workers.dev/tg-relay";
+// Должен совпадать с RELAY_KEY, поставленным через `wrangler secret put`
+// на воркере (см. DEPLOY.md). СекретНЕ токен бота — утрата компрометирует
+// только этот транзит, и меняется одной командой wrangler.
+const CF_RELAY_KEY: &str = "nj_LRUDg-iwaJPoRprmaSuiNkVFlWMyjDUIyuT4HbDM";
 // Longer than MULTIPART_ATTEMPT_TIMEOUT — a chunked upload does many
 // sequential-ish round trips (bounded concurrency, not one request), and
 // large files can legitimately take well over a minute (live-tested: a
@@ -209,6 +233,10 @@ pub struct TelegramClient {
     // connection, trading a bit of latency (this is a fallback path, not
     // the hot path) for not silently racing a server-side idle-close.
     relay_http: Client,
+    // Отдельный клиент для CF Worker — по той же причине, что relay_http
+    // (Supabase edge закрывает keep-alive раньше, чем multipart успевает
+    // уйти; у Cloudflare то же поведение наблюдается на большие тела).
+    cf_relay_http: Client,
 }
 
 impl TelegramClient {
@@ -251,7 +279,13 @@ impl TelegramClient {
             .http1_only()
             .build()
             .unwrap_or_else(|_| Client::new());
-        Self { token, base_url, http, relay_http }
+        let cf_relay_http = Client::builder()
+            .connect_timeout(std::time::Duration::from_secs(30))
+            .timeout(std::time::Duration::from_secs(90))
+            .pool_max_idle_per_host(0)
+            .build()
+            .unwrap_or_else(|_| Client::new());
+        Self { token, base_url, http, relay_http, cf_relay_http }
     }
 
     /// Direct path first; on a NETWORK failure only (not a valid-but-negative
@@ -288,8 +322,56 @@ impl TelegramClient {
         if !matches!(direct, Err(TelegramError::Network(_))) {
             return direct;
         }
-        log::debug!("[tg] {method} failed over direct connection, retrying via Supabase relay");
+        // Средний уровень — CF Worker. Пробуем только если он настроен
+        // (адрес подставлен в CF_RELAY_BASE, ключ в CF_RELAY_KEY); иначе
+        // сразу падаем на Supabase-релей, как раньше.
+        if Self::cf_relay_configured() {
+            let cf = self
+                .with_timeout(JSON_ATTEMPT_TIMEOUT, "Cloudflare relay", self.call_cf_relay(method, body))
+                .await;
+            if !matches!(cf, Err(TelegramError::Network(_))) {
+                return cf;
+            }
+            log::debug!("[tg] {method} failed via Cloudflare relay, retrying via Supabase relay");
+        }
         self.with_timeout(JSON_ATTEMPT_TIMEOUT, "Supabase relay", self.call_relay(method, body)).await
+    }
+
+    fn cf_relay_headers(&self) -> [(&'static str, String); 2] {
+        [
+            ("X-TG-Relay-Key", CF_RELAY_KEY.to_string()),
+            ("Authorization", format!("Bearer {CF_RELAY_KEY}")),
+        ]
+    }
+
+    /// Транзит JSON-вызова через CF Worker: тот же путь
+    /// /tg-relay/bot<token>/<method>, что у Supabase-релея — воркер
+    /// (cf-worker/tg-relay/worker.js) пересылает тело и Content-Type
+    /// дословно и возвращает ответ Telegram без изменений.
+    async fn call_cf_relay<T, B>(&self, method: &str, body: &B) -> Result<T, TelegramError>
+    where
+        T: for<'de> serde::Deserialize<'de>,
+        B: Serialize,
+    {
+        let url = format!("{CF_RELAY_BASE}/bot{}/{}", self.token, method);
+        log::debug!("[tg-cf] POST {} (json)", method);
+
+        let headers = self.cf_relay_headers();
+        let resp = self
+            .cf_relay_http
+            .post(&url)
+            .header(headers[0].0, &headers[0].1)
+            .header(headers[1].0, &headers[1].1)
+            .json(body)
+            .send()
+            .await
+            .map_err(|e| TelegramError::Network(self.redact(describe_reqwest_error(&e))))?;
+
+        let status = resp.status();
+        let body_text = resp.text().await.map_err(|e| TelegramError::Network(self.redact(describe_reqwest_error(&e))))?;
+
+        log::debug!("[tg-cf] response ({}) status={}", method, status);
+        finish_response(&body_text)
     }
 
     async fn call_relay<T, B>(&self, method: &str, body: &B) -> Result<T, TelegramError>
@@ -350,13 +432,52 @@ impl TelegramClient {
         if !matches!(direct, Err(TelegramError::Network(_))) {
             return direct;
         }
-        log::debug!("[tg] {method} multipart failed over direct connection, retrying via Supabase relay (chunked storage)");
+        // Средний уровень — CF Worker одним запросом (без чанкования: у
+        // Workers лимит тела 100 МБ, против ~25–30 КБ ISP-порога, который
+        // ломает одиночный multipart-запрос к Supabase). Готовый multipart
+        // пересылаем как есть — воркер транзитит его дословно.
+        if Self::cf_relay_configured() {
+            let cf = self
+                .with_timeout(MULTIPART_ATTEMPT_TIMEOUT, "Cloudflare relay", self.call_multipart_via_cf(method, &form))
+                .await;
+            if !matches!(cf, Err(TelegramError::Network(_))) {
+                return cf;
+            }
+            log::debug!("[tg] {method} multipart failed via Cloudflare relay, retrying via Supabase relay (chunked storage)");
+        }
         self.with_timeout(
             CHUNKED_RELAY_TIMEOUT,
             "Supabase relay (chunked storage)",
             self.call_multipart_via_storage(method, &form),
         )
         .await
+    }
+
+    /// Multipart одним запросом через CF Worker. То же тело, что ушло бы
+    /// напрямую в Telegram — воркер его не разбирает, только пересылает.
+    async fn call_multipart_via_cf<T>(&self, method: &str, form: &TgForm) -> Result<T, TelegramError>
+    where
+        T: for<'de> serde::Deserialize<'de>,
+    {
+        let url = format!("{CF_RELAY_BASE}/bot{}/{}", self.token, method);
+        log::debug!("[tg-cf] POST {} (multipart)", method);
+
+        let headers = self.cf_relay_headers();
+        let resp = self
+            .cf_relay_http
+            .post(&url)
+            .header(headers[0].0, &headers[0].1)
+            .header(headers[1].0, &headers[1].1)
+            .multipart(form.into_reqwest()?)
+            .send()
+            .await
+            .map_err(|e| TelegramError::Network(self.redact(describe_reqwest_error(&e))))?;
+
+        let status = resp.status();
+        let body = resp.text().await.map_err(|e| TelegramError::Network(self.redact(describe_reqwest_error(&e))))?;
+
+        log::debug!("[tg-cf] response ({}) status={} ok={}", method, status, status.is_success());
+        finish_response(&body)
     }
 
     // Replaces a previous single-shot "send the whole multipart body to the
@@ -470,6 +591,13 @@ impl TelegramClient {
 
     pub fn token(&self) -> &str {
         &self.token
+    }
+
+    /// Воркер считается настроенным, пока в CF_RELAY_BASE стоит
+    /// плейсхолдер из исходника — тогда CF-уровень молча пропускается и
+    /// поведение в точности как до его появления.
+    fn cf_relay_configured() -> bool {
+        !CF_RELAY_BASE.contains("<") && !CF_RELAY_KEY.contains("<")
     }
 
     pub fn base_url(&self) -> &str {

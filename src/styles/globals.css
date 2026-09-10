@@ -145,15 +145,62 @@ textarea,
     inset -3px -3px 8px var(--soft-shadow-light);
 }
 
-/* ── Block palette tiles (fill mode, see BlockPalette.tsx) ─────────────────
-   soft-ui-sm/-pressed above already handle the shadow; this just adds the
-   press micro-interaction every other primary control in the app already
-   has (Button.tsx's active:scale-[0.97]). */
+/* ── Block palette (see BlockPalette.tsx) ──────────────────────────────────
+   Glassmorphism tiles: the panel carries a soft pastel gradient
+   (--palette-bg) and each tile is a translucent frosted pane (blur) with a
+   light rim, so the tiles read as "glass" over colour. Hover: the pane
+   frosts over (brighter) and gets an accent rim. Selection: accent rim +
+   accent-tinted pane — no checkmark, since tiles are drag targets, not
+   toggles. Tokens live in theme.css (--glass-*) per light/dark. */
+.palette-panel {
+  background-image: var(--palette-bg);
+}
 .palette-tile {
-  transition: transform 0.08s ease;
+  background-color: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  -webkit-backdrop-filter: blur(10px) saturate(1.4);
+  backdrop-filter: blur(10px) saturate(1.4);
+  box-shadow: var(--glass-shadow);
+  cursor: grab;
+  transition: transform 0.12s ease, border-color 0.12s ease, background-color 0.15s ease, box-shadow 0.12s ease;
+}
+.palette-tile:hover {
+  background-color: var(--glass-bg-hover);
+  border-color: var(--glass-border-hover);
+  box-shadow: var(--glass-shadow-hover);
+  transform: translateY(-1px);
 }
 .palette-tile:active {
-  transform: scale(0.96);
+  transform: translateY(-1px) scale(1.02);
+  cursor: grabbing;
+}
+.palette-tile-selected {
+  border-color: var(--accent);
+  background-color: color-mix(in srgb, var(--accent) 10%, var(--glass-bg));
+  box-shadow: var(--glass-shadow);
+}
+
+/* Mini live-preview of the block: real tiptap classes (built by
+   PREVIEW_BUILDERS in BlockPalette.tsx) scaled to fit the tile with CSS
+   zoom, centered and clipped. pointer-events off so grabbing/dragging the
+   tile never starts on the preview itself. */
+.palette-preview {
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  /* Fixed height so every tile is the same height regardless of which
+     block it previews (the poll/table/media previews are taller than a
+     bare paragraph) — taller content is centered and clipped. */
+  height: 48px;
+  overflow: hidden;
+}
+.palette-preview > .tiptap-editor-root {
+  /* width: 100% — without it a borderless <hr> (the divider preview) has no
+     intrinsic content and collapses to 0px wide inside this flex column. */
+  zoom: 0.75;
+  width: 100%;
 }
 
 /* ── Theme-aware color utilities ────────────────────────── */
@@ -369,4 +416,27 @@ select:focus-visible {
   .bottom-sheet-content[data-state="open"],
   .bottom-sheet-overlay[data-state="closed"],
   .bottom-sheet-content[data-state="closed"] { animation: none; }
+}
+
+/* ── Mobile base type scale ──────────────────────────────────────────────────
+   Tailwind's text sizes are px-fixed in tailwind.config.ts (2xs=11px,
+   xs=12px, sm=13px…), so bumping the root font-size would not affect them.
+   The mobile shell lifts the three most common steps by one notch via the
+   data-mobile attribute AppShell sets — the desktop branch stays untouched.
+   (The old 75% WebView zoom did the opposite of this and is gone; inline px
+   font-sizes are handled by each component's own useIsMobileLayout() branch.) */
+.app-shell[data-mobile="true"] .text-2xs { font-size: 12px; }
+.app-shell[data-mobile="true"] .text-xs  { font-size: 13px; }
+.app-shell[data-mobile="true"] .text-sm  { font-size: 14px; }
+
+/* Off-screen list items are skipped by layout/paint until scrolled into view —
+   a dependency-free stand-in for windowing on the long lists (Drafts,
+   Templates, Channels, Bots). Chromium (Android WebView / WebView2) supports
+   content-visibility; the intrinsic-size placeholder keeps the scrollbar
+   stable before an item's real height is measured. Not applied to HistoryCard
+   (its delete menu is absolutely positioned outside the card and would be
+   clipped by paint containment). */
+.virtualized-item {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 96px;
 }

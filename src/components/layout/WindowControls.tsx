@@ -17,19 +17,15 @@ export function WindowControls() {
         className="flex items-center gap-2 select-none pointer-events-none"
         data-tauri-drag-region
       >
-        <svg
+        <img
+          src="/icon.png"
           width="16"
           height="16"
-          viewBox="0 0 16 16"
-          fill="none"
-          xmlns="http://www.w3.org/2000/svg"
+          alt=""
+          draggable={false}
           className="flex-shrink-0"
-        >
-          <path
-            d="M8 1L14 4.5V11.5L8 15L2 11.5V4.5L8 1Z"
-            fill="var(--accent)"
-          />
-        </svg>
+          style={{ borderRadius: 4 }}
+        />
         <span
           className="text-xs font-medium"
           style={{ color: "var(--text-secondary)" }}

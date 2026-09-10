@@ -1,0 +1,12 @@
+# Конфиг Cloudflare Worker для релея Bot API (см. worker.js и DEPLOY.md).
+# Имя воркера определяет адрес: <name>.<аккаунт>.workers.dev
+name = "tg-relay"
+main = "worker.js"
+compatibility_date = "2026-08-04"
+
+# Роут на workers.dev включён по умолчанию; если позже привяжете
+# собственный домен, добавьте сюда routes/custom_dom (см. DEPLOY.md).
+
+# Секрет RELAY_KEY НЕ хранится здесь — ставится командой
+#   wrangler secret put RELAY_KEY
+# (см. DEPLOY.md, шаг 3).

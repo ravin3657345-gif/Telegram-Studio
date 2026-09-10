@@ -196,6 +196,7 @@ export function ScheduleDialog({ onConfirm, onClose }: ScheduleDialogProps) {
 
   return (
     <Dialog
+      mobileSheet
       onOpenChange={(open) => !open && onClose()}
       style={{
         width: 296,

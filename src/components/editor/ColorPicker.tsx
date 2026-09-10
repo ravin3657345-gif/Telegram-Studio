@@ -3,6 +3,7 @@ import type { Editor } from "@tiptap/react";
 import { Baseline, Highlighter } from "lucide-react";
 import { t, type TranslationKey } from "@/lib/i18n";
 import { useSettingsStore } from "@/store/settingsStore";
+import { useIsMobileLayout } from "@/hooks/useIsMobileLayout";
 
 const TEXT_COLORS: { key: TranslationKey; value: string | null }[] = [
   { key: "color.default", value: null },
@@ -32,6 +33,7 @@ interface ColorPickerProps {
 
 export function ColorPicker({ editor }: ColorPickerProps) {
   useSettingsStore((s) => s.language);
+  const isMobile = useIsMobileLayout();
   const [open, setOpen] = useState<"text" | "highlight" | null>(null);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -53,12 +55,12 @@ export function ColorPicker({ editor }: ColorPickerProps) {
         <button
           title={t("color.textTitle")}
           onClick={() => setOpen(open === "text" ? null : "text")}
-          className="flex items-center justify-center w-6 h-6 rounded transition-colors flex-col gap-0"
-          style={{ color: "var(--text-secondary)" }}
+          className="flex items-center justify-center rounded transition-colors flex-col gap-0"
+          style={{ width: isMobile ? 32 : 24, height: isMobile ? 32 : 24, color: "var(--text-secondary)" }}
           onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "var(--bg-hover)")}
           onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
         >
-          <Baseline size={11} />
+          <Baseline size={isMobile ? 14 : 11} />
           <div
             className="w-4 h-0.5 rounded-full"
             style={{ backgroundColor: currentColor ?? "var(--text-primary)" }}
@@ -83,12 +85,12 @@ export function ColorPicker({ editor }: ColorPickerProps) {
         <button
           title={t("color.highlightTitle")}
           onClick={() => setOpen(open === "highlight" ? null : "highlight")}
-          className="flex items-center justify-center w-6 h-6 rounded transition-colors"
-          style={{ color: "var(--text-secondary)" }}
+          className="flex items-center justify-center rounded transition-colors"
+          style={{ width: isMobile ? 32 : 24, height: isMobile ? 32 : 24, color: "var(--text-secondary)" }}
           onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "var(--bg-hover)")}
           onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
         >
-          <Highlighter size={12} />
+          <Highlighter size={isMobile ? 15 : 12} />
         </button>
 
         {open === "highlight" && (

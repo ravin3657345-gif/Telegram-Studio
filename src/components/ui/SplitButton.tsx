@@ -16,10 +16,10 @@ interface SplitButtonAction {
   disabled?: boolean;
   loading?: boolean;
   // Skips the hover-reveal label entirely, showing `label` as a native
-  // title tooltip instead — for a label too long to fit the reveal's
-  // max-width without either clipping or blowing out the pill's layout in
-  // this narrow sidebar column (live-reported: "Сохранить как шаблон"
-  // didn't fit, unlike the shorter "Запланировать").
+  // title tooltip instead. Was needed for "Сохранить как шаблон" back when
+  // the reveal max-width was 100px and the pill had no room; now the reveal
+  // fits it (160px) and the publish column is wide enough, so secondary
+  // actions reveal their labels on hover like "Запланировать" does.
   iconOnly?: boolean;
 }
 
@@ -39,13 +39,16 @@ function DesktopSplitButton({ primary, secondary }: SplitButtonProps) {
         type="button"
         onClick={primary.onClick}
         disabled={primary.disabled}
-        className="flex-1 flex items-center justify-center gap-1.5 text-xs font-medium text-white transition-all active:scale-[0.97] disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100"
+        className="flex-1 min-w-0 flex items-center justify-center gap-1.5 text-xs font-medium text-white transition-all active:scale-[0.97] disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100"
         style={{ backgroundColor: "var(--accent)" }}
         onMouseEnter={(e) => { if (!primary.disabled) e.currentTarget.style.backgroundColor = "var(--accent-hover)"; }}
         onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = "var(--accent)"; }}
       >
         {primary.loading ? <Spinner size={13} /> : primary.icon}
-        {primary.label}
+        {/* min-w-0 + truncate: when a long secondary label (e.g. French
+            "Enregistrer comme modèle") reveals and squeezes the primary, its
+            label ellipsizes instead of overflowing the pill. */}
+        <span className="min-w-0 truncate">{primary.label}</span>
       </button>
 
       {secondary.map((action, i) => (
@@ -62,7 +65,7 @@ function DesktopSplitButton({ primary, secondary }: SplitButtonProps) {
         >
           {action.loading ? <Spinner size={13} /> : action.icon}
           {!action.iconOnly && (
-            <span className="max-w-0 overflow-hidden whitespace-nowrap opacity-0 transition-all duration-200 group-hover:max-w-[100px] group-hover:opacity-100">
+            <span className="max-w-0 overflow-hidden whitespace-nowrap opacity-0 transition-all duration-200 group-hover:max-w-[160px] group-hover:opacity-100">
               {action.label}
             </span>
           )}

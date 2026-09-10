@@ -22,8 +22,8 @@ function applyEditorFont(large: boolean) {
 interface SettingsState {
   theme: Theme;
   // Alternate visual skin, independent of the light/dark Theme toggle above
-  // — "standard" defers to Theme as usual, anything else applies its own
-  // fixed look (see designs.css) regardless of the Theme setting.
+  // — "standard" defers to Theme as usual; "soft" has its own light+dark
+  // token pairs in designs.css and honors the Theme toggle too.
   designTheme: DesignTheme;
   language: Language;
   autosaveInterval: number;
@@ -59,7 +59,7 @@ interface SettingsState {
 
 export const useSettingsStore = create<SettingsState>()(
   persist(
-    (set, get) => ({
+    (set) => ({
       theme:                "light",
       designTheme:          "standard",
       language:             "ru",
@@ -77,18 +77,9 @@ export const useSettingsStore = create<SettingsState>()(
       anchorLinkText:       "",
 
       setTheme:                (theme)    => set({ theme }),
-      // "soft" only has light-mode tokens (no dark variant designed for it),
-      // so switching to it forces the light/dark Theme toggle back to light
-      // — otherwise leftover dark-theme tokens (success/warning/danger/status
-      // colors, which soft doesn't override) would leak through against its
-      // light paper background.
       setDesignTheme: (design) => {
         set({ designTheme: design });
         document.documentElement.setAttribute("data-design", design);
-        if (design === "soft" && get().theme !== "light") {
-          set({ theme: "light" });
-          document.documentElement.setAttribute("data-theme", "light");
-        }
       },
       setLanguage:             (language) => { set({ language }); setI18nLanguage(language); },
       setAutosaveInterval:     (ms)       => set({ autosaveInterval: ms }),
@@ -115,10 +106,9 @@ export const useSettingsStore = create<SettingsState>()(
       name: "ts-settings",
       onRehydrateStorage: () => (state) => {
         if (state) {
-          const resolved = state.designTheme === "soft" ? "light" :
-            state.theme === "system"
-              ? window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"
-              : state.theme;
+          const resolved = state.theme === "system"
+            ? window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"
+            : state.theme;
           document.documentElement.setAttribute("data-theme", resolved);
           document.documentElement.setAttribute("data-design", state.designTheme ?? "standard");
           setI18nLanguage(state.language ?? "ru");

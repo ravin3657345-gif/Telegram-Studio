@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate } from "react-router-dom";
 import { AppShell } from "@/components/layout/AppShell";
 import { OnboardingPage } from "@/pages/OnboardingPage";
+import { DashboardPage } from "@/pages/DashboardPage";
 import { EditorPage } from "@/pages/EditorPage";
 import { DraftsPage } from "@/pages/DraftsPage";
 import { HistoryPage } from "@/pages/HistoryPage";
@@ -31,7 +32,7 @@ export function AppRouter() {
           </RequireSetup>
         }
       >
-        <Route index element={<Navigate to="/editor" replace />} />
+        <Route index element={<DashboardPage />} />
         <Route path="/editor" element={<EditorPage />} />
         <Route path="/editor/:draftId" element={<EditorPage />} />
         <Route path="/drafts" element={<DraftsPage />} />

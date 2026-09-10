@@ -11,6 +11,7 @@
     "clean:c-build": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/clean-c-build.ps1",
     "tauri": "tauri",
     "tauri:dev": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/dev.ps1",
+    "android:patch": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/apply-android-patches.ps1",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:ui": "vitest --ui"
@@ -25,6 +26,7 @@
     "@radix-ui/react-dialog": "^1.1.19",
     "@tauri-apps/api": "^2.1.1",
     "@tauri-apps/plugin-notification": "^2.3.3",
+    "@tauri-apps/plugin-opener": "^2.5.4",
     "@tauri-apps/plugin-shell": "^2.0.1",
     "@tiptap/extension-character-count": "^2.8.0",
     "@tiptap/extension-color": "^2.27.2",

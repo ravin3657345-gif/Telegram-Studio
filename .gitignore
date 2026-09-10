@@ -33,6 +33,12 @@ dist-release/
 # id, tokens) baked into its config and screenshots. Not part of the app.
 sales-bot/
 
+# Local scratch and research dumps — never commit. .freebuff holds the live
+# dev database, logs and the relay key; OSINT is a 176 MB third-party
+# spiderfoot checkout with nothing app-specific in it.
+.freebuff/
+OSINT/
+
 # OS
 .DS_Store
 Thumbs.db

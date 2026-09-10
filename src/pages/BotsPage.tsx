@@ -9,7 +9,10 @@ import { t, ti } from "@/lib/i18n";
 import { useSettingsStore } from "@/store/settingsStore";
 import type { Bot as BotType } from "@/types/bot";
 import { Dialog, DialogTitle, DialogDescription } from "@/components/ui/Dialog";
+import { BottomSheet } from "@/components/ui/BottomSheet";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { useListKeyboardNav } from "@/hooks/useListKeyboardNav";
+import { useIsMobileLayout } from "@/hooks/useIsMobileLayout";
 
 
 // ─── Add-bot modal ────────────────────────────────────────────────────────────
@@ -27,6 +30,7 @@ function AddBotModal({ onClose, onAdded }: AddBotModalProps) {
   const [error, setError]     = useState<string | null>(null);
   const inputRef              = useRef<HTMLInputElement>(null);
   useSettingsStore((s) => s.language);
+  const isMobile = useIsMobileLayout();
 
   useEffect(() => { inputRef.current?.focus(); }, []);
 
@@ -61,6 +65,134 @@ function AddBotModal({ onClose, onAdded }: AddBotModalProps) {
     }
   }
 
+  const heading = (
+    <h2 style={{ fontSize: 16, fontWeight: 700, color: "var(--text-primary)", marginBottom: 6 }}>
+      {t("bots.addTitle")}
+    </h2>
+  );
+
+  const description = (
+    <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 18, lineHeight: 1.5 }}>
+      {t("bots.createHintPre")} <span style={{ color: "var(--accent)" }}>@BotFather</span> {t("bots.createHintPost")}
+    </p>
+  );
+
+  // Token input + error + preview + actions — shared verbatim between the
+  // desktop centered dialog and the mobile bottom sheet, so the form never
+  // forks into two copies.
+  const fields = (
+    <>
+      {/* Token input */}
+      <div style={{ marginBottom: 12 }}>
+        <label style={{ fontSize: 12, color: "var(--text-secondary)", display: "block", marginBottom: 6 }}>
+          {t("bots.tokenLabel")}
+        </label>
+        <input
+          ref={inputRef}
+          value={token}
+          onChange={(e) => { setToken(e.target.value); setStage("input"); setBotInfo(null); setError(null); }}
+          onKeyDown={(e) => e.key === "Enter" && stage === "input" && handleValidate()}
+          placeholder="1234567890:AAExx..."
+          disabled={stage === "validating" || adding}
+          style={{
+            width: "100%", padding: "9px 12px", borderRadius: 8, fontSize: 13,
+            fontFamily: "monospace",
+            backgroundColor: "var(--bg-elevated)",
+            border: `1.5px solid ${error ? "var(--danger)" : "var(--border-default)"}`,
+            color: "var(--text-primary)", outline: "none",
+          }}
+        />
+      </div>
+
+      {/* Error */}
+      {error && (
+        <div style={{
+          display: "flex", alignItems: "flex-start", gap: 8, marginBottom: 12,
+          padding: "8px 10px", borderRadius: 8,
+          backgroundColor: "rgba(231,76,60,0.10)", border: "1px solid rgba(231,76,60,0.2)",
+        }}>
+          <AlertCircle size={14} style={{ color: "var(--danger)", flexShrink: 0, marginTop: 1 }} />
+          <span style={{ fontSize: 12, color: "var(--danger)", lineHeight: 1.5 }}>{error}</span>
+        </div>
+      )}
+
+      {/* Bot preview */}
+      {botInfo && stage === "preview" && (
+        <div style={{
+          display: "flex", alignItems: "center", gap: 12, marginBottom: 16,
+          padding: "10px 12px", borderRadius: 10,
+          backgroundColor: "color-mix(in srgb, var(--accent) 8%, transparent)", border: "1px solid color-mix(in srgb, var(--accent) 20%, transparent)",
+        }}>
+          <CheckCircle size={18} style={{ color: "var(--accent)", flexShrink: 0 }} />
+          <div>
+            <p style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)" }}>{botInfo.name}</p>
+            {botInfo.username && (
+              <p style={{ fontSize: 12, color: "var(--text-muted)" }}>@{botInfo.username}</p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Actions */}
+      <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+        <button
+          onClick={onClose}
+          style={{
+            padding: isMobile ? "11px 18px" : "8px 16px", borderRadius: 8, fontSize: 13, fontWeight: 500,
+            border: "1px solid var(--border-default)", background: "none",
+            color: "var(--text-secondary)", cursor: "pointer",
+          }}
+        >
+          {t("common.cancel")}
+        </button>
+
+        {stage !== "preview" ? (
+          <button
+            onClick={handleValidate}
+            disabled={!token.trim() || stage === "validating"}
+            style={{
+              display: "flex", alignItems: "center", gap: 6,
+              padding: isMobile ? "11px 20px" : "8px 18px", borderRadius: 8, fontSize: 13, fontWeight: 600,
+              backgroundColor: !token.trim() ? "var(--bg-elevated)" : "var(--accent)",
+              border: "none",
+              color: !token.trim() ? "var(--text-muted)" : "#fff",
+              cursor: !token.trim() ? "default" : "pointer",
+            }}
+          >
+            {stage === "validating" && <Loader size={13} style={{ animation: "spin 1s linear infinite" }} />}
+            {t("bots.verify")}
+          </button>
+        ) : (
+          <button
+            onClick={handleAdd}
+            disabled={adding}
+            style={{
+              display: "flex", alignItems: "center", gap: 6,
+              padding: isMobile ? "11px 20px" : "8px 18px", borderRadius: 8, fontSize: 13, fontWeight: 600,
+              backgroundColor: "var(--accent)", border: "none", color: "#fff", cursor: "pointer",
+            }}
+          >
+            {adding && <Loader size={13} style={{ animation: "spin 1s linear infinite" }} />}
+            {t("common.add")}
+          </button>
+        )}
+      </div>
+    </>
+  );
+
+  if (isMobile) {
+    return (
+      <BottomSheet onOpenChange={(open) => !open && onClose()} title={t("bots.addTitle")} maxHeight="90vh">
+        <div style={{ padding: "14px 16px 8px" }}>
+          {heading}
+          {description}
+          {fields}
+        </div>
+        <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
+      </BottomSheet>
+    );
+  }
+
   return (
     <Dialog
       onOpenChange={(open) => !open && onClose()}
@@ -72,127 +204,24 @@ function AddBotModal({ onClose, onAdded }: AddBotModalProps) {
         boxShadow: "0 20px 60px rgba(0,0,0,0.5)",
       }}
     >
-        <DialogTitle asChild>
-          <h2 style={{ fontSize: 16, fontWeight: 700, color: "var(--text-primary)", marginBottom: 6 }}>
-            {t("bots.addTitle")}
-          </h2>
-        </DialogTitle>
-        <DialogDescription asChild>
-          <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 18, lineHeight: 1.5 }}>
-            {t("bots.createHintPre")} <span style={{ color: "var(--accent)" }}>@BotFather</span> {t("bots.createHintPost")}
-          </p>
-        </DialogDescription>
-
-        {/* Token input */}
-        <div style={{ marginBottom: 12 }}>
-          <label style={{ fontSize: 12, color: "var(--text-secondary)", display: "block", marginBottom: 6 }}>
-            {t("bots.tokenLabel")}
-          </label>
-          <input
-            ref={inputRef}
-            value={token}
-            onChange={(e) => { setToken(e.target.value); setStage("input"); setBotInfo(null); setError(null); }}
-            onKeyDown={(e) => e.key === "Enter" && stage === "input" && handleValidate()}
-            placeholder="1234567890:AAExx..."
-            disabled={stage === "validating" || adding}
-            style={{
-              width: "100%", padding: "9px 12px", borderRadius: 8, fontSize: 13,
-              fontFamily: "monospace",
-              backgroundColor: "var(--bg-elevated)",
-              border: `1.5px solid ${error ? "var(--danger)" : "var(--border-default)"}`,
-              color: "var(--text-primary)", outline: "none",
-            }}
-          />
-        </div>
-
-        {/* Error */}
-        {error && (
-          <div style={{
-            display: "flex", alignItems: "flex-start", gap: 8, marginBottom: 12,
-            padding: "8px 10px", borderRadius: 8,
-            backgroundColor: "rgba(231,76,60,0.10)", border: "1px solid rgba(231,76,60,0.2)",
-          }}>
-            <AlertCircle size={14} style={{ color: "var(--danger)", flexShrink: 0, marginTop: 1 }} />
-            <span style={{ fontSize: 12, color: "var(--danger)", lineHeight: 1.5 }}>{error}</span>
-          </div>
-        )}
-
-        {/* Bot preview */}
-        {botInfo && stage === "preview" && (
-          <div style={{
-            display: "flex", alignItems: "center", gap: 12, marginBottom: 16,
-            padding: "10px 12px", borderRadius: 10,
-            backgroundColor: "color-mix(in srgb, var(--accent) 8%, transparent)", border: "1px solid color-mix(in srgb, var(--accent) 20%, transparent)",
-          }}>
-            <CheckCircle size={18} style={{ color: "var(--accent)", flexShrink: 0 }} />
-            <div>
-              <p style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)" }}>{botInfo.name}</p>
-              {botInfo.username && (
-                <p style={{ fontSize: 12, color: "var(--text-muted)" }}>@{botInfo.username}</p>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Actions */}
-        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-          <button
-            onClick={onClose}
-            style={{
-              padding: "8px 16px", borderRadius: 8, fontSize: 13, fontWeight: 500,
-              border: "1px solid var(--border-default)", background: "none",
-              color: "var(--text-secondary)", cursor: "pointer",
-            }}
-          >
-            {t("common.cancel")}
-          </button>
-
-          {stage !== "preview" ? (
-            <button
-              onClick={handleValidate}
-              disabled={!token.trim() || stage === "validating"}
-              style={{
-                display: "flex", alignItems: "center", gap: 6,
-                padding: "8px 18px", borderRadius: 8, fontSize: 13, fontWeight: 600,
-                backgroundColor: !token.trim() ? "var(--bg-elevated)" : "var(--accent)",
-                border: "none",
-                color: !token.trim() ? "var(--text-muted)" : "#fff",
-                cursor: !token.trim() ? "default" : "pointer",
-              }}
-            >
-              {stage === "validating" && <Loader size={13} style={{ animation: "spin 1s linear infinite" }} />}
-              {t("bots.verify")}
-            </button>
-          ) : (
-            <button
-              onClick={handleAdd}
-              disabled={adding}
-              style={{
-                display: "flex", alignItems: "center", gap: 6,
-                padding: "8px 18px", borderRadius: 8, fontSize: 13, fontWeight: 600,
-                backgroundColor: "var(--accent)", border: "none", color: "#fff", cursor: "pointer",
-              }}
-            >
-              {adding && <Loader size={13} style={{ animation: "spin 1s linear infinite" }} />}
-              {t("common.add")}
-            </button>
-          )}
-        </div>
-        <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
+      <DialogTitle asChild>{heading}</DialogTitle>
+      <DialogDescription asChild>{description}</DialogDescription>
+      {fields}
+      <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
     </Dialog>
   );
 }
 
 // ─── Bot card ─────────────────────────────────────────────────────────────────
 
-function BotCard({ bot, selected, onDelete }: { bot: BotType; selected: boolean; onDelete: () => void }) {
+function BotCard({ bot, selected, deleting, onRequestDelete }: { bot: BotType; selected: boolean; deleting: boolean; onRequestDelete: () => void }) {
   const [showToken, setShowToken] = useState(false);
-  const [deleting, setDeleting]   = useState(false);
   // bot.token from getBots()/addBot() is already masked server-side — the
   // real value is fetched (and cached here) only on explicit reveal/copy.
   const [realToken, setRealToken] = useState<string | null>(null);
   const [copied, setCopied]       = useState(false);
   useSettingsStore((s) => s.language);
+  const isMobile = useIsMobileLayout();
 
   async function getRealToken(): Promise<string> {
     if (realToken) return realToken;
@@ -225,22 +254,10 @@ function BotCard({ bot, selected, onDelete }: { bot: BotType; selected: boolean;
     }
   }
 
-  async function handleDelete() {
-    if (!confirm(ti("bots.confirmDelete", { username: bot.username }))) return;
-    setDeleting(true);
-    try {
-      await deleteBot(bot.id);
-      onDelete();
-      toast.success(ti("bots.deletedMsg", { username: bot.username }));
-    } catch (e) {
-      toast.error(String(e));
-      setDeleting(false);
-    }
-  }
-
   return (
     <div
       data-nav-id={bot.id}
+      className="virtualized-item"
       style={{
         borderRadius: 12,
         border: "1px solid " + (selected ? "var(--accent)" : "var(--border-subtle)"),
@@ -260,7 +277,7 @@ function BotCard({ bot, selected, onDelete }: { bot: BotType; selected: boolean;
         </div>
 
         <div style={{ flex: 1, minWidth: 0 }}>
-          <p style={{ fontSize: 14, fontWeight: 600, color: "var(--text-primary)" }}>{bot.name}</p>
+          <p style={{ fontSize: isMobile ? 15 : 14, fontWeight: 600, color: "var(--text-primary)" }}>{bot.name}</p>
           <p style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 1 }}>@{bot.username}</p>
         </div>
 
@@ -287,16 +304,24 @@ function BotCard({ bot, selected, onDelete }: { bot: BotType; selected: boolean;
         </code>
         <button
           onClick={handleToggleShowToken}
-          style={{ background: "none", border: "none", cursor: "pointer", padding: 2, color: "var(--text-muted)" }}
+          style={{
+            background: "none", border: "none", cursor: "pointer",
+            padding: isMobile ? 9 : 2, color: "var(--text-muted)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+          }}
         >
-          {showToken ? <EyeOff size={14} /> : <Eye size={14} />}
+          {showToken ? <EyeOff size={isMobile ? 17 : 14} /> : <Eye size={isMobile ? 17 : 14} />}
         </button>
         <button
           onClick={handleCopyToken}
           title={t("bots.copyToken")}
-          style={{ background: "none", border: "none", cursor: "pointer", padding: 2, color: copied ? "var(--success)" : "var(--text-muted)" }}
+          style={{
+            background: "none", border: "none", cursor: "pointer",
+            padding: isMobile ? 9 : 2, color: copied ? "var(--success)" : "var(--text-muted)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+          }}
         >
-          {copied ? <Check size={13} /> : <Copy size={13} />}
+          {copied ? <Check size={isMobile ? 16 : 13} /> : <Copy size={isMobile ? 16 : 13} />}
         </button>
       </div>
 
@@ -307,11 +332,11 @@ function BotCard({ bot, selected, onDelete }: { bot: BotType; selected: boolean;
         backgroundColor: "var(--bg-elevated)",
       }}>
         <button
-          onClick={handleDelete}
+          onClick={onRequestDelete}
           disabled={deleting}
           style={{
             display: "flex", alignItems: "center", gap: 5,
-            padding: "5px 12px", borderRadius: 8, fontSize: 12, fontWeight: 500,
+            padding: isMobile ? "9px 16px" : "5px 12px", borderRadius: 8, fontSize: isMobile ? 13 : 12, fontWeight: 500,
             border: "1px solid rgba(231,76,60,0.3)",
             backgroundColor: "rgba(231,76,60,0.07)",
             color: "var(--danger)", cursor: deleting ? "default" : "pointer",
@@ -333,23 +358,36 @@ export function BotsPage() {
   const { bots, setBots, addBot: storeAddBot, removeBot } = useChannelsStore();
   const [showAdd, setShowAdd] = useState(false);
   useSettingsStore((s) => s.language);
+  const isMobile = useIsMobileLayout();
+
+  // Delete confirm — a real ConfirmDialog (bottom sheet on mobile), not a
+  // blocking native window.confirm(): the confirm must survive both the
+  // card's button and the keyboard Delete key.
+  const [confirmBot, setConfirmBot] = useState<BotType | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   // Sync from DB on mount
   useEffect(() => {
     getBots().then(setBots).catch(() => {});
   }, []);
 
-  // Standalone rather than reusing BotCard's own handleDelete (that one also
-  // drives a per-card "deleting" spinner, which a keyboard-triggered delete
-  // has no natural place to show) — same confirm+delete sequence.
-  async function handleDeleteBot(bot: BotType) {
-    if (!confirm(ti("bots.confirmDelete", { username: bot.username }))) return;
+  // Card button and keyboard Delete both funnel through the same
+  // confirm → delete sequence.
+  function requestDeleteBot(bot: BotType) {
+    setConfirmBot(bot);
+  }
+
+  async function runDeleteBot(bot: BotType) {
+    setDeletingId(bot.id);
+    setConfirmBot(null);
     try {
       await deleteBot(bot.id);
       removeBot(bot.id);
       toast.success(ti("bots.deletedMsg", { username: bot.username }));
     } catch (e) {
       toast.error(String(e));
+    } finally {
+      setDeletingId(null);
     }
   }
 
@@ -360,7 +398,7 @@ export function BotsPage() {
   const listNav = useListKeyboardNav(
     bots,
     (bot) => bot.id,
-    { onDelete: handleDeleteBot },
+    { onDelete: requestDeleteBot },
   );
 
   return (
@@ -371,7 +409,7 @@ export function BotsPage() {
             onClick={() => setShowAdd(true)}
             style={{
               display: "flex", alignItems: "center", gap: 6,
-              padding: "7px 14px", borderRadius: 8, fontSize: 13, fontWeight: 600,
+              padding: isMobile ? "11px 18px" : "7px 14px", borderRadius: 8, fontSize: 13, fontWeight: 600,
               backgroundColor: "var(--accent)", border: "none", color: "#fff", cursor: "pointer",
             }}
           >
@@ -381,7 +419,7 @@ export function BotsPage() {
         }
       />
 
-      <div className="page-content max-w-3xl">
+      <div className="page-content max-w-3xl" style={{ padding: isMobile ? 12 : 24 }}>
         {bots.length === 0 ? (
           <EmptyState icon={Bot} title={t("bots.empty")} description={t("bots.emptyDesc")} />
         ) : (
@@ -396,7 +434,8 @@ export function BotsPage() {
                 key={bot.id}
                 bot={bot}
                 selected={listNav.selectedId === bot.id}
-                onDelete={() => removeBot(bot.id)}
+                deleting={deletingId === bot.id}
+                onRequestDelete={() => requestDeleteBot(bot)}
               />
             ))}
           </div>
@@ -407,6 +446,16 @@ export function BotsPage() {
         <AddBotModal
           onClose={() => setShowAdd(false)}
           onAdded={(bot) => storeAddBot(bot)}
+        />
+      )}
+
+      {confirmBot && (
+        <ConfirmDialog
+          title={t("bots.delete")}
+          description={ti("bots.confirmDelete", { username: confirmBot.username })}
+          confirmLabel={t("common.delete")}
+          onConfirm={() => runDeleteBot(confirmBot)}
+          onClose={() => setConfirmBot(null)}
         />
       )}
     </>

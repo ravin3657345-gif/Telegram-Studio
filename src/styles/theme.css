@@ -47,6 +47,16 @@
   --shadow-lg:    0 8px 24px rgba(0, 0, 0, 0.34);
   --shadow-modal: 0 16px 48px rgba(0, 0, 0, 0.40);
 
+  /* Glassmorphism (block palette tiles) — translucent frost over a soft
+     gradient panel. Dark theme: faint white frost with a dim blue rim. */
+  --glass-bg:           rgba(255, 255, 255, 0.06);
+  --glass-bg-hover:     rgba(255, 255, 255, 0.11);
+  --glass-border:       rgba(255, 255, 255, 0.10);
+  --glass-border-hover: rgba(124, 156, 255, 0.55);
+  --glass-shadow:       0 4px 14px rgba(0, 0, 0, 0.30);
+  --glass-shadow-hover: 0 8px 24px rgba(0, 0, 0, 0.38);
+  --palette-bg:         linear-gradient(135deg, #23253a 0%, #202021 50%, #1d2320 100%);
+
   --scrollbar-track:        #202020;
   --scrollbar-thumb:        #333333;
   --scrollbar-thumb-hover:  #444444;
@@ -105,6 +115,16 @@
   --shadow-md:    0 4px 12px rgba(0, 0, 0, 0.08);
   --shadow-lg:    0 8px 24px rgba(0, 0, 0, 0.10);
   --shadow-modal: 0 20px 60px rgba(0, 0, 0, 0.15);
+
+  /* Glassmorphism (block palette tiles) — translucent frost over a soft
+     gradient panel. Light theme: bright white frost with a pale blue rim. */
+  --glass-bg:           rgba(255, 255, 255, 0.55);
+  --glass-bg-hover:     rgba(255, 255, 255, 0.78);
+  --glass-border:       rgba(255, 255, 255, 0.85);
+  --glass-border-hover: rgba(59, 111, 224, 0.55);
+  --glass-shadow:       0 4px 14px rgba(31, 38, 135, 0.10);
+  --glass-shadow-hover: 0 10px 28px rgba(31, 38, 135, 0.18);
+  --palette-bg:         linear-gradient(135deg, #e6edfb 0%, #fbf4ec 50%, #e9f4ec 100%);
 
   --scrollbar-track:        #f7f7f5;
   --scrollbar-thumb:        #d0cecc;

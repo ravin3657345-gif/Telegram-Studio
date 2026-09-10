@@ -885,7 +885,7 @@ export function PublishPanel({ draftId }: PublishPanelProps) {
       {/* Buttons — pinned footer, always visible regardless of how tall the
           scrollable content above is (channel list, warnings, etc.) */}
       <div
-        className={"flex flex-col gap-2 flex-shrink-0 " + (isMobile ? "px-4 pt-4 pb-5" : "px-4 pt-3 pb-4")}
+        className={"flex flex-col gap-2 flex-shrink-0 " + (isMobile ? "px-4 pt-4 pb-5" : "px-3 pt-3 pb-4")}
         style={{ borderTop: "1px solid var(--border-subtle)" }}
       >
         {editingHistoryId ? (
@@ -920,7 +920,6 @@ export function PublishPanel({ draftId }: PublishPanelProps) {
                 onClick: () => setShowTemplateDialog(true),
                 disabled: !contentJson,
                 loading: savingTemplate,
-                iconOnly: true,
               },
             ]}
           />

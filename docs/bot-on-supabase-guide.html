@@ -1,0 +1,967 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Переезд Telegram-бота на Supabase — инструкция</title>
+<meta name="description" content="Пошаговая инструкция: как перенести Telegram-бота на Supabase и работать без VPN — на опыте нашего sales-bot.">
+<style>
+  /* ── Design tokens ─────────────────────────────────────── */
+  :root {
+    --bg:        #f6f7f9;
+    --surface:   #ffffff;
+    --elevated:  #eef0f3;
+    --border:    #e3e6ea;
+    --border-strong: #d3d8de;
+    --text:      #1c1f24;
+    --muted:     #5c6570;
+    --faint:     #8b939e;
+    --accent:    #2AABEE;
+    --accent-2:  #6d5cff;
+    --accent-soft: rgba(42,171,238,0.10);
+    --success:   #22a06b;
+    --success-soft: rgba(34,160,107,0.10);
+    --warn:      #d97706;
+    --warn-soft: rgba(217,119,6,0.10);
+    --danger:    #dc2626;
+    --danger-soft: rgba(220,38,38,0.08);
+
+    --code-bg:   #0e1116;
+    --code-border: #1d232c;
+    --code-head: #151a21;
+
+    --font-display: "Segoe UI Variable Display", "Segoe UI Semibold", "Segoe UI", ui-sans-serif, system-ui, -apple-system, sans-serif;
+    --font-body:    "Segoe UI Variable Text", "Segoe UI", ui-sans-serif, system-ui, -apple-system, sans-serif;
+    --font-mono:    "Cascadia Code", "Cascadia Mono", ui-monospace, "SF Mono", Consolas, "Roboto Mono", monospace;
+
+    --radius-lg: 16px;
+    --radius-md: 10px;
+    --radius-sm: 7px;
+    --shadow: 0 1px 2px rgba(16,20,26,.05), 0 4px 16px rgba(16,20,26,.06);
+    --shadow-lg: 0 12px 40px rgba(16,20,26,.12);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #101216; --surface: #171a20; --elevated: #1e222a;
+      --border: #272c35; --border-strong: #333a45;
+      --text: #e3e6ea; --muted: #9aa3ad; --faint: #6b7480;
+      --accent: #3fb8f0; --accent-2: #8f80ff;
+      --accent-soft: rgba(63,184,240,0.12);
+      --success: #3fce8f; --success-soft: rgba(63,206,143,0.12);
+      --warn: #f0a74b; --warn-soft: rgba(240,167,75,0.12);
+      --danger: #f36a6a; --danger-soft: rgba(243,106,106,0.10);
+      --shadow: 0 1px 2px rgba(0,0,0,.3), 0 4px 16px rgba(0,0,0,.25);
+      --shadow-lg: 0 12px 40px rgba(0,0,0,.45);
+    }
+  }
+  :root[data-theme="dark"] { /* те же значения, что в prefers-color-scheme: dark */
+    --bg: #101216; --surface: #171a20; --elevated: #1e222a;
+    --border: #272c35; --border-strong: #333a45;
+    --text: #e3e6ea; --muted: #9aa3ad; --faint: #6b7480;
+    --accent: #3fb8f0; --accent-2: #8f80ff;
+    --accent-soft: rgba(63,184,240,0.12);
+    --success: #3fce8f; --success-soft: rgba(63,206,143,0.12);
+    --warn: #f0a74b; --warn-soft: rgba(240,167,75,0.12);
+    --danger: #f36a6a; --danger-soft: rgba(243,106,106,0.10);
+    --shadow: 0 1px 2px rgba(0,0,0,.3), 0 4px 16px rgba(0,0,0,.25);
+    --shadow-lg: 0 12px 40px rgba(0,0,0,.45);
+  }
+  :root[data-theme="light"] {
+    --bg: #f6f7f9; --surface: #ffffff; --elevated: #eef0f3;
+    --border: #e3e6ea; --border-strong: #d3d8de;
+    --text: #1c1f24; --muted: #5c6570; --faint: #8b939e;
+    --accent: #2AABEE; --accent-2: #6d5cff;
+    --accent-soft: rgba(42,171,238,0.10);
+    --success: #22a06b; --success-soft: rgba(34,160,107,0.10);
+    --warn: #d97706; --warn-soft: rgba(217,119,6,0.10);
+    --danger: #dc2626; --danger-soft: rgba(220,38,38,0.08);
+    --shadow: 0 1px 2px rgba(16,20,26,.05), 0 4px 16px rgba(16,20,26,.06);
+    --shadow-lg: 0 12px 40px rgba(16,20,26,.12);
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font-family: var(--font-body); font-size: 15.5px; line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ── Layout ───────────────────────────────────────────── */
+  .layout { max-width: 1160px; margin: 0 auto; padding: 0 28px; display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 48px; }
+  @media (max-width: 1080px) { .layout { grid-template-columns: 1fr; gap: 24px; } }
+
+  /* ── Top bar ──────────────────────────────────────────── */
+  .topbar {
+    position: sticky; top: 0; z-index: 50;
+    backdrop-filter: blur(12px); background: color-mix(in srgb, var(--bg) 82%, transparent);
+    border-bottom: 1px solid var(--border);
+  }
+  .topbar-inner { max-width: 1160px; margin: 0 auto; padding: 12px 28px; display: flex; align-items: center; gap: 12px; }
+  .brand { display: flex; align-items: center; gap: 10px; font-family: var(--font-display); font-weight: 650; font-size: 14px; letter-spacing: .01em; }
+  .brand-mark {
+    width: 30px; height: 30px; border-radius: 9px; flex-shrink: 0;
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    display: flex; align-items: center; justify-content: center; color: #fff;
+  }
+  .brand-mark svg { width: 16px; height: 16px; }
+  .brand-sub { color: var(--faint); font-weight: 500; font-size: 12.5px; }
+  .topbar .spacer { flex: 1; }
+  .theme-toggle {
+    display: inline-flex; align-items: center; gap: 7px;
+    border: 1px solid var(--border); background: var(--surface); color: var(--muted);
+    border-radius: 999px; padding: 7px 14px; font: 600 12.5px var(--font-body);
+    cursor: pointer; transition: border-color .15s, color .15s, background .15s;
+  }
+  .theme-toggle:hover { border-color: var(--border-strong); color: var(--text); }
+
+  /* ── TOC ──────────────────────────────────────────────── */
+  .toc { position: sticky; top: 84px; align-self: start; max-height: calc(100vh - 110px); overflow: auto; }
+  @media (max-width: 1080px) { .toc { display: none; } }
+  .toc-title { font-family: var(--font-display); font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--faint); margin: 0 0 12px; padding-left: 4px; }
+  .toc nav { display: flex; flex-direction: column; gap: 2px; }
+  .toc a {
+    display: block; padding: 6px 10px; border-radius: var(--radius-sm);
+    color: var(--muted); text-decoration: none; font-size: 13.5px; font-weight: 500;
+    border-left: 2px solid transparent; transition: color .15s, background .15s, border-color .15s;
+  }
+  .toc a:hover { color: var(--text); background: var(--surface); }
+  .toc a.active { color: var(--accent); border-left-color: var(--accent); background: var(--accent-soft); }
+  .toc a .time { color: var(--faint); font-size: 11.5px; font-weight: 600; }
+
+  .toc-mobile { display: none; }
+  @media (max-width: 1080px) {
+    .toc-mobile { display: block; margin: 18px 0 6px; }
+    .toc-mobile summary { cursor: pointer; list-style: none; font-family: var(--font-display); font-weight: 650; font-size: 14px; padding: 12px 14px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md); }
+    .toc-mobile summary::-webkit-details-marker { display: none; }
+    .toc-mobile nav { display: flex; flex-direction: column; gap: 2px; padding: 8px; background: var(--surface); border: 1px solid var(--border); border-top: none; border-radius: 0 0 var(--radius-md) var(--radius-md); }
+    .toc-mobile a { padding: 8px 10px; color: var(--muted); text-decoration: none; font-size: 13.5px; border-radius: var(--radius-sm); }
+    .toc-mobile a:hover { color: var(--text); background: var(--elevated); }
+  }
+
+  /* ── Hero ─────────────────────────────────────────────── */
+  main { padding: 40px 0 96px; min-width: 0; }
+  .hero { margin-bottom: 44px; }
+  .hero .eyebrow {
+    display: inline-flex; align-items: center; gap: 8px;
+    font-family: var(--font-mono); font-size: 11.5px; letter-spacing: .1em; text-transform: uppercase;
+    color: var(--accent); background: var(--accent-soft); border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
+    padding: 6px 12px; border-radius: 999px; margin: 0 0 18px;
+  }
+  .hero .eyebrow .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--success); }
+  .hero h1 {
+    font-family: var(--font-display); font-size: clamp(30px, 4.6vw, 44px); line-height: 1.12;
+    font-weight: 720; letter-spacing: -.02em; margin: 0 0 14px; max-width: 21ch;
+  }
+  .hero h1 .grad {
+    background: linear-gradient(100deg, var(--accent), var(--accent-2));
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .hero .lede { color: var(--muted); font-size: 16.5px; max-width: 62ch; margin: 0 0 24px; }
+  .hero-badges { display: flex; flex-wrap: wrap; gap: 8px; }
+  .badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 12.5px; font-weight: 600; color: var(--muted);
+    border: 1px solid var(--border); background: var(--surface);
+    padding: 6px 12px; border-radius: 999px;
+  }
+  .badge.good { color: var(--success); border-color: color-mix(in srgb, var(--success) 35%, transparent); background: var(--success-soft); }
+
+  .promise { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; margin-top: 30px; }
+  .promise-card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg);
+    padding: 16px 16px 14px; box-shadow: var(--shadow);
+  }
+  .promise-card .ic { width: 34px; height: 34px; border-radius: 10px; display: flex; align-items: center; justify-content: center; background: var(--accent-soft); margin-bottom: 10px; }
+  .promise-card .ic svg { width: 17px; height: 17px; stroke: var(--accent); }
+  .promise-card b { display: block; font-family: var(--font-display); font-size: 14px; font-weight: 650; margin-bottom: 2px; }
+  .promise-card span { color: var(--muted); font-size: 12.5px; line-height: 1.45; }
+
+  /* ── Sections ─────────────────────────────────────────── */
+  section { margin-bottom: 56px; scroll-margin-top: 84px; }
+  .sec-head { margin-bottom: 22px; }
+  .sec-kicker { font-family: var(--font-mono); font-size: 11.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--accent); margin: 0 0 8px; }
+  h2 {
+    font-family: var(--font-display); font-size: 25px; font-weight: 700; letter-spacing: -.015em;
+    margin: 0; line-height: 1.2;
+  }
+  h2 .sub { display: block; color: var(--muted); font-size: 14px; font-weight: 500; margin-top: 8px; letter-spacing: 0; }
+  h3 { font-family: var(--font-display); font-size: 16.5px; font-weight: 650; margin: 26px 0 10px; }
+  p { margin: 0 0 14px; }
+  a { color: var(--accent); }
+  strong { font-weight: 650; }
+
+  /* Варианты — карточки-врезки */
+  .variant-strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; margin: 20px 0 8px; }
+  .variant-card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg);
+    padding: 18px; box-shadow: var(--shadow);
+  }
+  .variant-card .v-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
+  .variant-card .v-name { font-family: var(--font-display); font-weight: 700; font-size: 15.5px; }
+  .pill { font-size: 11.5px; font-weight: 700; padding: 3px 9px; border-radius: 999px; }
+  .pill.a { color: var(--accent); background: var(--accent-soft); }
+  .pill.b { color: var(--accent-2); background: color-mix(in srgb, var(--accent-2) 12%, transparent); }
+  .variant-card p { color: var(--muted); font-size: 13px; margin: 0; line-height: 1.5; }
+
+  /* Шаги */
+  .steps { list-style: none; margin: 18px 0 0; padding: 0; counter-reset: step; }
+  .steps > li { counter-increment: step; position: relative; padding: 0 0 28px 58px; }
+  .steps > li::before {
+    content: counter(step); position: absolute; left: 0; top: 0;
+    width: 38px; height: 38px; border-radius: 12px;
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    color: #fff; font-family: var(--font-display); font-weight: 700; font-size: 15px;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 4px 12px color-mix(in srgb, var(--accent) 35%, transparent);
+  }
+  .steps > li::after {
+    content: ""; position: absolute; left: 18px; top: 44px; bottom: 6px; width: 2px;
+    background: var(--border); border-radius: 2px;
+  }
+  .steps > li:last-child::after { display: none; }
+  .steps .step-title { font-family: var(--font-display); font-weight: 650; font-size: 16px; margin: 2px 0 8px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .steps .step-title .hint { font-family: var(--font-body); font-weight: 600; font-size: 11.5px; color: var(--faint); }
+  .steps p { color: var(--muted); font-size: 14.5px; }
+  .steps p:last-child { margin-bottom: 0; }
+
+  /* Каллауты */
+  .note, .warn, .good { border-radius: var(--radius-md); padding: 13px 16px 13px 44px; position: relative; margin: 14px 0; font-size: 14px; line-height: 1.55; }
+  .note { background: var(--accent-soft); border: 1px solid color-mix(in srgb, var(--accent) 22%, transparent); }
+  .warn { background: var(--warn-soft); border: 1px solid color-mix(in srgb, var(--warn) 30%, transparent); }
+  .good { background: var(--success-soft); border: 1px solid color-mix(in srgb, var(--success) 30%, transparent); }
+  .note::before, .warn::before, .good::before {
+    content: ""; position: absolute; left: 15px; top: 15px; width: 17px; height: 17px;
+    background-size: contain; background-repeat: no-repeat; opacity: .9;
+  }
+  .note::before { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%232AABEE' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M12 8h.01M12 12v4'/%3E%3C/svg%3E"); }
+  .warn::before { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23d97706' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M10.3 3.9L1.8 18a2 2 0 001.7 3h17a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z'/%3E%3Cpath d='M12 9v4M12 17h.01'/%3E%3C/svg%3E"); }
+  .good::before { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2322a06b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M22 11.1V12a10 10 0 11-5.9-9.1'/%3E%3Cpath d='M22 4L12 14l-3-3'/%3E%3C/svg%3E"); }
+  .note b, .warn b, .good b { font-weight: 650; }
+
+  /* Диаграмма */
+  .diagram {
+    background: var(--code-bg); color: #c9d1dc; border: 1px solid var(--code-border);
+    border-radius: var(--radius-lg); padding: 22px 26px; overflow-x: auto;
+    font-family: var(--font-mono); font-size: 12.5px; line-height: 1.55;
+  }
+  .diagram .hl { color: var(--accent); font-weight: 700; }
+  .diagram .dim { color: #566070; }
+
+  /* Код */
+  .codeblock { margin: 16px 0; border-radius: var(--radius-md); overflow: hidden; border: 1px solid var(--code-border); background: var(--code-bg); box-shadow: var(--shadow); }
+  .codeblock .head { display: flex; align-items: center; gap: 8px; padding: 9px 14px; background: var(--code-head); border-bottom: 1px solid var(--code-border); }
+  .codeblock .head .dots { display: flex; gap: 5px; margin-right: 6px; }
+  .codeblock .head .dots i { width: 9px; height: 9px; border-radius: 50%; display: block; }
+  .codeblock .head .dots i:nth-child(1) { background: #ff5f57; }
+  .codeblock .head .dots i:nth-child(2) { background: #febc2e; }
+  .codeblock .head .dots i:nth-child(3) { background: #28c840; }
+  .codeblock .head .fname { font-family: var(--font-mono); font-size: 12px; color: #8b94a3; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .codeblock .head .lang { font-size: 10.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #5c6675; border: 1px solid #2a313b; border-radius: 5px; padding: 2px 7px; }
+  .copy-btn {
+    display: inline-flex; align-items: center; gap: 5px;
+    font: 600 11.5px var(--font-body); color: #9aa4b2; background: transparent;
+    border: 1px solid #2a313b; border-radius: 6px; padding: 4px 10px; cursor: pointer;
+    transition: color .15s, border-color .15s, background .15s;
+  }
+  .copy-btn:hover { color: #e6e9ee; border-color: #3a4350; background: #1b212a; }
+  .copy-btn.done { color: #3fce8f; border-color: #24503c; }
+  pre.code { margin: 0; padding: 15px 18px; overflow-x: auto; font-family: var(--font-mono); font-size: 12.8px; line-height: 1.62; color: #d6dbe3; tab-size: 2; }
+  .tok-c { color: #5c6675; font-style: italic; }
+  .tok-s { color: #7fd08c; }
+  .tok-k { color: #6cb6f2; }
+  .tok-t { color: #c4a6f0; }
+  .tok-n { color: #e5a86b; }
+  .tok-f { color: #57d6d0; }
+
+  /* Таблицы */
+  .table-wrap { overflow-x: auto; margin: 16px 0; border: 1px solid var(--border); border-radius: var(--radius-md); }
+  table { border-collapse: collapse; width: 100%; font-size: 13.5px; min-width: 560px; }
+  th { text-align: left; font-family: var(--font-display); font-size: 12px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); background: var(--elevated); padding: 10px 14px; border-bottom: 1px solid var(--border); }
+  td { padding: 11px 14px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  td code { font-family: var(--font-mono); font-size: 12px; background: var(--elevated); border: 1px solid var(--border); border-radius: 5px; padding: 1px 6px; white-space: nowrap; }
+  .tbl-good { color: var(--success); font-weight: 600; }
+  .tbl-bad { color: var(--danger); font-weight: 600; }
+
+  /* Чек-лист */
+  .checklist { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 20px 22px; box-shadow: var(--shadow); }
+  .check-progress { display: flex; align-items: center; gap: 14px; margin-bottom: 16px; }
+  .check-progress .bar { flex: 1; height: 8px; border-radius: 999px; background: var(--elevated); overflow: hidden; }
+  .check-progress .bar i { display: block; height: 100%; width: 0%; border-radius: 999px; background: linear-gradient(90deg, var(--accent), var(--accent-2)); transition: width .3s ease; }
+  .check-progress .count { font-family: var(--font-mono); font-size: 12.5px; color: var(--muted); white-space: nowrap; }
+  .checklist label { display: flex; align-items: flex-start; gap: 11px; padding: 9px 4px; cursor: pointer; font-size: 14px; border-radius: 8px; transition: background .15s; }
+  .checklist label:hover { background: var(--elevated); }
+  .checklist input { appearance: none; width: 19px; height: 19px; border: 2px solid var(--border-strong); border-radius: 6px; margin-top: 1px; flex-shrink: 0; cursor: pointer; position: relative; transition: background .15s, border-color .15s; }
+  .checklist input:checked { background: var(--accent); border-color: var(--accent); }
+  .checklist input:checked::after { content: ""; position: absolute; left: 5px; top: 1px; width: 5px; height: 10px; border: solid #fff; border-width: 0 2px 2px 0; transform: rotate(45deg); }
+  .checklist label.done span { color: var(--faint); text-decoration: line-through; }
+
+  /* FAQ */
+  details.faq { border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface); margin-bottom: 10px; overflow: hidden; }
+  details.faq summary {
+    cursor: pointer; list-style: none; padding: 15px 18px; font-family: var(--font-display); font-weight: 650; font-size: 14.5px;
+    display: flex; align-items: center; justify-content: space-between; gap: 12px; transition: color .15s;
+  }
+  details.faq summary::-webkit-details-marker { display: none; }
+  details.faq summary .chev { flex-shrink: 0; width: 18px; height: 18px; color: var(--faint); transition: transform .2s ease; }
+  details.faq[open] summary .chev { transform: rotate(180deg); }
+  details.faq summary:hover { color: var(--accent); }
+  details.faq .faq-body { padding: 0 18px 16px; color: var(--muted); font-size: 14px; line-height: 1.6; }
+  details.faq .faq-body p { margin: 0; }
+
+  /* Кнопка наверх */
+  .top-btn {
+    position: fixed; right: 22px; bottom: 22px; z-index: 60;
+    width: 44px; height: 44px; border-radius: 13px; border: 1px solid var(--border);
+    background: var(--surface); color: var(--muted); cursor: pointer;
+    box-shadow: var(--shadow-lg); opacity: 0; pointer-events: none; transition: opacity .25s, color .15s, transform .15s;
+  }
+  .top-btn.show { opacity: 1; pointer-events: auto; }
+  .top-btn:hover { color: var(--accent); transform: translateY(-2px); }
+
+  footer { border-top: 1px solid var(--border); margin-top: 16px; padding-top: 22px; color: var(--faint); font-size: 12.5px; line-height: 1.6; }
+  footer .src { font-family: var(--font-mono); font-size: 12px; }
+
+  @media (max-width: 640px) {
+    .layout { padding: 0 16px; }
+    .topbar-inner { padding: 10px 16px; }
+    .steps > li { padding-left: 50px; }
+    .steps > li::before { width: 34px; height: 34px; font-size: 14px; }
+    .steps > li::after { left: 16px; }
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    section { animation: rise .4s ease-out both; }
+    @keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+  }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-inner">
+    <div class="brand">
+      <div class="brand-mark">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 16.5l-3-1.5 12-10L22 3l-2 8.5-10 12-1.5-3-3 .5.5-4.5z"/><path d="M4.5 16.5L22 3"/></svg>
+      </div>
+      <span>Telegram Studio <span class="brand-sub">· инструкция</span></span>
+    </div>
+    <div class="spacer"></div>
+    <button class="theme-toggle" id="themeToggle" type="button" aria-label="Переключить тему"><span id="themeIcon">🌙</span><span id="themeLabel">Тема</span></button>
+  </div>
+</div>
+
+<div class="layout">
+
+  <!-- ═══ Содержание (desktop) ═══ -->
+  <aside class="toc" id="toc">
+    <p class="toc-title">Содержание</p>
+    <nav>
+      <a href="#how">Как это работает</a>
+      <a href="#req">Что понадобится</a>
+      <a href="#variant-a">Вариант А — релей <span class="time">15 мин</span></a>
+      <a href="#variant-b">Вариант Б — переезд <span class="time">1–2 ч</span></a>
+      <a href="#extras">Опционально</a>
+      <a href="#mistakes">Частые ошибки</a>
+      <a href="#checklist">Чек-лист</a>
+      <a href="#faq">Вопросы и ответы</a>
+    </nav>
+  </aside>
+
+  <main>
+
+    <!-- ═══ Hero ═══ -->
+    <div class="hero">
+      <p class="eyebrow"><span class="dot"></span>Проверено на живом опыте — наш sales-bot работает так</p>
+      <h1>Переезд Telegram-бота на Supabase: <span class="grad">работайте без VPN</span></h1>
+      <p class="lede">Пошаговая инструкция, как перенести своего Telegram-бота в облако Supabase — по той же схеме, по которой мы перенесли наш sales-bot. Бот отвечает без VPN и без включённого компьютера.</p>
+      <div class="hero-badges">
+        <span class="badge good">✅ Без VPN</span>
+        <span class="badge good">✅ Без включённого ПК</span>
+        <span class="badge">💸 Бесплатный тариф</span>
+        <span class="badge">🔒 Токены зашифрованы</span>
+      </div>
+      <div class="promise">
+        <div class="promise-card"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg></div><b>Вариант А — релей</b><span>Бот остаётся у вас, работает через пересыльщик на Supabase. 15 минут, подходит для любого языка.</span></div>
+        <div class="promise-card"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3l14 7-5 2-2 5-7-14z"/><path d="M4 21l7-7"/></svg></div><b>Вариант Б — переезд</b><span>Бот целиком живёт на Supabase (как sales-bot). 1–2 часа, компьютер можно выключать.</span></div>
+        <div class="promise-card"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M8 2v4M16 2v4M3 10h18"/></svg></div><b>Данные — в облаке</b><span>Журнал, файлы и file_id-кеш — в Postgres и Storage. Отложенные задачи — через pg_cron.</span></div>
+        <div class="promise-card"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div><b>Безопасно</b><span>Токен — в зашифрованных секретах Supabase, вебхук защищён секретом от чужих вызовов.</span></div>
+      </div>
+    </div>
+
+    <!-- ═══ Содержание (mobile) ═══ -->
+    <details class="toc-mobile">
+      <summary>📑 Содержание</summary>
+      <nav>
+        <a href="#how">Как это работает</a>
+        <a href="#req">Что понадобится</a>
+        <a href="#variant-a">Вариант А — релей (15 мин)</a>
+        <a href="#variant-b">Вариант Б — переезд (1–2 ч)</a>
+        <a href="#extras">Опционально</a>
+        <a href="#mistakes">Частые ошибки</a>
+        <a href="#checklist">Чек-лист</a>
+        <a href="#faq">Вопросы и ответы</a>
+      </nav>
+    </details>
+
+    <!-- ═══ 1. Как это работает ═══ -->
+    <section id="how">
+      <div class="sec-head"><p class="sec-kicker">01 · Схема</p><h2>Как это работает</h2></div>
+      <p>Блокировка в РФ работает так: провайдер обрывает соединение <strong>по IP-адресу</strong> <code>api.telegram.org</code> — любой запрос из домашней сети к этому адресу умирает. А вот к адресам Supabase (облако за границей, обёрнутое в Cloudflare) достучаться можно.</p>
+      <p>Решение — поменять <strong>адрес</strong>, по которому бот ходит в Telegram, с заблокированного на доступный:</p>
+<pre class="diagram">БЕЗ РЕШЕНИЯ                                С РЕШЕНИЕМ
+                                            ┌─────────────────────────────┐
+┌──────────┐                               │        SUPABASE (облако)      │
+│  Ваш бот  │ ── запрос ── ✂️ ❌              │                             │
+│(ПК/сервер)│      api.telegram.org         │  ┌───────────────────────┐  │
+└──────────┘                               │  │  Edge Function         │  │
+                                           │  │  (ваш бот / релей)     │  │
+                                           │  └──────────┬────────────┘  │
+                                           │             │  запрос       │
+                                           │             ▼               │
+                                           │  ┌───────────────────────┐  │
+                                           │  │    api.telegram.org   │  │
+                                           │  └───────────────────────┘  │
+                                           └─────────────────────────────┘</pre>
+      <div class="variant-strip">
+        <div class="variant-card">
+          <div class="v-head"><span class="v-name">Вариант А</span><span class="pill a">15 минут</span></div>
+          <p>Бот остаётся на вашей машине, а запросы к Telegram идут через <strong>релей</strong> — маленькую функцию-пересыльщик на Supabase.</p>
+        </div>
+        <div class="variant-card">
+          <div class="v-head"><span class="v-name">Вариант Б</span><span class="pill b">1–2 часа</span></div>
+          <p>Весь бот переезжает в Supabase как <strong>вебхук-функция</strong> — как наш sales-bot. Компьютер можно выключать.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══ 2. Что понадобится ═══ -->
+    <section id="req">
+      <div class="sec-head"><p class="sec-kicker">02 · Подготовка</p><h2>Что понадобится</h2></div>
+      <div class="table-wrap"><table>
+        <tr><th style="width:38%">Что</th><th>Зачем</th></tr>
+        <tr><td>Токен бота от <strong>@BotFather</strong></td><td>сам бот</td></tr>
+        <tr><td>Аккаунт <strong>Supabase</strong> (бесплатный)</td><td>облако, где будет жить бот</td></tr>
+        <tr><td><strong>Supabase CLI</strong></td><td>деплой функций — ставится за минуту</td></tr>
+        <tr><td>Умение копировать команды в терминал</td><td>—</td></tr>
+      </table></div>
+      <div class="note"><b>Сколько это стоит:</b> бесплатный тариф Supabase включает 500 000 вызовов функций в месяц, 500 МБ базы и 1 ГБ файлов — для небольшого бота хватает с запасом. Платный план (от $25/мес) поднимает лимит до 2 млн вызовов. Важно: бесплатный проект <b>ставится на паузу после 7 дней без активности</b> — бота «разбудит» первое же сообщение.</div>
+    </section>
+
+    <!-- ═══ 3. Вариант А ═══ -->
+    <section id="variant-a">
+      <div class="sec-head"><p class="sec-kicker">03 · Вариант А</p><h2>Релей: бот остаётся у вас <span class="sub">Бот продолжает жить на вашей машине, но вместо api.telegram.org ходит в Telegram через функцию-пересыльщик на вашем Supabase. Код бота не переписывается — меняется одна строка (адрес API).</span></h2></div>
+
+      <ol class="steps">
+        <li>
+          <div class="step-title">Создайте проект Supabase</div>
+          <p>Зайдите на <a href="https://supabase.com" target="_blank" rel="noopener">supabase.com</a> → <strong>Start your project</strong>. Введите название и пароль от базы данных, выберите регион (<strong>любой кроме России</strong> — например Frankfurt). Дождитесь создания.</p>
+          <p>На странице <strong>Project Settings → API</strong> скопируйте <strong>Project URL</strong> вида <code>https://abcdefghijklmnopqrst.supabase.co</code>. Кусок <code>abcdefghijklmnopqrst</code> — это <strong>Project Ref</strong>, он понадобится дальше.</p>
+        </li>
+        <li>
+          <div class="step-title">Разверните функцию-релей</div>
+          <p>Установите CLI и подключитесь к проекту:</p>
+          <div class="codeblock"><div class="head"><span class="dots"><i></i><i></i><i></i></span><span class="fname">терминал — установка</span><span class="lang">bash</span><button class="copy-btn" type="button">Копировать</button></div><pre class="code" data-code="install" data-lang="bash"></pre></div>
+          <div class="codeblock"><div class="head"><span class="dots"><i></i><i></i><i></i></span><span class="fname">терминал — инициализация и подключение</span><span class="lang">bash</span><button class="copy-btn" type="button">Копировать</button></div><pre class="code" data-code="link-a" data-lang="bash"></pre></div>
+          <p>Создайте функцию:</p>
+          <div class="codeblock"><div class="head"><span class="dots"><i></i><i></i><i></i></span><span class="fname">терминал</span><span class="lang">bash</span><button class="copy-btn" type="button">Копировать</button></div><pre class="code" data-code="new-relay" data-lang="bash"></pre></div>
+          <p>Замените содержимое <code>supabase/functions/tg-relay/index.ts</code> на это:</p>
+          <div class="codeblock"><div class="head"><span class="dots"><i></i><i></i><i></i></span><span class="fname">supabase/functions/tg-relay/index.ts</span><span class="lang">ts</span><button class="copy-btn" type="button">Копировать</button></div><pre class="code" data-code="relay" data-lang="ts"></pre></div>
+          <p>Выключите проверку JWT — добавьте в конец файла <code>supabase/config.toml</code>:</p>
+          <div class="codeblock"><div class="head"><span class="dots"><i></i><i></i><i></i></span><span class="fname">supabase/config.toml</span><span class="lang">toml</span><button class="copy-btn" type="button">Копировать</button></div><pre class="code" data-code="toml-relay" data-lang="toml"></pre></div>
+          <p>Задеплойте и проверьте:</p>
+          <div class="codeblock"><div class="head"><span class="dots"><i></i><i></i><i></i></span><span class="fname">терминал — деплой и проверка</span><span class="lang">bash</span><button class="copy-btn" type="button">Копировать</button></div><pre class="code" data-code="deploy-relay" data-lang="bash"></pre></div>
+          <div class="good"><b>Релей работает,</b> если в ответе пришло имя вашего бота (<code>"username": "..."</code>). 🎉 Проверка ходит на ваш Supabase (доступен), а уже Supabase ходит в Telegram (тоже доступен — его сервера за границей), поэтому команда сработает даже при полной блокировке.</div>
+        </li>
+        <li>
+          <div class="step-title">Переключите бота на релей <span class="hint">— одна строка</span></div>
+          <div class="table-wrap"><table>
+            <tr><th>Фреймворк</th><th>Как указать адрес</th></tr>
+            <tr><td><b>python-telegram-bot</b></td><td><code>Application.builder().base_url("…/functions/v1/tg-relay/bot")</code></td></tr>
+            <tr><td><b>aiogram</b></td><td><code>Bot(token=…, base_url="…/functions/v1/tg-relay/bot")</code></td></tr>
+            <tr><td><b>grammY</b></td><td><code>new Bot(token, &#123; client: &#123; apiRoot: "…/functions/v1/tg-relay" &#125; &#125;)</code></td></tr>
+            <tr><td><b>telegraf</b></td><td><code>new Telegraf(token, &#123; telegram: &#123; apiRoot: "…/functions/v1/tg-relay" &#125; &#125;)</code></td></tr>
+            <tr><td><b>node-telegram-bot-api</b></td><td><code>new TelegramBot(token, &#123; baseApiUrl: "…/functions/v1/tg-relay" &#125;)</code></td></tr>
+          </table></div>
+          <p>Обратите внимание: фреймворки, у которых адрес по умолчанию заканчивается на <code>/bot</code> (python-telegram-bot, aiogram), — добавляйте <code>/bot</code> в конец; остальные — без него. Если бот читает конфиг из <code>.env</code> — просто добавьте переменную окружения, код не трогаете.</p>
+        </li>
+        <li>
+          <div class="step-title">Перезапустите бота</div>
+          <p>Остановите и запустите бота заново — готово, он работает без VPN. 🎉</p>
+          <div class="note"><b>Плюсы:</b> работает для <b>любого языка</b> (Python, Node, Go, PHP…), код почти не меняется, 15 минут. <b>Минусы:</b> бот живёт на вашей машине — компьютер должен быть включён; медиа тяжелее ~25 КБ через релей может не пройти (лечится отправкой по <code>file_id</code>).</div>
+        </li>
+      </ol>
+    </section>
+
+    <!-- ═══ 4. Вариант Б ═══ -->
+    <section id="variant-b">
+      <div class="sec-head"><p class="sec-kicker">04 · Вариант Б</p><h2>Полный переезд: бот живёт на Supabase <span class="sub">Бот переезжает в облако целиком — как наш sales-bot. Теперь это вебхук-функция: Telegram сам присылает апдейты на адрес функции, функция обрабатывает и отвечает. Ваш компьютер больше не нужен.</span></h2></div>
+      <div class="warn"><b>Важное ограничение:</b> Supabase-функции выполняются на Deno/TypeScript. Если ваш бот написан на <b>Node.js — переезд почти безболезненный</b>. Если на Python/Go/PHP — потребуется переписывание; для таких ботов используйте Вариант А.</div>
+
+      <ol class="steps">
+        <li>
+          <div class="step-title">Создайте проект и подготовьте CLI</div>
+          <p>Как в Варианте А: создайте проект Supabase, установите CLI, затем:</p>
+          <div class="codeblock"><div class="head"><span class="dots"><i></i><i></i><i></i></span><span class="fname">терминал</span><span class="lang">bash</span><button class="copy-btn" type="button">Копировать</button></div><pre class="code" data-code="link-b" data-lang="bash"></pre></div>
+        </li>
+        <li>
+          <div class="step-title">Создайте функцию-бота</div>
+          <div class="codeblock"><div class="head"><span class="dots"><i></i><i></i><i></i></span><span class="fname">терминал</span><span class="lang">bash</span><button class="copy-btn" type="button">Копировать</button></div><pre class="code" data-code="new-bot" data-lang="bash"></pre></div>
+          <p>Замените содержимое <code>supabase/functions/bot/index.ts</code> на рабочий шаблон:</p>
+          <div class="codeblock"><div class="head"><span class="dots"><i></i><i></i><i></i></span><span class="fname">supabase/functions/bot/index.ts</span><span class="lang">ts</span><button class="copy-btn" type="button">Копировать</button></div><pre class="code" data-code="bot" data-lang="ts"></pre></div>
+          <p>Это каркас. Внутрь вставляете свою логику — точно так же, как она была в обычном боте: <code>if (message.text === …)</code> / обработка callback-кнопок (<code>update.callback_query</code>) и т.д.</p>
+        </li>
+        <li>
+          <div class="step-title">Настройте конфиг и секреты</div>
+          <p>Добавьте в конец <code>supabase/config.toml</code>:</p>
+          <div class="codeblock"><div class="head"><span class="dots"><i></i><i></i><i></i></span><span class="fname">supabase/config.toml</span><span class="lang">toml</span><button class="copy-btn" type="button">Копировать</button></div><pre class="code" data-code="toml-bot" data-lang="toml"></pre></div>
+          <div class="warn"><b>Это обязательно.</b> Без этого Telegram получит <code>401 Unauthorized</code> — функции по умолчанию требуют JWT Supabase, которого у Telegram нет. И не удаляйте строку: <b>каждый</b> деплой переключает проверку JWT обратно, если её нет в <code>config.toml</code>.</div>
+          <p>Сохраните токен и секрет вебхука (придумайте длинную случайную строку):</p>
+          <div class="codeblock"><div class="head"><span class="dots"><i></i><i></i><i></i></span><span class="fname">терминал — секреты</span><span class="lang">bash</span><button class="copy-btn" type="button">Копировать</button></div><pre class="code" data-code="secrets" data-lang="bash"></pre></div>
+          <p>Токен хранится в зашифрованном виде в Supabase и не попадает в код — коммитить его в git не нужно.</p>
+        </li>
+        <li>
+          <div class="step-title">Проверьте локально <span class="hint">— по желанию, но полезно</span></div>
+          <div class="codeblock"><div class="head"><span class="dots"><i></i><i></i><i></i></span><span class="fname">терминал — запуск и тестовый апдейт</span><span class="lang">bash</span><button class="copy-btn" type="button">Копировать</button></div><pre class="code" data-code="serve" data-lang="bash"></pre></div>
+          <p>В консоли <code>functions serve</code> появится обработка запроса.</p>
+        </li>
+        <li>
+          <div class="step-title">Задеплойте</div>
+          <div class="codeblock"><div class="head"><span class="dots"><i></i><i></i><i></i></span><span class="fname">терминал</span><span class="lang">bash</span><button class="copy-btn" type="button">Копировать</button></div><pre class="code" data-code="deploy-bot" data-lang="bash"></pre></div>
+        </li>
+        <li>
+          <div class="step-title">Подключите вебхук</div>
+          <p>Если <code>api.telegram.org</code> у вас <strong>доступен</strong> (настраиваете с заграничного сервера или через VPN):</p>
+          <div class="codeblock"><div class="head"><span class="dots"><i></i><i></i><i></i></span><span class="fname">терминал — напрямую</span><span class="lang">bash</span><button class="copy-btn" type="button">Копировать</button></div><pre class="code" data-code="webhook-direct" data-lang="bash"></pre></div>
+          <p>Если <strong>заблокирован</strong> — тот же запрос, но через ваш релей из Варианта А:</p>
+          <div class="codeblock"><div class="head"><span class="dots"><i></i><i></i><i></i></span><span class="fname">терминал — через релей</span><span class="lang">bash</span><button class="copy-btn" type="button">Копировать</button></div><pre class="code" data-code="webhook-relay" data-lang="bash"></pre></div>
+          <p>Проверьте, что вебхук встал:</p>
+          <div class="codeblock"><div class="head"><span class="dots"><i></i><i></i><i></i></span><span class="fname">терминал</span><span class="lang">bash</span><button class="copy-btn" type="button">Копировать</button></div><pre class="code" data-code="webhook-info" data-lang="bash"></pre></div>
+        </li>
+        <li>
+          <div class="step-title">Тест</div>
+          <p>Напишите боту <code>/start</code> в Telegram. Если отвечает — <strong>можно выключать компьютер</strong>. 🎉</p>
+        </li>
+      </ol>
+    </section>
+
+    <!-- ═══ 5. Опционально ═══ -->
+    <section id="extras">
+      <div class="sec-head"><p class="sec-kicker">05 · Дополнительно</p><h2>База данных, файлы, отложенные задачи <span class="sub">Всё, что наш sales-bot хранил в файлах и CSV, мы перенесли в Postgres и Storage Supabase. Вам пригодятся те же приёмы.</span></h2></div>
+
+      <h3>🗄 Журнал в Postgres</h3>
+      <p>В <code>supabase/functions/bot/index.ts</code> подключите клиент и пишите в таблицу:</p>
+      <div class="codeblock"><div class="head"><span class="dots"><i></i><i></i><i></i></span><span class="fname">фрагмент: запись в журнал</span><span class="lang">ts</span><button class="copy-btn" type="button">Копировать</button></div><pre class="code" data-code="db-log" data-lang="ts"></pre></div>
+      <p>Таблицу создайте в SQL-редакторе Supabase:</p>
+      <div class="codeblock"><div class="head"><span class="dots"><i></i><i></i><i></i></span><span class="fname">SQL-редактор Supabase</span><span class="lang">sql</span><button class="copy-btn" type="button">Копировать</button></div><pre class="code" data-code="sql-log" data-lang="sql"></pre></div>
+
+      <h3>🖼 Медиа и кеш file_id</h3>
+      <p>Отправка фото из функции:</p>
+      <div class="codeblock"><div class="head"><span class="dots"><i></i><i></i><i></i></span><span class="fname">фрагмент: sendPhoto по file_id</span><span class="lang">ts</span><button class="copy-btn" type="button">Копировать</button></div><pre class="code" data-code="send-photo" data-lang="ts"></pre></div>
+      <p>Первую загрузку файла сделайте один раз (например, скриптом при деплое), сохраните <code>file_id</code> в таблицу и переиспользуйте — это и быстро, и дёшево. Наш sales-bot именно так раздаёт установщики: загрузил один раз, раздаёт по <code>file_id</code>.</p>
+
+      <h3>⏰ Отложенные задачи (рассылки, напоминания)</h3>
+      <p>Вебхук-функция вызывается только по апдейту, поэтому «будильники» делаются отдельно: создайте функцию-задачу и вызывайте её по расписанию через <strong>pg_cron</strong> (в SQL-редакторе) — она раз в N минут дёргает вашу функцию HTTP-запросом.</p>
+    </section>
+
+    <!-- ═══ 6. Частые ошибки ═══ -->
+    <section id="mistakes">
+      <div class="sec-head"><p class="sec-kicker">06 · Диагностика</p><h2>Частые ошибки и как их избежать</h2></div>
+      <div class="table-wrap"><table>
+        <tr><th style="width:34%">Симптом</th><th style="width:28%">Причина</th><th>Решение</th></tr>
+        <tr><td>Telegram отвечает <code>401 Unauthorized</code></td><td>Проверка JWT включена</td><td>Убедитесь, что в <code>config.toml</code> есть <code>verify_jwt = false</code> (и передеплойте)</td></tr>
+        <tr><td>Бот отвечает «чужим» людям / кто-то дёргает функцию</td><td>Не проверяется секрет вебхука</td><td>Сверяйте заголовок <code>X-Telegram-Bot-Api-Secret-Token</code> — это первая строка обработчика</td></tr>
+        <tr><td>Бот отвечает дважды на одно сообщение</td><td>Telegram ретраит — функция отвечала дольше 2–3 секунд</td><td>Отвечайте <code>200 OK</code> сразу, тяжёлую работу запускайте после ответа (<code>EdgeRuntime.waitUntil(...)</code>)</td></tr>
+        <tr><td>Бот перестал принимать сообщения</td><td>Остался старый режим <code>getUpdates</code></td><td>Webhook отменяет поллинг; оставьте один режим — вебхук</td></tr>
+        <tr><td>После деплоя функция снова отдаёт 401</td><td>Деплой перевключил JWT</td><td><code>verify_jwt = false</code> всегда в <code>config.toml</code>, а не только в дашборде</td></tr>
+        <tr><td>Данные из SQLite/файлов «пропали»</td><td>Локальные данные не переехали</td><td>Переносите на Postgres и Storage; файлы загрузите в бакет</td></tr>
+      </table></div>
+    </section>
+
+    <!-- ═══ 7. Чек-лист ═══ -->
+    <section id="checklist">
+      <div class="sec-head"><p class="sec-kicker">07 · Финальная проверка</p><h2>Чек-лист</h2></div>
+      <div class="checklist">
+        <div class="check-progress"><div class="bar"><i id="checkBar"></i></div><div class="count" id="checkCount">0 / 10</div></div>
+        <label><input type="checkbox"><span>Проект Supabase создан, Project Ref под рукой</span></label>
+        <label><input type="checkbox"><span>CLI установлен, <code>supabase login</code> выполнен</span></label>
+        <label><input type="checkbox"><span>Функция <code>bot</code> создана, шаблон заполнен своей логикой</span></label>
+        <label><input type="checkbox"><span>В <code>config.toml</code> — <code>[functions.bot] verify_jwt = false</code></span></label>
+        <label><input type="checkbox"><span>Секреты заданы: <code>BOT_TOKEN</code>, <code>WEBHOOK_SECRET</code></span></label>
+        <label><input type="checkbox"><span>Функция задеплоена: <code>supabase functions deploy bot</code></span></label>
+        <label><input type="checkbox"><span>Webhook установлен (через релей, если api.telegram.org заблокирован)</span></label>
+        <label><input type="checkbox"><span><code>getWebhookInfo</code> показывает <code>"ok": true</code></span></label>
+        <label><input type="checkbox"><span>Бот отвечает на <code>/start</code></span></label>
+        <label><input type="checkbox"><span>Компьютер можно выключать — бот продолжает работать</span></label>
+      </div>
+    </section>
+
+    <!-- ═══ 8. FAQ ═══ -->
+    <section id="faq">
+      <div class="sec-head"><p class="sec-kicker">08 · FAQ</p><h2>Вопросы и ответы</h2></div>
+
+      <details class="faq"><summary>Это вообще легально?<svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></summary><div class="faq-body"><p>Да. Telegram Bot API официально разрешает кастомные API-серверы (на этом построена вся экосистема локальных <code>telegram-bot-api</code> серверов и прокси). Вы не нарушаете правила — вы просто ходите к API другим адресом.</p></div></details>
+
+      <details class="faq"><summary>Мой бот на Python. Что делать?<svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></summary><div class="faq-body"><p>Для Python бот остаётся у вас, но работает через релей (Вариант А) — это покрывает 99% проблемы. Полный переезд в облако (Вариант Б) поддерживает только Node.js/TypeScript, потому что Supabase-функции — это Deno.</p></div></details>
+
+      <details class="faq"><summary>Сколько это стоит?<svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></summary><div class="faq-body"><p>Бесплатно: 500 000 вызовов функций/мес, 500 МБ БД, 1 ГБ файлов, 5 ГБ трафика. Для обычного бота хватает. Если бот очень активный — Pro ($25/мес) поднимает до 2 млн вызовов.</p></div></details>
+
+      <details class="faq"><summary>Почему поллинг дороже вебхука?<svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></summary><div class="faq-body"><p>Поллинг опрашивает сервер каждые 1–2 секунды — это сотни тысяч вызовов в месяц. Вебхук вызывается <b>только когда приходит сообщение</b>. Поэтому в Варианте Б всегда используйте вебхук.</p></div></details>
+
+      <details class="faq"><summary>Мой бот отправляет фото — пройдёт?<svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></summary><div class="faq-body"><p>Из Supabase — да, запросы идут с заграничных серверов, блокировки нет. Через релей (Вариант А) крупные файлы могут не пройти — тогда отправляйте по <code>file_id</code>.</p></div></details>
+
+      <details class="faq"><summary>Можно ли откатиться?<svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></summary><div class="faq-body"><p>Да. Удалите вебхук (<code>deleteWebhook</code>) — бот вернётся к работе на вашей машине как раньше. Никаких данных в Supabase это не трогает.</p></div></details>
+
+      <details class="faq"><summary>Что будет, если не пользоваться ботом неделю?<svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></summary><div class="faq-body"><p>Бесплатный проект Supabase ставится на паузу после 7 дней неактивности. Первое сообщение боту «разбудит» его автоматически — просто первая обработка может занять на пару секунд дольше.</p></div></details>
+    </section>
+
+    <footer>
+      <p>Инструкция построена на живом опыте: наш <b>sales-bot</b> перенесён на Supabase (вебхук-функция, журнал в Postgres, раздача файлов по <code>file_id</code>) — он работает из России без VPN и без включённого компьютера продавца.</p>
+      <p class="src">Исходник (Markdown): <span class="src">docs/bot-on-supabase-guide.md</span> · 12 августа 2026</p>
+    </footer>
+  </main>
+</div>
+
+<button class="top-btn" id="topBtn" type="button" aria-label="Наверх">↑</button>
+
+<noscript><p style="padding:12px 24px;color:var(--muted)">Включите JavaScript, чтобы увидеть блоки кода с подсветкой и интерактивный чек-лист.</p></noscript>
+
+<!-- ═══ Исходники кода (хранятся как сырой текст, инжектятся скриптом) ═══ -->
+<script type="text/plain" id="code-install">
+# Windows (через Scoop) или любой ОС через npm:
+scoop install supabase
+#   или
+npm install -g supabase
+</script>
+
+<script type="text/plain" id="code-link-a">
+mkdir my-bot-relay && cd my-bot-relay
+supabase init
+supabase login
+supabase link --project-ref ПРОЕКТ_REF      # например abcdefghijklmnopqrst
+</script>
+
+<script type="text/plain" id="code-new-relay">
+supabase functions new tg-relay
+</script>
+
+<script type="text/plain" id="code-relay">
+// Прозрачный релей: любой запрос /bot<TOKEN>/<method>
+// пересылается в Telegram дословно.
+const TG_API = "https://api.telegram.org";
+
+Deno.serve(async (req) => {
+  const url = new URL(req.url);
+
+  // Путь вида: https://<ref>.supabase.co/functions/v1/tg-relay/bot<TOKEN>/getMe
+  const marker = "/tg-relay";
+  const idx = url.pathname.indexOf(marker);
+  const path = idx >= 0 ? url.pathname.slice(idx + marker.length) : "";
+
+  if (!path.startsWith("/bot")) {
+    return new Response("Ожидается путь /bot<TOKEN>/<method>", { status: 400 });
+  }
+
+  // Тело и метод передаём как есть
+  const body = req.method === "GET" ? undefined : await req.arrayBuffer();
+
+  const resp = await fetch(TG_API + path + url.search, {
+    method: req.method,
+    headers: {
+      "Content-Type": req.headers.get("Content-Type") ?? "application/json",
+    },
+    body,
+  });
+
+  return new Response(resp.body, {
+    status: resp.status,
+    headers: {
+      "Content-Type": resp.headers.get("Content-Type") ?? "application/json",
+    },
+  });
+});
+</script>
+
+<script type="text/plain" id="code-toml-relay">
+[functions.tg-relay]
+verify_jwt = false
+</script>
+
+<script type="text/plain" id="code-deploy-relay">
+supabase functions deploy tg-relay
+
+curl "https://ПРОЕКТ_REF.supabase.co/functions/v1/tg-relay/bot<ВАШ_ТОКЕН>/getMe"
+</script>
+
+<script type="text/plain" id="code-link-b">
+mkdir my-bot && cd my-bot
+supabase init
+supabase login
+supabase link --project-ref ПРОЕКТ_REF
+</script>
+
+<script type="text/plain" id="code-new-bot">
+supabase functions new bot
+</script>
+
+<script type="text/plain" id="code-bot">
+// Вебхук-обработчик Telegram-бота.
+// Схема — как у нашего sales-bot:
+//   1) проверяем секрет (только Telegram может вызывать)
+//   2) читаем апдейт
+//   3) быстро отвечаем 200 OK
+//   4) обрабатываем команду
+
+const BOT_TOKEN = Deno.env.get("BOT_TOKEN") ?? "";
+const WEBHOOK_SECRET = Deno.env.get("WEBHOOK_SECRET") ?? "";
+const TG = `https://api.telegram.org/bot${BOT_TOKEN}`;
+
+// Простая обёртка над Bot API
+async function tg(method: string, payload: unknown): Promise<Record<string, unknown>> {
+  const resp = await fetch(`${TG}/${method}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  return resp.json();
+}
+
+// Ответ пользователю текстом (+ кнопки)
+async function reply(chatId: number, text: string, keyboard?: unknown) {
+  await tg("sendMessage", {
+    chat_id: chatId,
+    text,
+    parse_mode: "HTML",
+    ...(keyboard ? { reply_markup: keyboard } : {}),
+  });
+}
+
+// Экранирование спецсимволов HTML
+function esc(s: string) {
+  return s.replace(/[&<>"']/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
+}
+
+Deno.serve(async (req) => {
+  // 1. Авторизация: заголовок с секретом присылает только Telegram
+  if (req.headers.get("X-Telegram-Bot-Api-Secret-Token") !== WEBHOOK_SECRET) {
+    return new Response("forbidden", { status: 403 });
+  }
+
+  // 2. Читаем апдейт
+  const update = await req.json();
+  const message = update.message;
+  if (!message?.text) return new Response("ok", { status: 200 });
+
+  const chatId = message.chat.id as number;
+  const text = String(message.text).trim();
+
+  // 3-4. Обрабатываем и отвечаем
+  if (text === "/start") {
+    await reply(chatId, "Привет! Я бот, который теперь живёт на Supabase 🚀\nНапишите /help — покажу команды.");
+  } else if (text === "/help") {
+    await reply(chatId, "Команды:\n/start — приветствие\n/help — справка\nлюбой другой текст — эхо.");
+  } else {
+    await reply(chatId, `Эхо: <b>${esc(text)}</b>`);
+  }
+
+  return new Response("ok", { status: 200 });
+});
+</script>
+
+<script type="text/plain" id="code-toml-bot">
+[functions.bot]
+verify_jwt = false
+</script>
+
+<script type="text/plain" id="code-secrets">
+supabase secrets set BOT_TOKEN=123456789:AA...  WEBHOOK_SECRET=придумайте-длинную-случайную-строку
+</script>
+
+<script type="text/plain" id="code-serve">
+supabase start
+supabase functions serve bot --env-file .env.local
+
+# в другом окне — тестовый апдейт:
+curl -X POST "http://127.0.0.1:54321/functions/v1/bot" \
+  -H "X-Telegram-Bot-Api-Secret-Token: придумайте-длинную-случайную-строку" \
+  -H "Content-Type: application/json" \
+  -d '{"message":{"chat":{"id":123},"text":"/start"}}'
+</script>
+
+<script type="text/plain" id="code-deploy-bot">
+supabase functions deploy bot
+</script>
+
+<script type="text/plain" id="code-webhook-direct">
+curl -X POST "https://api.telegram.org/bot<ВАШ_ТОКЕН>/setWebhook" \
+  -F "url=https://ПРОЕКТ_REF.supabase.co/functions/v1/bot" \
+  -F "secret_token=придумайте-длинную-случайную-строку"
+</script>
+
+<script type="text/plain" id="code-webhook-relay">
+curl -X POST "https://ПРОЕКТ_REF.supabase.co/functions/v1/tg-relay/bot<ВАШ_ТОКЕН>/setWebhook" \
+  -F "url=https://ПРОЕКТ_REF.supabase.co/functions/v1/bot" \
+  -F "secret_token=придумайте-длинную-случайную-строку"
+</script>
+
+<script type="text/plain" id="code-webhook-info">
+curl "https://ПРОЕКТ_REF.supabase.co/functions/v1/tg-relay/bot<ВАШ_ТОКЕН>/getWebhookInfo"
+</script>
+
+<script type="text/plain" id="code-db-log">
+import { createClient } from "jsr:@supabase/supabase-js@2";
+
+const sb = createClient(
+  Deno.env.get("SUPABASE_URL")!,
+  Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,   // настраивается: supabase secrets set
+);
+
+// после обработки апдейта:
+await sb.from("bot_log").insert({ chat_id: chatId, text, at: new Date().toISOString() });
+</script>
+
+<script type="text/plain" id="code-sql-log">
+create table bot_log (
+  id bigint generated always as identity primary key,
+  chat_id bigint,
+  text text,
+  at timestamptz default now()
+);
+</script>
+
+<script type="text/plain" id="code-send-photo">
+// файл уже загружен когда-то — Telegram помнит его по file_id,
+// повторная отправка — маленький JSON-запрос, ничего не загружается заново
+await tg("sendPhoto", { chat_id: chatId, photo: "ВАШ_FILE_ID", caption: "смотри!" });
+</script>
+
+<script>
+(function () {
+  "use strict";
+
+  /* ── Тема ─────────────────────────────────────────────── */
+  var root = document.documentElement;
+  function applyTheme(t) {
+    root.setAttribute("data-theme", t);
+    document.getElementById("themeIcon").textContent = t === "dark" ? "☀️" : "🌙";
+    document.getElementById("themeLabel").textContent = t === "dark" ? "Светлая" : "Тёмная";
+  }
+  var saved = null;
+  try { saved = localStorage.getItem("tg-guide-theme"); } catch (e) {}
+  var initial = saved ||
+    (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+  applyTheme(initial);
+  document.getElementById("themeToggle").addEventListener("click", function () {
+    var next = root.getAttribute("data-theme") === "dark" ? "light" : "dark";
+    applyTheme(next);
+    try { localStorage.setItem("tg-guide-theme", next); } catch (e) {}
+  });
+
+  /* ── Подсветка кода ───────────────────────────────────── */
+  function escHtml(s) {
+    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+
+  var PATTERNS = {
+    ts:   "('(?:[^'\\n]|\\\\.)*'|\"(?:[^\"\\n]|\\\\.)*\"|`(?:[^`\\n]|\\\\.)*`)|\\/\\/[^\\n]*|\\b(const|let|var|function|return|if|else|await|async|new|import|from|export|for|of|in|true|false|null|undefined|typeof|class|extends|interface|as|type|Deno|String|Number)\\b|\\b(string|number|boolean|unknown|void|Record|Promise|Date)\\b|\\b\\d[\\d_.]*\\b",
+    bash: "('(?:[^'\\n]|\\\\.)*'|\"(?:[^\"\\n]|\\\\.)*\")|#[^\\n]*|\\b(supabase|curl|scoop|npm|node|deno|mkdir|cd|echo|export|rm|cp|mv)\\b|\\B-{1,2}[A-Za-z-]+",
+    toml: "('(?:[^'\\n]|\\\\.)*'|\"(?:[^\"\\n]|\\\\.)*\")|#[^\\n]*|\\b(verify_jwt|true|false)\\b|\\[functions\\.[a-z-]+\\]",
+    sql:  "'(?:[^'\\n]|\\\\.)*'|--[^\\n]*|\\b(create|table|bigint|generated|always|as|identity|primary|key|text|timestamptz|default|now|insert|into|values)\\b"
+  };
+
+  function highlight(code, lang) {
+    var pat = PATTERNS[lang];
+    if (!pat) return escHtml(code);
+    var re = new RegExp(pat, "g");
+    var text = escHtml(code);
+    var out = "", last = 0, m;
+    while ((m = re.exec(text)) !== null) {
+      out += text.slice(last, m.index);
+      var cls = m[1] ? "s" : m[2] ? "c" : m[3] ? "k" : m[4] ? "t" : m[5] ? "n" : "f";
+      if (m[6]) cls = "f";
+      out += '<span class="tok-' + cls + '">' + m[0] + "</span>";
+      last = m.index + m[0].length;
+    }
+    return out + text.slice(last);
+  }
+
+  document.querySelectorAll("pre.code[data-code]").forEach(function (pre) {
+    // id источников на странице — вида code-<data-code>
+    var src = document.getElementById("code-" + pre.getAttribute("data-code"));
+    if (!src) return;
+    var raw = src.textContent.replace(/^\n/, "").replace(/\n\s*$/, "\n");
+    pre.innerHTML = highlight(raw, pre.getAttribute("data-lang") || "bash");
+    pre.setAttribute("data-raw", raw); // для копирования без разметки
+  });
+
+  /* ── Копирование ──────────────────────────────────────── */
+  function copyText(text, btn) {
+    function done() {
+      var old = btn.textContent;
+      btn.textContent = "Скопировано ✓";
+      btn.classList.add("done");
+      setTimeout(function () { btn.textContent = old; btn.classList.remove("done"); }, 1600);
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(done, function () { fallback(); });
+    } else { fallback(); }
+    function fallback() {
+      var ta = document.createElement("textarea");
+      ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0";
+      document.body.appendChild(ta); ta.select();
+      try { document.execCommand("copy"); done(); } catch (e) {}
+      document.body.removeChild(ta);
+    }
+  }
+  document.querySelectorAll(".copy-btn").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var pre = btn.closest(".codeblock").querySelector("pre.code");
+      copyText(pre.getAttribute("data-raw") || pre.textContent, btn);
+    });
+  });
+
+  /* ── Подсветка активного раздела в TOC ────────────────── */
+  var tocLinks = document.querySelectorAll('.toc nav a[href^="#"]');
+  var sections = [];
+  tocLinks.forEach(function (a) {
+    var sec = document.querySelector(a.getAttribute("href"));
+    if (sec) sections.push({ a: a, sec: sec });
+  });
+  if ("IntersectionObserver" in window && sections.length) {
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (en) {
+        if (en.isIntersecting) {
+          sections.forEach(function (s) { s.a.classList.toggle("active", s.sec === en.target); });
+        }
+      });
+    }, { rootMargin: "-20% 0px -70% 0px" });
+    sections.forEach(function (s) { io.observe(s.sec); });
+  }
+
+  /* ── Чек-лист с прогрессом ────────────────────────────── */
+  var checks = document.querySelectorAll(".checklist input[type=checkbox]");
+  var bar = document.getElementById("checkBar");
+  var countEl = document.getElementById("checkCount");
+  function updateCheck() {
+    var done = document.querySelectorAll(".checklist input:checked").length;
+    var total = checks.length;
+    bar.style.width = (total ? (done / total) * 100 : 0) + "%";
+    countEl.textContent = done + " / " + total;
+    document.querySelectorAll(".checklist label").forEach(function (lbl, i) {
+      lbl.classList.toggle("done", checks[i].checked);
+    });
+  }
+  checks.forEach(function (c) { c.addEventListener("change", updateCheck); });
+  updateCheck();
+
+  /* ── Кнопка «наверх» ──────────────────────────────────── */
+  var topBtn = document.getElementById("topBtn");
+  window.addEventListener("scroll", function () {
+    topBtn.classList.toggle("show", window.scrollY > 600);
+  }, { passive: true });
+  topBtn.addEventListener("click", function () { window.scrollTo({ top: 0, behavior: "smooth" }); });
+})();
+</script>
+</body>
+</html>

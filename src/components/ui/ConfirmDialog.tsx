@@ -20,6 +20,7 @@ interface ConfirmDialogProps {
 export function ConfirmDialog({ title, description, confirmLabel, onConfirm, onClose }: ConfirmDialogProps) {
   return (
     <Dialog
+      mobileSheet
       onOpenChange={(open) => !open && onClose()}
       style={{
         width: 340,

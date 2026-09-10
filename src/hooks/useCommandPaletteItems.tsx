@@ -1,6 +1,6 @@
 import { useMemo, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
-import { PenLine, Files, LayoutTemplate, CalendarClock, History, Radio, Bot, Settings, FileText, Hash, FilePlus } from "lucide-react";
+import { Home, PenLine, Files, LayoutTemplate, CalendarClock, History, Radio, Bot, Settings, FileText, Hash, FilePlus } from "lucide-react";
 import { useDraftsStore } from "@/store/draftsStore";
 import { useChannelsStore } from "@/store/channelsStore";
 import { t } from "@/lib/i18n";
@@ -18,6 +18,7 @@ export interface CommandItem {
 // MANAGE_ROUTES, kept in sync manually (there's no shared source of truth
 // for the nav list to import from).
 const NAV_ROUTES = [
+  { to: "/",          icon: Home,           key: "nav.dashboard" as const },
   { to: "/editor",    icon: PenLine,        key: "nav.editor" as const },
   { to: "/drafts",    icon: Files,          key: "nav.drafts" as const },
   { to: "/templates", icon: LayoutTemplate, key: "nav.templates" as const },

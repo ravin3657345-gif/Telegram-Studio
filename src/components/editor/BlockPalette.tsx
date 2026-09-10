@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useState, useRef, useLayoutEffect, type ComponentType } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { AnimatePresence, motion } from "framer-motion";
 import type { Editor } from "@tiptap/react";
-import { Plus, ChevronDown } from "lucide-react";
+import { Plus, ChevronDown, Image as ImageIcon, Film as FilmIcon, Music as MusicIcon } from "lucide-react";
 import { getSlashItems, type SlashItem, type BlockPreviewType, type BlockGroup } from "@/extensions/SlashCommand";
 import {
   getNestedDropInfo, listBlocks, setGapBefore, clearGap, clearGapTransitions,
@@ -70,7 +71,34 @@ const PREVIEW_BUILDERS: Partial<Record<BlockPreviewType, (label: string) => HTML
   h2: (label) => { const el = document.createElement("h2"); el.className = "tiptap-heading"; el.textContent = label; return el; },
   h3: (label) => { const el = document.createElement("h3"); el.className = "tiptap-heading"; el.textContent = label; return el; },
   quote: (label) => { const el = document.createElement("blockquote"); el.textContent = label; return el; },
-  pullquote: (label) => { const el = document.createElement("aside"); el.style.textAlign = "center"; el.textContent = label; return el; },
+  // Mirrors PullQuoteView (BlockPullQuote.tsx): accent left border,
+  // gradient wash, centered italic text flanked by accent quote marks, and
+  // an accent credit line — its styling lives inline in the React NodeView
+  // (no tiptap.css rules exist for it), so it must be rebuilt here for the
+  // tile preview AND the drag ghost.
+  pullquote: (label) => {
+    // Compact mirror of PullQuoteView so it fits the tile's fixed preview
+    // height on one line (quotes kept at 1em, not the full-size 1.4em).
+    const aside = document.createElement("aside");
+    aside.style.cssText = "border-left:3px solid var(--accent);padding:5px 10px 4px 10px;border-radius:0 6px 6px 0;background:linear-gradient(to right, color-mix(in srgb, var(--accent) 5%, transparent), transparent);color:var(--text-secondary);font-style:italic;text-align:center;font-size:11px;";
+    const row = document.createElement("div");
+    row.style.cssText = "display:flex;flex-wrap:nowrap;align-items:baseline;justify-content:center;gap:4px;";
+    const q1 = document.createElement("span");
+    q1.style.cssText = "color:var(--accent);opacity:0.5;font-size:1em;flex-shrink:0;";
+    q1.textContent = "„";
+    const text = document.createElement("span");
+    text.style.cssText = "display:inline;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;";
+    text.textContent = label;
+    const q2 = document.createElement("span");
+    q2.style.cssText = "color:var(--accent);opacity:0.5;font-size:1em;flex-shrink:0;";
+    q2.textContent = "“";
+    row.append(q1, text, q2);
+    const credit = document.createElement("div");
+    credit.style.cssText = "margin:3px auto 0;font-size:0.85em;font-weight:600;color:var(--accent);text-align:center;white-space:nowrap;";
+    credit.textContent = `— ${t("quote.creditPlaceholder")}`;
+    aside.append(row, credit);
+    return aside;
+  },
   code: (label) => {
     const pre = document.createElement("pre");
     const code = document.createElement("code");
@@ -106,7 +134,7 @@ const PREVIEW_BUILDERS: Partial<Record<BlockPreviewType, (label: string) => HTML
   },
   callout: (label) => {
     const box = document.createElement("div");
-    box.style.cssText = "display:flex;gap:8px;align-items:center;background:var(--accent-subtle);border-radius:8px;padding:8px 10px;";
+    box.style.cssText = "display:flex;gap:8px;align-items:center;background:var(--accent-subtle);border:1px solid var(--border-default);border-radius:8px;padding:8px 10px;";
     const emoji = document.createElement("span");
     emoji.textContent = "💡";
     const text = document.createElement("span");
@@ -129,19 +157,21 @@ const PREVIEW_BUILDERS: Partial<Record<BlockPreviewType, (label: string) => HTML
     return box;
   },
   // Mirrors BlockPoll.tsx's header + question + a couple of option rows.
+  // Kept compact so the preview fits the tile's fixed 48px height (a
+  // full-size poll preview would make its tile visibly taller than the rest).
   poll: (label) => {
     const wrap = document.createElement("div");
     wrap.style.cssText = "border:1.5px solid var(--border-default);border-radius:8px;overflow:hidden;background:var(--bg-surface);";
     const header = document.createElement("div");
-    header.style.cssText = "padding:6px 10px;background:var(--bg-elevated);border-bottom:1px solid var(--border-subtle);font-size:10px;font-weight:600;color:var(--text-muted);letter-spacing:0.05em;";
+    header.style.cssText = "padding:2px 8px;background:var(--bg-elevated);border-bottom:1px solid var(--border-subtle);font-size:9px;font-weight:600;color:var(--text-muted);letter-spacing:0.05em;";
     header.textContent = `📊 ${t("poll.label")}`;
     const question = document.createElement("div");
-    question.style.cssText = "padding:8px 10px 4px;font-size:13px;font-weight:500;color:var(--text-primary);";
+    question.style.cssText = "padding:2px 8px 0;font-size:11.5px;font-weight:500;color:var(--text-primary);";
     question.textContent = label;
     const opt1 = document.createElement("div");
-    opt1.style.cssText = "margin:0 10px 4px;height:20px;border:1px solid var(--border-subtle);border-radius:5px;background:var(--bg-elevated);";
+    opt1.style.cssText = "margin:0 8px 2px;height:8px;border:1px solid var(--border-subtle);border-radius:4px;background:var(--bg-elevated);";
     const opt2 = document.createElement("div");
-    opt2.style.cssText = "margin:0 10px 8px;height:20px;border:1px solid var(--border-subtle);border-radius:5px;background:var(--bg-elevated);";
+    opt2.style.cssText = "margin:0 8px 3px;height:8px;border:1px solid var(--border-subtle);border-radius:4px;background:var(--bg-elevated);";
     wrap.append(header, question, opt1, opt2);
     return wrap;
   },
@@ -171,6 +201,31 @@ const PREVIEW_BUILDERS: Partial<Record<BlockPreviewType, (label: string) => HTML
     box.append(emoji, text);
     return box;
   },
+  // Media blocks have real interactive NodeViews (file pickers), not
+  // typography — so there's no simple CSS-only equivalent. Render a
+  // placeholder box with the block's own icon, so the tile still previews
+  // what actually lands in the document.
+  image: () => {
+    const box = document.createElement("div");
+    // bg-app (not bg-elevated): the tile itself is bg-elevated, so an
+    // elevated box would vanish into it in the light theme — bg-app keeps
+    // the placeholder distinct on both themes.
+    box.style.cssText = "aspect-ratio:16/9;width:100%;max-height:56px;background:var(--bg-app);border:1px solid var(--border-default);border-radius:8px;display:flex;align-items:center;justify-content:center;color:var(--text-muted);";
+    box.innerHTML = iconMarkup(ImageIcon, 20);
+    return box;
+  },
+  video: () => {
+    const box = document.createElement("div");
+    box.style.cssText = "aspect-ratio:16/9;width:100%;max-height:56px;background:var(--bg-app);border:1px solid var(--border-default);border-radius:8px;display:flex;align-items:center;justify-content:center;color:var(--text-muted);";
+    box.innerHTML = iconMarkup(FilmIcon, 20);
+    return box;
+  },
+  audio: () => {
+    const box = document.createElement("div");
+    box.style.cssText = "aspect-ratio:16/9;width:100%;max-height:56px;background:var(--bg-app);border:1px solid var(--border-default);border-radius:8px;display:flex;align-items:center;justify-content:center;color:var(--text-muted);";
+    box.innerHTML = iconMarkup(MusicIcon, 20);
+    return box;
+  },
   // A plain 2x2 grid — real column/row count is chosen after insertion via
   // the table's own resize widget, so the preview doesn't need to match it.
   // Wrapped in .tiptap-table-wrapper to match the real NodeView's DOM shape
@@ -193,6 +248,33 @@ const PREVIEW_BUILDERS: Partial<Record<BlockPreviewType, (label: string) => HTML
     return wrapper;
   },
 };
+
+// Renders a lucide icon to SVG markup for use in the plain-DOM preview
+// builders above (those run outside React).
+function iconMarkup(Icon: ComponentType<{ size?: number | string; strokeWidth?: number | string }>, size = 18): string {
+  return renderToStaticMarkup(<Icon size={size} strokeWidth={1.75} />);
+}
+
+// Renders the block's own miniature preview inside a palette tile: builds
+// the same real-tag DOM the drag ghost uses (PREVIEW_BUILDERS above) into a
+// .tiptap-editor-root wrapper so tiptap.css scoping applies, then CSS zoom
+// in .palette-preview shrinks it to fit. Rebuilt when `item` changes
+// (language switch re-creates items, so labels stay current).
+function BlockTilePreview({ item }: { item: SlashItem }) {
+  const hostRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const host = hostRef.current;
+    if (!host) return;
+    const build = PREVIEW_BUILDERS[item.previewType];
+    if (!build) return;
+    const root = document.createElement("div");
+    root.className = "tiptap-editor-root";
+    root.appendChild(build(item.label));
+    host.appendChild(root);
+    return () => { host.textContent = ""; };
+  }, [item]);
+  return <div ref={hostRef} className="palette-preview" />;
+}
 
 // A single fixed-position shell whose CONTENT we swap between "looks like the
 // panel row" and "looks like the real block" as the drag crosses into the
@@ -444,7 +526,7 @@ export function BlockPalette({ editor, fill }: BlockPaletteProps) {
   return (
     <div
       data-tour="block-palette"
-      className={fill ? "flex flex-col flex-1 overflow-hidden" : "flex flex-col border-l flex-shrink-0"}
+      className={"palette-panel " + (fill ? "flex flex-col flex-1 overflow-hidden" : "flex flex-col border-l flex-shrink-0")}
       style={fill
         ? { backgroundColor: "var(--bg-surface)" }
         : { width: 220, backgroundColor: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}
@@ -456,13 +538,15 @@ export function BlockPalette({ editor, fill }: BlockPaletteProps) {
         {t("palette.title")}
       </div>
 
-      {/* Same soft-ui tile styling in both modes — only the layout differs:
-          fill (preview off, wider column) stays a 2-column grid with
-          truncated labels; docked (preview on, narrow 220px column) is a
-          single column so full labels always fit. Either way this scroll
-          container handles overflow at a small window height. Items are
-          bucketed into fixed collapsible sections (GROUP_ORDER) purely for
-          display — a flat 19-item list was hard to scan at a glance. */}
+      {/* Clean bordered preview tiles in both modes — each tile carries a
+          miniature of the block it inserts (see PREVIEW_BUILDERS) with its
+          label beneath; only the column count differs: fill (preview off,
+          wider column) stays a 2-column grid with truncated labels;
+          docked (preview on, narrow 220px column) is a single column so
+          full labels always fit. Either way this scroll container handles
+          overflow at a small window height. Items are bucketed into fixed
+          collapsible sections (GROUP_ORDER) purely for display — a flat
+          19-item list was hard to scan at a glance. */}
       <div className="flex-1 overflow-y-auto p-2.5">
         {GROUP_ORDER.map(({ key, labelKey }) => {
           const entries = items
@@ -508,46 +592,60 @@ export function BlockPalette({ editor, fill }: BlockPaletteProps) {
                     <div className={(fill ? "grid grid-cols-2 gap-2" : "flex flex-col gap-2") + (isMobile ? " gap-2.5 pb-2" : " pb-2")}>
                       {entries.map(({ item, i }) => {
                         const isSelected = selected === i;
+                        // Every block type has a PREVIEW_BUILDERS entry now, but keep
+                        // the icon-and-label fallback for any future type without one.
+                        const hasPreview = !!PREVIEW_BUILDERS[item.previewType];
                         return (
                           <div
                             key={item.label}
                             onPointerDown={(e) => handleRowPointerDown(item, i, e)}
                             title={item.label}
                             className={
-                              "palette-tile flex items-center rounded-xl "
-                              + (isMobile ? "gap-3 px-3 py-3.5 " : "gap-2.5 px-2.5 py-2.5 ")
-                              + (isSelected ? "soft-ui-pressed" : "soft-ui-sm")
+                              "palette-tile rounded-xl "
+                              + (hasPreview ? "flex flex-col " : "flex items-center ")
+                              + (isMobile ? "gap-2 px-3 py-3 " : "gap-1.5 px-2.5 py-2 ")
+                              + (isSelected ? "palette-tile-selected" : "")
                             }
-                            style={{
-                              // bg-elevated (not bg-surface) — the tile needs to read as
-                              // a distinct raised card by color too, not rely on the
-                              // shadow alone to separate it from an identically-colored
-                              // parent panel.
-                              backgroundColor: "var(--bg-elevated)",
-                              cursor: "grab",
-                            }}
+
                           >
-                            <span
-                              className="flex items-center justify-center rounded-lg flex-shrink-0"
-                              style={{
-                                width: isMobile ? 32 : 24,
-                                height: isMobile ? 32 : 24,
-                                backgroundColor: isSelected ? "var(--accent)" : "color-mix(in srgb, var(--accent) 12%, transparent)",
-                                transition: "background-color 0.12s",
-                              }}
-                            >
-                              <item.icon
-                                size={isMobile ? 16 : 12.5}
-                                strokeWidth={1.85}
-                                style={{ color: isSelected ? "#fff" : "var(--accent)" }}
-                              />
-                            </span>
-                            <span
-                              className={(fill ? "truncate" : "whitespace-nowrap") + (isMobile ? " text-sm" : " text-2xs")}
-                              style={{ color: isSelected ? "var(--text-primary)" : "var(--text-secondary)", fontWeight: isSelected ? 600 : 500 }}
-                            >
-                              {item.label}
-                            </span>
+                            {hasPreview ? (
+                              <>
+                                {/* Mini live-preview of the block this tile inserts —
+                                    the same PREVIEW_BUILDERS the drag ghost uses, so
+                                    the tile already looks like the block it becomes. */}
+                                <BlockTilePreview item={item} />
+                                <span
+                                  className={"truncate w-full text-center " + (isMobile ? "text-sm" : "text-2xs")}
+                                  style={{ color: isSelected ? "var(--text-primary)" : "var(--text-secondary)", fontWeight: isSelected ? 600 : 500 }}
+                                >
+                                  {item.label}
+                                </span>
+                              </>
+                            ) : (
+                              <>
+                                <span
+                                  className="flex items-center justify-center rounded-lg flex-shrink-0"
+                                  style={{
+                                    width: isMobile ? 32 : 24,
+                                    height: isMobile ? 32 : 24,
+                                    backgroundColor: isSelected ? "var(--accent)" : "color-mix(in srgb, var(--accent) 12%, transparent)",
+                                    transition: "background-color 0.12s",
+                                  }}
+                                >
+                                  <item.icon
+                                    size={isMobile ? 16 : 12.5}
+                                    strokeWidth={1.85}
+                                    style={{ color: isSelected ? "#fff" : "var(--accent)" }}
+                                  />
+                                </span>
+                                <span
+                                  className={(fill ? "truncate" : "whitespace-nowrap") + (isMobile ? " text-sm" : " text-2xs")}
+                                  style={{ color: isSelected ? "var(--text-primary)" : "var(--text-secondary)", fontWeight: isSelected ? 600 : 500 }}
+                                >
+                                  {item.label}
+                                </span>
+                              </>
+                            )}
                           </div>
                         );
                       })}

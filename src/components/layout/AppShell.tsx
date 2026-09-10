@@ -8,6 +8,7 @@ import { useChannelsStore, dedupeChannels } from "@/store/channelsStore";
 import { useDraftsStore } from "@/store/draftsStore";
 import { getBots, getChannels, getDrafts } from "@/lib/tauriApi";
 import { useIsMobileLayout } from "@/hooks/useIsMobileLayout";
+import { useIsLandscape } from "@/hooks/useIsLandscape";
 import { useKeyboardInset } from "@/hooks/useKeyboardInset";
 import { ensureNotificationPermission } from "@/lib/notifications";
 
@@ -20,6 +21,11 @@ export function AppShell() {
   // being pushed above it. Applied once here (not per-page) so every mobile
   // screen gets it, not just the editor.
   const keyboardInset = useKeyboardInset();
+  const isLandscape = useIsLandscape();
+  // Mobile landscape is wide-but-short — a bottom tab bar would eat the
+  // scarcest dimension (height). Move navigation to a slim left rail and make
+  // the shell a row, so the content column keeps the full height.
+  const mobileRail = isMobile && isLandscape;
   const setBots     = useChannelsStore((s) => s.setBots);
   const setChannels = useChannelsStore((s) => s.setChannels);
   const setDrafts   = useDraftsStore((s) => s.setDrafts);
@@ -42,8 +48,14 @@ export function AppShell() {
   }, []);
 
   return (
-    <div className="app-shell" style={{ flexDirection: isMobile ? "column" : "row", paddingBottom: isMobile ? keyboardInset : 0 }}>
+    <div
+      className="app-shell"
+      data-mobile={isMobile ? "true" : "false"}
+      data-landscape={isLandscape ? "true" : "false"}
+      style={{ flexDirection: isMobile ? (mobileRail ? "row" : "column") : "row", paddingBottom: isMobile ? keyboardInset : 0 }}
+    >
       {!isMobile && <Sidebar />}
+      {mobileRail && <BottomTabBar orientation="vertical" />}
       <div className="content-area">
         <div
           key={location.pathname}
@@ -53,7 +65,7 @@ export function AppShell() {
           <Outlet />
         </div>
       </div>
-      {isMobile && <BottomTabBar />}
+      {isMobile && !mobileRail && <BottomTabBar orientation="horizontal" />}
       {!isMobile && <OnboardingTour />}
       <CommandPalette />
     </div>

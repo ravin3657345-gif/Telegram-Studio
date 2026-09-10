@@ -23,6 +23,7 @@ function modeLabel(mode: PublishMode) {
 export function PublishConfirmDialog({ channels, publishMode, postTitle, onConfirm, onClose }: PublishConfirmDialogProps) {
   return (
     <Dialog
+      mobileSheet
       onOpenChange={(open) => !open && onClose()}
       style={{
         width: 340,

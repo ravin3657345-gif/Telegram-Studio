@@ -1,4 +1,5 @@
 import {
+  Home,
   PenLine,
   Files,
   LayoutTemplate,
@@ -29,6 +30,7 @@ import type { ScheduledPostInfo, TodayStats } from "@/types/publish";
 // ─── Nav groups ───────────────────────────────────────────────────────────────
 
 const CONTENT_ROUTES = [
+  { to: "/",          icon: Home,           key: "nav.dashboard" as const, end: true },
   { to: "/editor",    icon: PenLine,        key: "nav.editor"    as const, dataTour: "nav-editor" },
   { to: "/drafts",    icon: Files,          key: "nav.drafts"    as const, hasBadge: true },
   { to: "/templates", icon: LayoutTemplate, key: "nav.templates" as const, dataTour: "nav-templates" },
@@ -80,6 +82,7 @@ export function Sidebar() {
             label={t(item.key)}
             badge={"hasBadge" in item && item.hasBadge ? draftCount : undefined}
             dataTour={"dataTour" in item ? item.dataTour : undefined}
+            end={"end" in item ? item.end : undefined}
             action={
               item.to === "/editor"
                 ? {

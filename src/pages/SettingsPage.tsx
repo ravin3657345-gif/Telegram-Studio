@@ -187,24 +187,15 @@ function AppearanceSection() {
           <div className="flex gap-3 flex-wrap">
             {themeOptions.map(({ value, labelKey, icon }) => {
               const isActive = theme === value;
-              // "soft" has no dark-mode tokens of its own (see designs.css) —
-              // dark would leave success/warning/danger/status colors from
-              // theme.css's dark palette showing through against soft's light
-              // paper background, so it's blocked outright while soft is on.
-              const isDisabled = designTheme === "soft" && value === "dark";
               return (
                 <button
                   key={value}
-                  onClick={() => !isDisabled && setTheme(value)}
-                  disabled={isDisabled}
-                  title={isDisabled ? t("settings.theme.darkBlockedBySoft") : undefined}
+                  onClick={() => setTheme(value)}
                   className="flex flex-col items-center gap-2 p-3 rounded-xl border transition-all"
                   style={{
                     width: 88,
                     backgroundColor: isActive ? "var(--accent-subtle)" : "var(--bg-elevated)",
                     borderColor: isActive ? "var(--accent)" : "var(--border-default)",
-                    opacity: isDisabled ? 0.4 : 1,
-                    cursor: isDisabled ? "not-allowed" : "pointer",
                   }}
                 >
                   <span style={{ color: isActive ? "var(--accent)" : "var(--text-secondary)" }}>
@@ -390,6 +381,7 @@ function DesignThemeDialog({
 }) {
   return (
     <Dialog
+      mobileSheet
       onOpenChange={(open) => !open && onClose()}
       style={{
         width: 460, maxWidth: "calc(100vw - 32px)", borderRadius: 16,
@@ -487,14 +479,14 @@ function AboutSection() {
           background: "linear-gradient(160deg, var(--accent-subtle) 0%, transparent 60%)",
         }}
       >
-        <div
-          className="w-14 h-14 rounded-2xl flex items-center justify-center shadow-md"
-          style={{ backgroundColor: "var(--accent)" }}
-        >
-          <svg width="26" height="26" viewBox="0 0 16 16" fill="none">
-            <path d="M8 1L14 4.5V11.5L8 15L2 11.5V4.5L8 1Z" fill="white" />
-          </svg>
-        </div>
+        <img
+          src="/icon.png"
+          width={56}
+          height={56}
+          alt=""
+          draggable={false}
+          className="rounded-2xl shadow-md"
+        />
         <div className="text-center">
           <p className="text-base font-semibold" style={{ color: "var(--text-primary)" }}>
             Telegram Studio

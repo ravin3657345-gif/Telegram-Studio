@@ -11,8 +11,9 @@
 /* ═══ Мягкая структура (Soft Structuralism) ═══
    Closest to the existing light theme on purpose — same brand blue accent
    (keeps the app icon/channel avatar/bot avatar/landing page consistent),
-   just a warmer, slightly deeper off-white base. */
-[data-design="soft"] {
+   just a warmer, slightly deeper off-white base. Now light/dark-aware: the
+   token block below is the light variant, the dark variant follows it. */
+[data-design="soft"][data-theme="light"] {
   --bg-app:        #f7f5f1;
   --bg-sidebar:    #f7f5f1;
   --bg-surface:    #ffffff;
@@ -46,6 +47,42 @@
      unmistakable, not a hint. */
   --soft-shadow-dark:  rgba(13, 39, 80, 0.4);
   --soft-shadow-light: rgba(255, 255, 255, 1);
+}
+
+/* Same warm, slightly-tan identity as the light variant above, just dropped
+   onto a dark base. Semantic colors (success/warning/danger/status pills,
+   telegram preview, scrollbar, shadow-modal) are intentionally NOT overridden
+   here — they come from theme.css's own [data-theme="dark"] block, so they
+   stay consistent with the standard dark theme instead of drifting. */
+[data-design="soft"][data-theme="dark"] {
+  --bg-app:        #211f1c;
+  --bg-sidebar:    #211f1c;
+  --bg-surface:    #282623;
+  --bg-elevated:   #282623;
+  --bg-hover:      #33302b;
+  --bg-active:     #3b3731;
+  --bg-input:      #282623;
+
+  --border-subtle:  #322f2a;
+  --border-default: #423e37;
+  --border-strong:  #544f45;
+
+  --text-primary:   #e6e2d9;
+  --text-secondary: #a9a59b;
+  --text-muted:     #7c786f;
+  --text-inverse:   #211f1c;
+
+  --accent:         #3b6fe0;
+  --accent-hover:   #2f5fd6;
+  --accent-subtle:  rgba(59, 111, 224, 0.14);
+
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.40);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.45);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.50);
+
+  /* Dark neumorphic emboss — a faint warm highlight, not a white one. */
+  --soft-shadow-dark:  rgba(0, 0, 0, 0.60);
+  --soft-shadow-light: rgba(255, 255, 255, 0.05);
 }
 
 /* ─── Signature flourish: soft-ui embossing on major surfaces ────────────── */

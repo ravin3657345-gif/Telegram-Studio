@@ -8,11 +8,13 @@ import { toast } from "@/store/uiStore";
 import { t } from "@/lib/i18n";
 import { useSettingsStore } from "@/store/settingsStore";
 import clsx from "clsx";
+import { useIsMobileLayout } from "@/hooks/useIsMobileLayout";
 
 type Step = "bot" | "channel" | "done";
 
 export function OnboardingPage() {
   useSettingsStore((s) => s.language);
+  const isMobile = useIsMobileLayout();
   const navigate = useNavigate();
   const [step, setStep] = useState<Step>("bot");
   const [token, setToken] = useState("");
@@ -58,24 +60,24 @@ export function OnboardingPage() {
 
   return (
     <div
-      className="flex flex-col items-center justify-center min-h-screen px-6"
-      style={{ backgroundColor: "var(--bg-app)", color: "var(--text-primary)" }}
+      className={"flex flex-col items-center min-h-screen overflow-y-auto " + (isMobile ? "px-4 py-6" : "px-6")}
+      style={{ backgroundColor: "var(--bg-app)", color: "var(--text-primary)", justifyContent: isMobile ? "flex-start" : "center" }}
     >
       {/* Logo */}
-      <div className="flex items-center gap-3 mb-10">
-        <div
-          className="w-10 h-10 rounded-xl flex items-center justify-center"
-          style={{ backgroundColor: "var(--accent)" }}
-        >
-          <svg width="22" height="22" viewBox="0 0 16 16" fill="none">
-            <path d="M8 1L14 4.5V11.5L8 15L2 11.5V4.5L8 1Z" fill="white" />
-          </svg>
-        </div>
+      <div className={"flex items-center gap-3 " + (isMobile ? "mb-6" : "mb-10")}>
+        <img
+          src="/icon.png"
+          width={40}
+          height={40}
+          alt=""
+          draggable={false}
+          className="rounded-xl"
+        />
         <span className="text-xl font-semibold">Telegram Studio</span>
       </div>
 
       {/* Step indicator */}
-      <div className="flex items-center gap-3 mb-8">
+      <div className={"flex items-center gap-3 " + (isMobile ? "mb-5" : "mb-8")}>
         <StepDot active={step === "bot"} done={step !== "bot"} label={t("onboarding.step.bot")} />
         <div className="w-8 h-px" style={{ backgroundColor: "var(--border-default)" }} />
         <StepDot active={step === "channel"} done={step === "done"} label={t("onboarding.step.channel")} />
@@ -94,7 +96,7 @@ export function OnboardingPage() {
       >
         <div
           key={step}
-          className="p-8"
+          className={isMobile ? "p-5" : "p-8"}
           style={{ animation: "pageFadeIn 0.18s ease-out both" }}
         >
           {step === "bot" && (

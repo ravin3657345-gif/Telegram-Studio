@@ -1,15 +1,19 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { History, Clock, Trash2, CheckCircle2, XCircle, RefreshCw, Pencil, Loader } from "lucide-react";
+import { History, Clock, Trash2, CheckCircle2, XCircle, RefreshCw, Pencil, Loader, Link2, ExternalLink } from "lucide-react";
 import { TopBar } from "@/components/layout/TopBar";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Spinner } from "@/components/ui/Spinner";
 import { toast, useUiStore } from "@/store/uiStore";
 import { invoke } from "@tauri-apps/api/core";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { t, ti } from "@/lib/i18n";
 import { useSettingsStore } from "@/store/settingsStore";
+import { useChannelsStore } from "@/store/channelsStore";
 import { useEditorStore } from "@/store/editorStore";
 import { useListKeyboardNav } from "@/hooks/useListKeyboardNav";
+import { useIsMobileLayout } from "@/hooks/useIsMobileLayout";
+import type { Channel } from "@/types/channel";
 
 interface HistoryItem {
   id: string;
@@ -37,10 +41,26 @@ function getDeleteOptions() {
   ] as const;
 }
 
+// Public link for a published post. Prefer the channel's @username when the
+// channel is still in the app (nicer t.me/<username>/<msg> link); otherwise
+// fall back to Telegram's numeric t.me/c/<chatId>/<msg> form for private
+// channels (the -100 prefix must be stripped for the c/ path).
+function buildPostUrl(item: HistoryItem, channels: Channel[]): string | null {
+  if (item.status !== "published" || !item.telegramMsgId) return null;
+  const channel = channels.find((c) => c.id === item.channelId);
+  if (channel?.username) {
+    return `https://t.me/${channel.username}/${item.telegramMsgId}`;
+  }
+  const chatId = (item.telegramChatId ?? "").replace(/^-100/, "");
+  if (!chatId) return null;
+  return `https://t.me/c/${chatId}/${item.telegramMsgId}`;
+}
+
 export function HistoryPage() {
   const [items, setItems]   = useState<HistoryItem[]>([]);
   const [loading, setLoading] = useState(true);
   useSettingsStore((s) => s.language);
+  const isMobile = useIsMobileLayout();
   const historyVersion = useUiStore((s) => s.historyVersion);
   const navigate    = useNavigate();
   const resetEditor = useEditorStore((s) => s.resetEditor);
@@ -114,7 +134,7 @@ export function HistoryPage() {
           </button>
         }
       />
-      <div className="page-content">
+      <div className="page-content" style={{ padding: isMobile ? 12 : 24 }}>
         {loading ? (
           <div className="flex justify-center py-20">
             <Spinner size={24} color="var(--text-muted)" />
@@ -159,6 +179,9 @@ function HistoryCard({
   const [showMenu, setShowMenu]   = useState(false);
   const [loadingEdit, setLoadingEdit] = useState(false);
   useSettingsStore((s) => s.language);
+  const isMobile = useIsMobileLayout();
+  const channels = useChannelsStore((s) => s.channels);
+  const postUrl = buildPostUrl(item, channels);
 
   const navigate    = useNavigate();
   const resetEditor = useEditorStore((s) => s.resetEditor);
@@ -176,6 +199,25 @@ function HistoryCard({
       toast.error(t("editor.postLoadError"), String(e));
     } finally {
       setLoadingEdit(false);
+    }
+  }
+
+  async function handleCopyLink() {
+    if (!postUrl) return;
+    try {
+      await navigator.clipboard.writeText(postUrl);
+      toast.success(t("history.linkCopied"));
+    } catch {
+      toast.error(t("history.openError"));
+    }
+  }
+
+  async function handleOpenInTelegram() {
+    if (!postUrl) return;
+    try {
+      await openUrl(postUrl);
+    } catch {
+      toast.error(t("history.openError"));
     }
   }
 
@@ -202,7 +244,7 @@ function HistoryCard({
   return (
     <div
       data-nav-id={item.id}
-      className="rounded-lg border p-3 flex items-start gap-3"
+      className={"rounded-lg border flex items-start " + (isMobile ? "p-3.5 gap-2.5" : "p-3 gap-3")}
       style={{
         backgroundColor: "var(--bg-surface)",
         borderColor: selected ? "var(--accent)" : "var(--border-subtle)",
@@ -212,11 +254,17 @@ function HistoryCard({
       <StatusIcon size={16} style={{ color: statusColor, flexShrink: 0, marginTop: 1 }} />
 
       <div className="flex-1 min-w-0">
-        <div className="flex items-center justify-between gap-2">
-          <p className="text-sm font-medium truncate" style={{ color: "var(--text-primary)" }}>
+        <div className={"flex items-center justify-between gap-2 " + (isMobile ? "flex-wrap" : "")}>
+          <p
+            className="text-sm font-medium truncate"
+            style={{ color: "var(--text-primary)", ...(isMobile ? { flex: "1 1 100%", minWidth: 0 } : {}) }}
+          >
             {item.postTitle.trim() || t("editor.untitled")}
           </p>
-          <span className="text-2xs flex-shrink-0 truncate" style={{ color: "var(--text-muted)", maxWidth: 160 }}>
+          <span
+            className="text-2xs flex-shrink-0 truncate"
+            style={{ color: "var(--text-muted)", maxWidth: isMobile ? undefined : 160 }}
+          >
             {item.channelTitle || item.channelId} · {pubDate}
           </span>
         </div>
@@ -249,6 +297,28 @@ function HistoryCard({
         )}
       </div>
 
+      {/* Post link actions — copy t.me link / open in Telegram. */}
+      {postUrl && (
+        <>
+          <button
+            onClick={handleCopyLink}
+            className={"flex items-center justify-center rounded flex-shrink-0 transition-colors " + (isMobile ? "w-9 h-9" : "w-6 h-6")}
+            style={{ color: "var(--text-muted)", backgroundColor: "var(--bg-elevated)" }}
+            title={t("history.copyLink")}
+          >
+            <Link2 size={isMobile ? 15 : 12} />
+          </button>
+          <button
+            onClick={handleOpenInTelegram}
+            className={"flex items-center justify-center rounded flex-shrink-0 transition-colors " + (isMobile ? "w-9 h-9" : "w-6 h-6")}
+            style={{ color: "var(--text-muted)", backgroundColor: "var(--bg-elevated)" }}
+            title={t("history.openInTelegram")}
+          >
+            <ExternalLink size={isMobile ? 15 : 12} />
+          </button>
+        </>
+      )}
+
       {/* Edit button — opens full editor. Rich posts can't be edited at all
           (no resync/re-snapshot path once sent) — shown disabled with an
           explanatory tooltip instead of hidden outright, so the restriction
@@ -269,7 +339,7 @@ function HistoryCard({
           <button
             onClick={openInEditor}
             disabled={loadingEdit}
-            className="flex items-center gap-1 px-2 h-6 rounded flex-shrink-0 text-2xs font-medium"
+            className={"flex items-center gap-1 rounded flex-shrink-0 text-2xs font-medium " + (isMobile ? "px-3 h-9" : "px-2 h-6")}
             style={{ backgroundColor: "var(--bg-elevated)", color: "var(--text-muted)" }}
             onMouseEnter={(e) => {
               e.currentTarget.style.color = "var(--accent)";
@@ -294,28 +364,28 @@ function HistoryCard({
         <div className="relative flex-shrink-0">
           <button
             onClick={() => setShowMenu((v) => !v)}
-            className="flex items-center justify-center w-6 h-6 rounded transition-colors"
+            className={"flex items-center justify-center rounded transition-colors " + (isMobile ? "w-9 h-9" : "w-6 h-6")}
             style={{ color: "var(--text-muted)", backgroundColor: "var(--bg-elevated)" }}
             title={t("history.schedDelete")}
           >
-            <Trash2 size={12} />
+            <Trash2 size={isMobile ? 16 : 12} />
           </button>
 
           {showMenu && (
             <div
-              className="absolute right-0 top-full mt-1 rounded-lg border z-50 overflow-hidden text-xs"
+              className={"absolute right-0 top-full mt-1 rounded-lg border z-50 overflow-hidden " + (isMobile ? "text-sm" : "text-xs")}
               style={{
                 backgroundColor: "var(--bg-elevated)",
                 borderColor: "var(--border-default)",
                 boxShadow: "var(--shadow-md)",
-                width: 160,
+                width: isMobile ? 200 : 160,
               }}
             >
               {getDeleteOptions().map((opt) => (
                 <button
                   key={opt.hours}
                   onClick={() => { onScheduleDelete(item, opt.hours); setShowMenu(false); }}
-                  className="w-full px-3 py-1.5 text-left hover:bg-[var(--bg-hover)] transition-colors"
+                  className={"w-full text-left hover:bg-[var(--bg-hover)] transition-colors " + (isMobile ? "px-4 py-3" : "px-3 py-1.5")}
                   style={{ color: "var(--text-primary)" }}
                 >
                   {opt.label}
@@ -324,7 +394,7 @@ function HistoryCard({
               {item.deleteAt && (
                 <button
                   onClick={() => { onScheduleDelete(item, null); setShowMenu(false); }}
-                  className="w-full px-3 py-1.5 text-left hover:bg-[var(--bg-hover)] transition-colors border-t"
+                  className={"w-full text-left hover:bg-[var(--bg-hover)] transition-colors border-t " + (isMobile ? "px-4 py-3" : "px-3 py-1.5")}
                   style={{ color: "var(--danger)", borderColor: "var(--border-subtle)" }}
                 >
                   {t("history.cancelDelete")}

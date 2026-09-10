@@ -229,23 +229,26 @@ export function DraftsPage() {
             </div>
 
             {/* ── Toolbar ────────────────────────────────────────────────── */}
+            {/* Mobile: search gets its own full-width row, filters/sort sit
+                on a second row below — squeezed side-by-side they used to
+                crush the 220px search box (and its text) on a phone. */}
             <div
-              className="flex items-center justify-between px-6 border-b"
+              className={isMobile ? "flex flex-col gap-1.5 px-4 pt-1 pb-2 border-b" : "flex items-center justify-between px-6 border-b"}
               style={{ borderColor: "var(--border-subtle)" }}
             >
               {/* Search */}
-              <div className="relative flex items-center py-1.5" style={{ width: 220 }}>
-                <Search size={13} style={{ position: "absolute", left: 9, color: "var(--text-muted)", pointerEvents: "none" }} />
+              <div className="relative flex items-center py-1.5" style={{ width: isMobile ? "100%" : 220 }}>
+                <Search size={isMobile ? 15 : 13} style={{ position: "absolute", left: 10, color: "var(--text-muted)", pointerEvents: "none" }} />
                 <input
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   placeholder={t("drafts.search")}
                   className="w-full text-xs"
                   style={{
-                    height: 28,
-                    paddingLeft: 28,
-                    paddingRight: search ? 24 : 8,
-                    borderRadius: 6,
+                    height: isMobile ? 38 : 28,
+                    paddingLeft: isMobile ? 32 : 28,
+                    paddingRight: search ? (isMobile ? 30 : 24) : 8,
+                    borderRadius: 8,
                     border: "1px solid transparent",
                     backgroundColor: "var(--bg-hover)",
                     color: "var(--text-primary)",
@@ -255,20 +258,21 @@ export function DraftsPage() {
                   <button
                     onClick={() => setSearch("")}
                     className="flex items-center justify-center rounded"
-                    style={{ position: "absolute", right: 6, width: 16, height: 16, color: "var(--text-muted)" }}
+                    style={{ position: "absolute", right: 6, width: isMobile ? 22 : 16, height: isMobile ? 22 : 16, color: "var(--text-muted)" }}
                     title={t("drafts.searchClear")}
                   >
-                    <X size={12} />
+                    <X size={isMobile ? 13 : 12} />
                   </button>
                 )}
               </div>
 
               {/* Toolbar */}
-              <div ref={toolbarRef} className="flex items-center gap-1.5 py-1.5">
+              <div ref={toolbarRef} className="flex items-center gap-1.5 py-1">
                 <div className="relative">
                   <button
-                    className="flex items-center gap-1.5 px-2.5 h-7 rounded-md text-xs transition-colors"
+                    className="flex items-center gap-1.5 px-3 rounded-md text-xs transition-colors"
                     style={{
+                      height: isMobile ? 38 : 28,
                       color: statusFilter.size < ALL_STATUSES.length ? "var(--accent)" : "var(--text-secondary)",
                       backgroundColor: openMenu === "filters" ? "var(--bg-elevated)" : "var(--bg-hover)",
                     }}
@@ -294,8 +298,8 @@ export function DraftsPage() {
                         <button
                           key={s}
                           onClick={() => toggleStatus(s)}
-                          className="flex items-center gap-2 w-full px-2.5 py-1.5 rounded text-xs text-left transition-colors"
-                          style={{ color: "var(--text-primary)" }}
+                          className="flex items-center gap-2 w-full px-2.5 rounded text-xs text-left transition-colors"
+                          style={{ color: "var(--text-primary)", paddingTop: isMobile ? 9 : 6, paddingBottom: isMobile ? 9 : 6 }}
                           onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "var(--bg-hover)")}
                           onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
                         >
@@ -318,8 +322,9 @@ export function DraftsPage() {
 
                 <div className="relative">
                   <button
-                    className="flex items-center gap-1.5 px-2.5 h-7 rounded-md text-xs transition-colors"
+                    className="flex items-center gap-1.5 px-3 rounded-md text-xs transition-colors"
                     style={{
+                      height: isMobile ? 38 : 28,
                       color: "var(--text-secondary)",
                       backgroundColor: openMenu === "sort" ? "var(--bg-elevated)" : "var(--bg-hover)",
                     }}
@@ -341,8 +346,8 @@ export function DraftsPage() {
                         <button
                           key={key}
                           onClick={() => { setSortBy(key); setOpenMenu(null); }}
-                          className="flex items-center justify-between w-full px-2.5 py-1.5 rounded text-xs text-left transition-colors"
-                          style={{ color: sortBy === key ? "var(--accent)" : "var(--text-primary)" }}
+                          className="flex items-center justify-between w-full px-2.5 rounded text-xs text-left transition-colors"
+                          style={{ color: sortBy === key ? "var(--accent)" : "var(--text-primary)", paddingTop: isMobile ? 9 : 6, paddingBottom: isMobile ? 9 : 6 }}
                           onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "var(--bg-hover)")}
                           onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
                         >
@@ -706,6 +711,7 @@ function MobileDraftCard({
   return (
     <div
       onClick={onClick}
+      className="virtualized-item"
       style={{
         borderRadius: 12,
         border: "1px solid var(--border-subtle)",

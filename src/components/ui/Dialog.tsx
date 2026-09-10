@@ -1,5 +1,6 @@
 import * as RadixDialog from "@radix-ui/react-dialog";
 import type { ComponentProps, ReactNode, CSSProperties } from "react";
+import { useIsMobileLayout } from "@/hooks/useIsMobileLayout";
 
 /**
  * Thin wrapper around Radix's Dialog primitive, styled to match this app's
@@ -19,14 +20,41 @@ interface DialogProps {
   /** A couple of dialogs used a darker/blurred backdrop instead of the usual
    * flat rgba(0,0,0,0.5) — override per-dialog instead of forcing one look. */
   overlayStyle?: CSSProperties;
+  /** On phones, anchor to the bottom edge as a sheet instead of a centered
+   * card. Form/chooser dialogs (schedule, save-template, confirm, add-bot)
+   * opt in; small inline popups (link, pickers) keep the centered card. */
+  mobileSheet?: boolean;
 }
 
-export function Dialog({ onOpenChange, children, style, className, overlayStyle }: DialogProps) {
+export function Dialog({ onOpenChange, children, style, className, overlayStyle, mobileSheet }: DialogProps) {
+  const isMobile = useIsMobileLayout();
+  const asSheet = !!(mobileSheet && isMobile);
+
+  // Overrides applied over the caller's own style so a dialog written for a
+  // centered card (width, radius, shadow) still reads as a bottom sheet.
+  const sheetStyle: CSSProperties = {
+    top: "auto",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    transform: "none",
+    width: "100%",
+    maxWidth: "none",
+    borderRadius: "16px 16px 0 0",
+    borderBottom: "none",
+    boxShadow: "0 -8px 32px rgba(0,0,0,0.3)",
+    maxHeight: "88vh",
+    overflow: "auto",
+  };
+
   return (
     <RadixDialog.Root open onOpenChange={onOpenChange}>
       <RadixDialog.Portal>
         <RadixDialog.Overlay className="dialog-overlay" style={overlayStyle} />
-        <RadixDialog.Content className={"dialog-content" + (className ? " " + className : "")} style={style}>
+        <RadixDialog.Content
+          className={(asSheet ? "bottom-sheet-content" : "dialog-content") + (className ? " " + className : "")}
+          style={asSheet ? { ...style, ...sheetStyle } : style}
+        >
           {children}
         </RadixDialog.Content>
       </RadixDialog.Portal>

@@ -383,7 +383,7 @@ export function TemplatesPage() {
                       {/* Cards grid */}
                       <div
                         className="px-6"
-                        style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14 }}
+                        style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3, 1fr)", gap: 14 }}
                       >
                         {items.map((tmpl) => (
                           <TemplateCard
@@ -435,11 +435,13 @@ export function TemplatesPage() {
 // ── Filter chip ───────────────────────────────────────────────────────────────
 
 function FilterChip({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
+  const isMobile = useIsMobileLayout();
   return (
     <button
       onClick={onClick}
-      className="px-3 h-7 rounded-full text-xs font-medium transition-all"
+      className="px-3 rounded-full text-xs font-medium transition-all"
       style={{
+        height: isMobile ? 32 : 28,
         backgroundColor: active ? "var(--text-primary)" : "var(--bg-hover)",
         color: active ? "var(--bg-surface)" : "var(--text-secondary)",
         border: "1px solid",
@@ -466,6 +468,7 @@ function TemplateCard({
 }) {
   const [hovered, setHovered] = useState(false);
   useSettingsStore((s) => s.language);
+  const isMobile = useIsMobileLayout();
 
   const date = new Date(template.updatedAt).toLocaleString("ru", {
     day: "numeric", month: "short", hour: "2-digit", minute: "2-digit",
@@ -474,7 +477,7 @@ function TemplateCard({
   return (
     <div
       data-nav-id={template.id}
-      className="rounded-xl border overflow-hidden cursor-pointer relative"
+      className="virtualized-item rounded-xl border overflow-hidden cursor-pointer relative"
       style={{
         backgroundColor: "var(--bg-surface)",
         borderColor: selected ? "var(--accent)" : hovered ? "var(--border-strong)" : "var(--border-subtle)",
@@ -486,8 +489,8 @@ function TemplateCard({
       onMouseLeave={() => setHovered(false)}
     >
       {/* Gradient preview */}
-      <div style={{ height: 100, background: gradient, display: "flex", alignItems: "center", justifyContent: "center" }}>
-        <Icon size={28} color="rgba(255,255,255,0.75)" strokeWidth={1.5} />
+      <div style={{ height: isMobile ? 64 : 100, background: gradient, display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <Icon size={isMobile ? 22 : 28} color="rgba(255,255,255,0.75)" strokeWidth={1.5} />
       </div>
 
       {/* Card body */}
@@ -508,28 +511,35 @@ function TemplateCard({
         </div>
       </div>
 
-      {/* Edit + delete on hover */}
-      {hovered && (
-        <div className="absolute top-2 right-2 flex items-center gap-1.5">
+      {/* Edit + delete — desktop reveals on hover; mobile keeps them always
+          visible (no hover on touch) with thumb-sized tap targets */}
+      {(hovered || isMobile) && (
+        <div className="absolute top-2 right-2 flex items-center" style={{ gap: isMobile ? 8 : 6 }}>
           <button
             onClick={onEdit}
-            className="flex items-center justify-center w-7 h-7 rounded-md transition-colors"
-            style={{ backgroundColor: "rgba(0,0,0,0.35)", color: "rgba(255,255,255,0.8)" }}
+            className="flex items-center justify-center rounded-md transition-colors"
+            style={{
+              width: isMobile ? 36 : 28, height: isMobile ? 36 : 28,
+              backgroundColor: "rgba(0,0,0,0.35)", color: "rgba(255,255,255,0.8)",
+            }}
             onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "rgba(0,0,0,0.55)")}
             onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "rgba(0,0,0,0.35)")}
             title={t("templates.edit")}
           >
-            <Pencil size={12} />
+            <Pencil size={isMobile ? 14 : 12} />
           </button>
           <button
             onClick={onDelete}
-            className="flex items-center justify-center w-7 h-7 rounded-md transition-colors"
-            style={{ backgroundColor: "rgba(0,0,0,0.35)", color: "rgba(255,255,255,0.8)" }}
+            className="flex items-center justify-center rounded-md transition-colors"
+            style={{
+              width: isMobile ? 36 : 28, height: isMobile ? 36 : 28,
+              backgroundColor: "rgba(0,0,0,0.35)", color: "rgba(255,255,255,0.8)",
+            }}
             onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "rgba(220,38,38,0.7)")}
             onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "rgba(0,0,0,0.35)")}
             title={t("templates.delete")}
           >
-            <Trash2 size={13} />
+            <Trash2 size={isMobile ? 15 : 13} />
           </button>
         </div>
       )}

@@ -2,15 +2,6 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./app/App";
 import "./styles/globals.css";
-import { applyMobileUiScale } from "./lib/mobileScale";
-
-// Android only — shrinks the whole UI to 75% (Windows display-scaling style)
-// so more of the desktop-shaped layout fits a phone. Runs before the first
-// render so the app never paints at the wrong scale. Must stay in a module
-// script rather than an inline <script> in index.html: the app's CSP is
-// script-src 'self' with no 'unsafe-inline', so an inline script would be
-// blocked outright in the packaged build.
-applyMobileUiScale();
 
 // Disable the browser's native context menu (Print / Save As / Inspect)
 // everywhere EXCEPT inside the post editor (native Copy/Paste/Cut there is

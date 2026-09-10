@@ -16,6 +16,7 @@ import { t, ti } from "@/lib/i18n";
 import { useSettingsStore } from "@/store/settingsStore";
 import type { Channel } from "@/types/channel";
 import { Dialog, DialogTitle, DialogDescription } from "@/components/ui/Dialog";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { useListKeyboardNav } from "@/hooks/useListKeyboardNav";
 import { useIsMobileLayout } from "@/hooks/useIsMobileLayout";
 
@@ -70,6 +71,7 @@ function AddChannelModal({ onClose, onAdded }: AddChannelModalProps) {
 
   return (
     <Dialog
+      mobileSheet
       onOpenChange={(open) => !open && onClose()}
       overlayStyle={{ backgroundColor: "rgba(0,0,0,0.55)", backdropFilter: "blur(2px)" }}
       style={{
@@ -267,6 +269,7 @@ function ChannelCard({ channel, selected, onDelete }: { channel: Channel; select
   return (
     <div
       data-nav-id={channel.id}
+      className="virtualized-item"
       style={{
         borderRadius: 12,
         border: "1px solid " + (selected ? "var(--accent)" : "var(--border-subtle)"),
@@ -450,6 +453,12 @@ export function ChannelsPage() {
   const { channels, setChannels, addChannel: storeAdd, removeChannel } = useChannelsStore();
   const [showAdd, setShowAdd] = useState(false);
   useSettingsStore((s) => s.language);
+  const isMobile = useIsMobileLayout();
+
+  // Keyboard Delete path funnels through the same confirm UI the card uses
+  // (ChannelCard's own button is a TimedUndoAction undo-toast) — a blocking
+  // native window.confirm() is a desktop pattern that feels alien on a phone.
+  const [confirmChannel, setConfirmChannel] = useState<Channel | null>(null);
 
   useEffect(() => {
     getChannels()
@@ -457,18 +466,10 @@ export function ChannelsPage() {
       .catch(() => {});
   }, []);
 
-  // Standalone rather than reusing ChannelCard's own handleDelete (that one
-  // also drives a per-card "deleting" spinner, which a keyboard-triggered
-  // delete has no natural place to show) — same confirm+delete sequence.
-  async function handleDeleteChannel(ch: Channel) {
-    if (!confirm(ti("channels.confirmDelete", { title: ch.title }))) return;
-    try {
-      await deleteChannel(ch.id);
-      removeChannel(ch.id);
-      toast.success(ti("channels.deletedMsg", { title: ch.title }));
-    } catch (e) {
-      toast.error(String(e));
-    }
+  // Keyboard Delete just opens the ConfirmDialog; the actual delete runs in
+  // the dialog's onConfirm.
+  function handleDeleteChannel(ch: Channel) {
+    setConfirmChannel(ch);
   }
 
   // No Enter binding here — a channel row has no navigation/detail target,
@@ -489,11 +490,11 @@ export function ChannelsPage() {
             onClick={() => setShowAdd(true)}
             style={{
               display: "flex", alignItems: "center", gap: 6,
-              padding: "7px 14px", borderRadius: 8, fontSize: 13, fontWeight: 600,
+              padding: isMobile ? "11px 18px" : "7px 14px", borderRadius: 8, fontSize: 13, fontWeight: 600,
               backgroundColor: "var(--accent)", border: "none", color: "#fff", cursor: "pointer",
             }}
           >
-            <Plus size={14} />
+            <Plus size={isMobile ? 16 : 14} />
             {t("channels.add")}
           </button>
         }
@@ -525,6 +526,26 @@ export function ChannelsPage() {
         <AddChannelModal
           onClose={() => setShowAdd(false)}
           onAdded={(ch) => storeAdd(ch)}
+        />
+      )}
+
+      {confirmChannel && (
+        <ConfirmDialog
+          title={t("channels.delete")}
+          description={ti("channels.confirmDelete", { title: confirmChannel.title })}
+          confirmLabel={t("common.delete")}
+          onConfirm={async () => {
+            const ch = confirmChannel;
+            setConfirmChannel(null);
+            try {
+              await deleteChannel(ch.id);
+              removeChannel(ch.id);
+              toast.success(ti("channels.deletedMsg", { title: ch.title }));
+            } catch (e) {
+              toast.error(String(e));
+            }
+          }}
+          onClose={() => setConfirmChannel(null)}
         />
       )}
     </>

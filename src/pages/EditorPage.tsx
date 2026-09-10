@@ -15,6 +15,7 @@ import { toast } from "@/store/uiStore";
 import { t, ti } from "@/lib/i18n";
 import { useSettingsStore } from "@/store/settingsStore";
 import { useIsMobileLayout } from "@/hooks/useIsMobileLayout";
+import { useIsLandscape } from "@/hooks/useIsLandscape";
 import type { TemplateCategory } from "@/types/template";
 import type { LucideIcon } from "lucide-react";
 
@@ -30,6 +31,7 @@ export function EditorPage() {
   useSettingsStore((s) => s.language);
   const showPreview = useSettingsStore((s) => s.showTelegramPreview);
   const isMobile = useIsMobileLayout();
+  const isLandscape = useIsLandscape();
 
   const { draftTitle, postTitle, contentJson, saveStatus, saveErrorMessage, lastSavedAt, draftId: storeDraftId, templateName,
           draftStatus, publishMode, setDraftStatus } = useEditorStore();
@@ -110,21 +112,21 @@ export function EditorPage() {
             {isCreateTemplate ? (
               <button
                 onClick={() => setShowTemplateDialog(true)}
-                className="flex items-center gap-1.5 px-3 h-7 rounded text-xs font-medium transition-colors"
-                style={{ color: "#fff", backgroundColor: "var(--accent)" }}
+                className="flex items-center gap-1.5 px-3 rounded text-xs font-medium transition-colors"
+                style={{ height: isMobile ? 36 : 28, color: "#fff", backgroundColor: "var(--accent)" }}
               >
-                <LayoutTemplate size={12} />
+                <LayoutTemplate size={isMobile ? 13 : 12} />
                 {t("editor.saveAsTemplate")}
               </button>
             ) : (
               <button
                 onClick={() => setShowTemplateDialog(true)}
-                className="flex items-center gap-1.5 px-2 h-7 rounded text-xs transition-colors"
-                style={{ color: "var(--text-muted)", backgroundColor: "var(--bg-elevated)" }}
+                className="flex items-center gap-1.5 px-2.5 rounded text-xs transition-colors"
+                style={{ height: isMobile ? 36 : 28, color: "var(--text-muted)", backgroundColor: "var(--bg-elevated)" }}
                 onMouseEnter={(e) => (e.currentTarget.style.color = "var(--text-primary)")}
                 onMouseLeave={(e) => (e.currentTarget.style.color = "var(--text-muted)")}
               >
-                <LayoutTemplate size={12} />
+                <LayoutTemplate size={isMobile ? 13 : 12} />
                 {t("editor.saveAsTemplate")}
               </button>
             )}
@@ -137,6 +139,12 @@ export function EditorPage() {
       {isMobile ? (
         isRichScheduledLocked ? (
           <ScheduledRichLockedPanel onUnlock={handleUnlockScheduledRich} unlocking={unlocking} />
+        ) : isLandscape ? (
+          <MobileLandscapeEditorBody
+            draftId={draftId}
+            effectiveDraftId={effectiveDraftId}
+            showPreview={showPreview}
+          />
         ) : (
           <MobileEditorBody
             draftId={draftId}
@@ -176,7 +184,10 @@ export function EditorPage() {
           <div
             className="flex flex-col flex-shrink-0 border-l overflow-hidden"
             style={{
-              width: 300,
+              // 340 (was 300) so the SplitButton's hover-revealed
+              // "Сохранить как шаблон" label fits without squeezing the
+              // primary "Опубликовать" — measured: needs ~308px pill.
+              width: 340,
               borderColor: "var(--border-subtle)",
               backgroundColor: "var(--bg-surface)",
             }}
@@ -387,6 +398,85 @@ function MobileEditorBody({
         data-tour="publish-panel"
         className="flex-col flex-1 overflow-hidden"
         style={{ display: activeTab === "publish" ? "flex" : "none" }}
+      >
+        <PublishPanel draftId={effectiveDraftId} />
+      </div>
+    </div>
+  );
+}
+
+// ── MobileLandscapeEditorBody sub-component ───────────────────────────────────
+// Landscape is wide-but-short, so the portrait tab switcher (Editor/Preview/
+// Publish stacked in one column) would waste the width and bury the publish
+// controls behind a tab. Instead: editor (with an optional preview toggle) on
+// the left, publish panel always visible on the right.
+
+function MobileLandscapeEditorBody({
+  draftId,
+  effectiveDraftId,
+  showPreview,
+}: {
+  draftId?: string;
+  effectiveDraftId?: string;
+  showPreview: boolean;
+}) {
+  const [leftTab, setLeftTab] = useState<"editor" | "preview">("editor");
+
+  return (
+    <div className="flex flex-row flex-1 overflow-hidden">
+      {/* Left: editor + optional preview toggle */}
+      <div className="flex flex-col flex-1 overflow-hidden min-w-0">
+        {showPreview && (
+          <div
+            className="flex flex-shrink-0 border-b"
+            style={{ borderColor: "var(--border-subtle)", backgroundColor: "var(--bg-surface)" }}
+          >
+            {([{ id: "editor", label: t("editor.tabEditor"), icon: PenLine },
+               { id: "preview", label: t("editor.preview"), icon: Eye }] as const).map((tab) => {
+              const isActive = leftTab === tab.id;
+              const Icon = tab.icon;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => setLeftTab(tab.id)}
+                  className="flex items-center justify-center gap-1.5 py-1.5 text-xs font-medium transition-colors"
+                  style={{
+                    flex: 1,
+                    color: isActive ? "var(--accent)" : "var(--text-muted)",
+                    background: "none",
+                    border: "none",
+                    borderBottom: isActive ? "2px solid var(--accent)" : "2px solid transparent",
+                  }}
+                >
+                  <Icon size={14} />
+                  {tab.label}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        <div
+          className="flex-col flex-1 overflow-hidden"
+          style={{ display: leftTab === "editor" ? "flex" : "none" }}
+        >
+          <PostEditor draftId={draftId} active={leftTab === "editor"} />
+        </div>
+
+        {showPreview && (
+          <div
+            className="flex-1 overflow-y-auto"
+            style={{ display: leftTab === "preview" ? "block" : "none", minHeight: 0 }}
+          >
+            <TelegramPreview />
+          </div>
+        )}
+      </div>
+
+      {/* Right: publish panel, pinned full-height */}
+      <div
+        className="flex-shrink-0 border-l overflow-hidden"
+        style={{ width: 300, borderColor: "var(--border-subtle)", backgroundColor: "var(--bg-surface)" }}
       >
         <PublishPanel draftId={effectiveDraftId} />
       </div>

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import {
-  PenLine, Files, LayoutTemplate, CalendarClock, History,
+  Home, PenLine, Files, LayoutTemplate, CalendarClock, History,
   Radio, Bot, Settings, MoreHorizontal,
 } from "lucide-react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
@@ -9,11 +9,12 @@ import { useDraftsStore } from "@/store/draftsStore";
 import { t } from "@/lib/i18n";
 import { Badge } from "@/components/ui/Badge";
 
-const TABS: Array<{ to: string; icon: LucideIcon; key: "nav.editor" | "nav.drafts" | "nav.templates" | "nav.schedule" | "nav.history"; hasBadge?: boolean; dataTour?: string }> = [
-  { to: "/editor",    icon: PenLine,       key: "nav.editor",    dataTour: "nav-editor" },
-  { to: "/drafts",    icon: Files,         key: "nav.drafts",    hasBadge: true },
-  { to: "/schedule",  icon: CalendarClock, key: "nav.schedule" },
-  { to: "/history",   icon: History,       key: "nav.history" },
+const TABS: Array<{ to: string; icon: LucideIcon; key: "nav.dashboard" | "nav.editor" | "nav.drafts" | "nav.templates" | "nav.schedule" | "nav.history"; hasBadge?: boolean; dataTour?: string }> = [
+  { to: "/",          icon: Home,           key: "nav.dashboard" },
+  { to: "/editor",    icon: PenLine,        key: "nav.editor",    dataTour: "nav-editor" },
+  { to: "/drafts",    icon: Files,          key: "nav.drafts",    hasBadge: true },
+  { to: "/schedule",  icon: CalendarClock,  key: "nav.schedule" },
+  { to: "/history",   icon: History,        key: "nav.history" },
   { to: "/templates", icon: LayoutTemplate, key: "nav.templates" },
 ];
 
@@ -27,7 +28,8 @@ const MORE_ITEMS: Array<{ to: string; icon: LucideIcon; key: "nav.channels" | "n
 // doesn't eat into the narrow width the way an always-visible sidebar would).
 // The 3 least-used sections live behind a "More" sheet instead of a 6th/7th/8th
 // icon crammed into the bar.
-export function BottomTabBar() {
+export function BottomTabBar({ orientation = "horizontal" }: { orientation?: "horizontal" | "vertical" }) {
+  const vertical = orientation === "vertical";
   const draftCount = useDraftsStore((s) => s.drafts.length);
   const location = useLocation();
   const navigate = useNavigate();
@@ -47,10 +49,11 @@ export function BottomTabBar() {
 
   return (
     <nav
-      className="flex items-stretch flex-shrink-0"
+      className={"flex items-stretch flex-shrink-0 " + (vertical ? "flex-col" : "")}
       style={{
-        height: 56,
-        borderTop: "1px solid var(--border-subtle)",
+        ...(vertical
+          ? { width: 56, borderRight: "1px solid var(--border-subtle)" }
+          : { height: 56, borderTop: "1px solid var(--border-subtle)" }),
         backgroundColor: "var(--bg-sidebar)",
         position: "relative",
       }}
@@ -59,6 +62,7 @@ export function BottomTabBar() {
         <NavLink
           key={tab.to}
           to={tab.to}
+          end={tab.to === "/"}
           data-tour={tab.dataTour}
           className="flex flex-col items-center justify-center gap-0.5 flex-1 relative"
           style={({ isActive }) => ({
@@ -95,9 +99,9 @@ export function BottomTabBar() {
           ref={moreRef}
           style={{
             position: "absolute",
-            bottom: "100%",
-            right: 6,
-            marginBottom: 6,
+            ...(vertical
+              ? { left: "100%", bottom: 6, marginLeft: 6 }
+              : { bottom: "100%", right: 6, marginBottom: 6 }),
             minWidth: 180,
             backgroundColor: "var(--bg-elevated)",
             border: "1px solid var(--border-subtle)",

@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Tracked source-of-truth for the Tauri-generated AndroidManifest.xml.
+
+  `npx tauri android init` regenerates src-tauri/gen/android/ from the vanilla
+  template, wiping the customization below. scripts/apply-android-patches.ps1
+  copies this file back in (run `npm run android:patch` after every init).
+
+  Customization vs the vanilla template:
+    - android:windowSoftInputMode="adjustResize" on the MainActivity — the
+      native keyboard-resize mode that keeps the WebView from being covered by
+      the on-screen keyboard (the manual visualViewport tracking is only a
+      fallback).
+
+  If Tauri changes its manifest template (new activity/provider/permission),
+  re-sync the non-custom parts here instead of blindly overwriting.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- AndroidTV support -->
+    <uses-feature android:name="android.software.leanback" android:required="false" />
+
+    <application
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:theme="@style/Theme.telegram_studio"
+        android:usesCleartextTraffic="${usesCleartextTraffic}">
+        <activity
+            android:configChanges="keyboardHidden|keyboard|locale|smallestScreenSize|uiMode"
+            android:launchMode="singleTask"
+            android:label="@string/main_activity_title"
+            android:name=".MainActivity"
+            android:exported="true"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+                <!-- AndroidTV support -->
+                <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <provider
+          android:name="androidx.core.content.FileProvider"
+          android:authorities="${applicationId}.fileprovider"
+          android:exported="false"
+          android:grantUriPermissions="true">
+          <meta-data
+            android:name="android.support.FILE_PROVIDER_PATHS"
+            android:resource="@xml/file_paths" />
+        </provider>
+    </application>
+</manifest>

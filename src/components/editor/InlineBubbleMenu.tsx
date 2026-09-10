@@ -6,6 +6,7 @@ import {
 import { ColorPicker } from "./ColorPicker";
 import { t } from "@/lib/i18n";
 import { useSettingsStore } from "@/store/settingsStore";
+import { useIsMobileLayout } from "@/hooks/useIsMobileLayout";
 
 interface InlineBubbleMenuProps {
   editor: Editor;
@@ -14,6 +15,11 @@ interface InlineBubbleMenuProps {
 
 export function InlineBubbleMenu({ editor, onLinkClick }: InlineBubbleMenuProps) {
   useSettingsStore((s) => s.language);
+  const isMobile = useIsMobileLayout();
+  // Desktop keeps 24px buttons (mouse); mobile bumps the whole bar up to
+  // thumb-sized 32px targets and larger glyphs — a text-selection bubble is
+  // already hard to hit on touch, the buttons inside shouldn't make it worse.
+  const iconSize = isMobile ? 15 : 13;
 
   return (
     <BubbleMenu
@@ -41,11 +47,12 @@ export function InlineBubbleMenu({ editor, onLinkClick }: InlineBubbleMenuProps)
       }}
     >
       <div
-        className="flex items-center gap-0.5 rounded-lg px-1 py-0.5"
+        className="flex items-center gap-0.5 rounded-lg"
         style={{
           backgroundColor: "var(--bg-elevated)",
           border: "1px solid var(--border-subtle)",
           boxShadow: "0 4px 16px rgba(0,0,0,0.18)",
+          padding: isMobile ? "4px 6px" : "2px 4px",
         }}
       >
         <BubbleBtn
@@ -53,42 +60,42 @@ export function InlineBubbleMenu({ editor, onLinkClick }: InlineBubbleMenuProps)
           active={editor.isActive("bold")}
           onClick={() => editor.chain().focus().toggleBold().run()}
         >
-          <Bold size={13} />
+          <Bold size={iconSize} />
         </BubbleBtn>
         <BubbleBtn
           title={t("bubble.italic")}
           active={editor.isActive("italic")}
           onClick={() => editor.chain().focus().toggleItalic().run()}
         >
-          <Italic size={13} />
+          <Italic size={iconSize} />
         </BubbleBtn>
         <BubbleBtn
           title={t("bubble.underline")}
           active={editor.isActive("underline")}
           onClick={() => editor.chain().focus().toggleUnderline().run()}
         >
-          <Underline size={13} />
+          <Underline size={iconSize} />
         </BubbleBtn>
         <BubbleBtn
           title={t("bubble.strike")}
           active={editor.isActive("strike")}
           onClick={() => editor.chain().focus().toggleStrike().run()}
         >
-          <Strikethrough size={13} />
+          <Strikethrough size={iconSize} />
         </BubbleBtn>
         <BubbleBtn
           title={t("bubble.code")}
           active={editor.isActive("code")}
           onClick={() => editor.chain().focus().toggleCode().run()}
         >
-          <Code size={13} />
+          <Code size={iconSize} />
         </BubbleBtn>
         <BubbleBtn
           title={t("bubble.spoiler")}
           active={editor.isActive("spoiler")}
           onClick={() => editor.chain().focus().toggleSpoiler().run()}
         >
-          <EyeOff size={13} />
+          <EyeOff size={iconSize} />
         </BubbleBtn>
 
         <Divider />
@@ -98,7 +105,7 @@ export function InlineBubbleMenu({ editor, onLinkClick }: InlineBubbleMenuProps)
           active={editor.isActive("link")}
           onClick={onLinkClick}
         >
-          <Link size={13} />
+          <Link size={iconSize} />
         </BubbleBtn>
 
         <Divider />
@@ -114,7 +121,7 @@ export function InlineBubbleMenu({ editor, onLinkClick }: InlineBubbleMenuProps)
             editor.chain().focus().unsetAllMarks().clearNodes().run()
           }
         >
-          <Eraser size={13} />
+          <Eraser size={iconSize} />
         </BubbleBtn>
       </div>
     </BubbleMenu>
@@ -141,12 +148,16 @@ function BubbleBtn({
   onClick: () => void;
   title?: string;
 }) {
+  const isMobile = useIsMobileLayout();
+  const size = isMobile ? 32 : 24;
   return (
     <button
       onClick={onClick}
       title={title}
-      className="flex items-center justify-center w-6 h-6 rounded transition-colors"
+      className="flex items-center justify-center rounded transition-colors"
       style={{
+        width: size,
+        height: size,
         backgroundColor: active ? "var(--accent)" : "transparent",
         color: active ? "#fff" : "var(--text-secondary)",
       }}

@@ -56,6 +56,7 @@ export function NewPostChooserDialog({ onClose }: Props) {
 
   return (
     <Dialog
+      mobileSheet
       onOpenChange={(open) => !open && onClose()}
       style={{
         width: 460,
