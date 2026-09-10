@@ -1,12 +1,17 @@
 import { useState, useRef, useEffect } from "react";
 import { ChevronLeft, ChevronRight, ChevronUp, ChevronDown, X, Check } from "lucide-react";
-import { t } from "@/lib/i18n";
+import { t, ti } from "@/lib/i18n";
 import { useSettingsStore } from "@/store/settingsStore";
 import { Dialog, DialogTitle, DialogDescription, VisuallyHidden } from "@/components/ui/Dialog";
 
 interface ScheduleDialogProps {
   onConfirm: (isoDate: string) => void;
   onClose: () => void;
+  /** Channels the post will go to, in the order PublishPanel has selected them
+   * — shown so "when" is confirmed together with "where" without a second
+   * confirm dialog (immediate publish gets that list from PublishConfirmDialog,
+   * scheduling had nothing). */
+  channelTitles?: string[];
 }
 
 // Jan 1–7 2024 = Mon–Sun
@@ -118,7 +123,7 @@ function ScrollPicker({ value, options, onChange }: PickerProps) {
 
 // ─── Main dialog ──────────────────────────────────────────────────────────────
 
-export function ScheduleDialog({ onConfirm, onClose }: ScheduleDialogProps) {
+export function ScheduleDialog({ onConfirm, onClose, channelTitles }: ScheduleDialogProps) {
   const language = useSettingsStore(s => s.language) ?? "ru";
 
   const now = new Date();
@@ -299,6 +304,22 @@ export function ScheduleDialog({ onConfirm, onClose }: ScheduleDialogProps) {
             {t("schedule.reset")}
           </button>
         </div>
+
+        {/* Where it goes — shown next to the time so the confirm button is
+            never the first time the user sees the channel list. */}
+        {channelTitles && channelTitles.length > 0 && (
+          <div
+            style={{
+              padding: "0 14px 10px",
+              fontSize: 11.5,
+              lineHeight: 1.4,
+              color: "var(--text-muted)",
+            }}
+            title={channelTitles.join(", ")}
+          >
+            {ti("schedule.goesTo", { channels: channelTitles.join(", ") })}
+          </div>
+        )}
 
         {/* Validation error */}
         {isPast && (

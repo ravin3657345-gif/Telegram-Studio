@@ -342,6 +342,7 @@ export const en = {
     "schedule.dateLabel": "Date and time",
     "schedule.cancel":    "Cancel",
     "schedule.confirm":   "Schedule",
+    "schedule.goesTo":    "Goes to: {channels}",
 
 
     "counter.over":       "extra characters",
@@ -557,6 +558,12 @@ export const en = {
     "channels.confirmDelete": "Delete channel «{title}»?",
     "channels.changeBot":     "Change bot",
     "publish.published":    "Post published",
+    "publish.scheduled":    "Post scheduled",
+    "publish.rescheduled":  "Schedule updated",
+    "publish.scheduledFor": "for {date} · {channels}",
+    "publish.scheduledInline": "Scheduled for {date}",
+    "publish.openPlanner":  "Open planner",
+    "publish.scheduleError": "Could not schedule the post",
     "publish.addBotHint":   "Add a bot on the Bots page",
     "publish.editMode":     "Edit mode",
     "publish.editModeHint": "Changes will be sent to Telegram",

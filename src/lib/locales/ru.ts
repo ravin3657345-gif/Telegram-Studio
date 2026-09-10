@@ -355,6 +355,7 @@ export const ru = {
     "schedule.dateLabel": "Дата и время",
     "schedule.cancel":    "Отмена",
     "schedule.confirm":   "Запланировать",
+    "schedule.goesTo":    "Уйдёт в: {channels}",
 
     // ── HTML вид ─────────────────────────────────────────────────────────────
 
@@ -580,6 +581,12 @@ export const ru = {
     "channels.confirmDelete": "Удалить канал «{title}»?",
     "channels.changeBot":     "Сменить бота",
     "publish.published":    "Пост опубликован",
+    "publish.scheduled":    "Пост запланирован",
+    "publish.rescheduled":  "Расписание обновлено",
+    "publish.scheduledFor": "на {date} · {channels}",
+    "publish.scheduledInline": "Запланировано на {date}",
+    "publish.openPlanner":  "В планировщик",
+    "publish.scheduleError": "Не удалось запланировать",
     "publish.addBotHint":   "Добавьте бота на странице «Боты»",
     "publish.editMode":     "Режим редактирования",
     "publish.editModeHint": "Изменения отправятся в Telegram",

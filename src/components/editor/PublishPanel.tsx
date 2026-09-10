@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Send, Clock, CheckCircle2, AlertCircle, Loader2, Layers, Pencil, LayoutTemplate } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { SplitButton } from "@/components/ui/SplitButton";
@@ -21,7 +22,7 @@ import { useSettingsStore } from "@/store/settingsStore";
 import { useIsMobileLayout } from "@/hooks/useIsMobileLayout";
 import { toast, useUiStore } from "@/store/uiStore";
 import { fileToBase64, normalizeImageToJpeg } from "@/lib/imageProcessing";
-import type { PublishResult } from "@/types/publish";
+import type { PublishResult, ScheduledPostInfo } from "@/types/publish";
 import type { TemplateCategory } from "@/types/template";
 
 // ─── Component ─────────────────────────────────────────────────────────────────
@@ -32,9 +33,10 @@ export function PublishPanel({ draftId }: PublishPanelProps) {
   const { bots, channels } = useChannelsStore();
   const { selectedChannelIds, status, results, lastError,
           toggleChannel, setStatus, setResults, setError, reset } = usePublishStore();
-  const { contentJson, postTitle, includeTitle, publishMode, setPublishMode, editingHistoryId, setEditingHistoryId, draftTitle, setDraftId, draftStatus, lastSavedAt } = useEditorStore();
-  useSettingsStore((s) => s.language);
+  const { contentJson, postTitle, includeTitle, publishMode, setPublishMode, editingHistoryId, setEditingHistoryId, draftTitle, setDraftId, draftStatus, setDraftStatus, lastSavedAt } = useEditorStore();
+  const language = useSettingsStore((s) => s.language) ?? "ru";
   const isMobile = useIsMobileLayout();
+  const navigate         = useNavigate();
   const bumpHistory      = useUiStore((s) => s.bumpHistory);
   const attachedFiles    = useAttachmentStore((s) => s.files);
   const clearAttachments = useAttachmentStore((s) => s.clearAll);
@@ -43,6 +45,9 @@ export function PublishPanel({ draftId }: PublishPanelProps) {
   const [showPublishConfirm, setShowPublishConfirm] = useState(false);
   const [showTemplateDialog, setShowTemplateDialog] = useState(false);
   const [savingTemplate, setSavingTemplate] = useState(false);
+  // Set on a successful schedule, cleared when the next publish/schedule
+  // starts — the durable half of the confirmation (the toast is transient).
+  const [scheduledInfo, setScheduledInfo] = useState<{ when: string; channels: string[] } | null>(null);
 
   const splitGaps      = useEditorStore((s) => s.splitGaps);
   const effectiveTitle = includeTitle ? postTitle : "";
@@ -372,6 +377,7 @@ export function PublishPanel({ draftId }: PublishPanelProps) {
   async function handlePublish() {
     if (!canPublish) return;
     reset();
+    setScheduledInfo(null);
     setStatus("publishing");
     try {
       let res: PublishResult[];
@@ -381,6 +387,10 @@ export function PublishPanel({ draftId }: PublishPanelProps) {
       setStatus("done");
       if (res.some((r) => r.success)) {
         clearAttachments();
+        // Same staleness the schedule path just got fixed for: the DB row is
+        // 'published' now (commands/publish.rs), so the store must not keep
+        // claiming 'scheduled' for the rest of this editor session.
+        setDraftStatus("published");
         const successChannels = res.filter((r) => r.success).map((r) => r.channelTitle).join(", ");
         toast.success(t("publish.published"), successChannels);
       }
@@ -392,10 +402,33 @@ export function PublishPanel({ draftId }: PublishPanelProps) {
     }
   }
 
-  async function handleSchedule(isoDate: string) {
-    if (!canSchedule) return;
+  // Both schedule paths (normal + Rich) end the same way, so the confirmation
+  // lives here once: a toast carrying the exact date/time and the channels it
+  // went to, a durable line in the panel for when the toast is gone, and the
+  // draft-status flip. Without that flip the autosave→resync effect in this
+  // file stays off (it keys on draftStatus === "scheduled") and the Rich lock
+  // in EditorPage never appears, both of which only caught up on a reload.
+  function confirmScheduled(infos: ScheduledPostInfo[], isoDate: string) {
+    const when = new Date(isoDate).toLocaleString(language, {
+      day: "numeric", month: "long", hour: "2-digit", minute: "2-digit",
+    });
+    const channels = infos.map((i) => i.channelTitle).filter(Boolean);
+    const channelList = channels.join(", ");
+
+    toast.success(
+      t(draftStatus === "scheduled" ? "publish.rescheduled" : "publish.scheduled"),
+      ti("publish.scheduledFor", { date: when, channels: channelList }),
+      { label: t("publish.openPlanner"), onClick: () => navigate("/schedule") },
+    );
+    setScheduledInfo({ when, channels });
+    setDraftStatus("scheduled");
+  }
+
+  async function handleSchedule(isoDate: string): Promise<ScheduledPostInfo[] | null> {
+    if (!canSchedule) return null;
     setShowSchedule(false);
     reset();
+    setScheduledInfo(null);
     setStatus("scheduling");
     const textHtml = segments
       .filter((s) => s.type === "text")
@@ -443,7 +476,7 @@ export function PublishPanel({ draftId }: PublishPanelProps) {
         encoded.push({ fileName: att.name, mimeType: att.mimeType, mediaType: "file", dataBase64: await fileToBase64(file) });
       }
 
-      await schedulePost({
+      const infos = await schedulePost({
         botId: bots[0]?.id ?? null,
         channelIds: selectedChannelIds,
         contentHtml: textHtml || "—",
@@ -453,9 +486,13 @@ export function PublishPanel({ draftId }: PublishPanelProps) {
         scheduleAt: isoDate,
       });
       setStatus("done");
+      confirmScheduled(infos, isoDate);
+      return infos;
     } catch (e) {
       setError(String(e));
       setStatus("error");
+      toast.error(t("publish.scheduleError"), String(e));
+      return null;
     }
   }
 
@@ -463,10 +500,11 @@ export function PublishPanel({ draftId }: PublishPanelProps) {
   // Mirrors handleSchedule above, but builds the snapshot via tiptapToRichHtml
   // (single-shot — no jsonChunks loop, see the resync effect's comment for why)
   // and calls scheduleRichPost instead.
-  async function handleScheduleRich(isoDate: string) {
-    if (!canSchedule) return;
+  async function handleScheduleRich(isoDate: string): Promise<ScheduledPostInfo[] | null> {
+    if (!canSchedule) return null;
     setShowSchedule(false);
     reset();
+    setScheduledInfo(null);
     setStatus("scheduling");
     try {
       let effectiveDraftId = draftId;
@@ -496,7 +534,7 @@ export function PublishPanel({ draftId }: PublishPanelProps) {
         })
       );
 
-      await scheduleRichPost({
+      const infos = await scheduleRichPost({
         botId: bots[0]?.id ?? null,
         channelIds: selectedChannelIds,
         richHtml: html,
@@ -505,9 +543,13 @@ export function PublishPanel({ draftId }: PublishPanelProps) {
         scheduleAt: isoDate,
       });
       setStatus("done");
+      confirmScheduled(infos, isoDate);
+      return infos;
     } catch (e) {
       setError(String(e));
       setStatus("error");
+      toast.error(t("publish.scheduleError"), String(e));
+      return null;
     }
   }
 
@@ -660,6 +702,35 @@ export function PublishPanel({ draftId }: PublishPanelProps) {
         {/* Results */}
         {(status === "done" || status === "error") && (
           <div className="flex flex-col gap-1">
+            {/* Scheduled confirmation — the durable half (the toast lasts 4s and
+                at most 3 stack up), sitting exactly where the user is looking
+                when they hit "Запланировать". */}
+            {scheduledInfo && (
+              <div
+                className="flex flex-col gap-0.5 px-2 py-1.5 rounded"
+                style={{
+                  backgroundColor: "var(--success-subtle)",
+                  border: "1px solid color-mix(in srgb, var(--success) 28%, transparent)",
+                }}
+              >
+                <div className="flex items-center gap-1.5 text-2xs" style={{ color: "var(--success)" }}>
+                  <Clock size={11} style={{ flexShrink: 0 }} />
+                  <span className="truncate">{ti("publish.scheduledInline", { date: scheduledInfo.when })}</span>
+                </div>
+                {scheduledInfo.channels.length > 0 && (
+                  <span className="text-2xs pl-4 truncate" style={{ color: "var(--text-muted)" }} title={scheduledInfo.channels.join(", ")}>
+                    {scheduledInfo.channels.join(", ")}
+                  </span>
+                )}
+                <button
+                  onClick={() => navigate("/schedule")}
+                  className="text-2xs font-semibold pl-4 text-left"
+                  style={{ color: "var(--accent)", background: "none", border: "none", padding: 0, cursor: "pointer" }}
+                >
+                  {t("publish.openPlanner")} →
+                </button>
+              </div>
+            )}
             {status === "error" && lastError && (
               <div className="text-2xs flex items-center gap-1 px-2 py-1 rounded" style={{ color: "var(--danger)", backgroundColor: "rgba(239,68,68,0.1)" }}>
                 <AlertCircle size={11} />{lastError}
@@ -927,7 +998,13 @@ export function PublishPanel({ draftId }: PublishPanelProps) {
       </div>
       </div>
 
-      {showSchedule && <ScheduleDialog onConfirm={handleScheduleDispatch} onClose={() => setShowSchedule(false)} />}
+      {showSchedule && (
+        <ScheduleDialog
+          channelTitles={channels.filter((c) => selectedChannelIds.includes(c.id)).map((c) => c.title)}
+          onConfirm={handleScheduleDispatch}
+          onClose={() => setShowSchedule(false)}
+        />
+      )}
 
       {showPublishConfirm && (
         <PublishConfirmDialog
