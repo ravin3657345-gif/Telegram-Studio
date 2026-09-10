@@ -8,6 +8,22 @@
   </head>
   <body>
     <div id="root"></div>
+    <!-- Dev-only Tauri shim for previewing the frontend in a plain browser
+         (e.g. the Freebuff Preview tab). The packaged/dev app injects the
+         real window.__TAURI_INTERNALS__ before any page script runs, so the
+         guard below means this shim never activates inside the actual app. -->
+    <script>
+      if (!window.__TAURI_INTERNALS__) {
+        window.__TAURI_INTERNALS__ = {
+          metadata: { currentWindow: { label: "main" } },
+          invoke: async (cmd) => {
+            if (cmd === "get_license_status") return false;
+            if (cmd === "plugin:app|version") return "1.9.1";
+            throw new Error("Tauri shim: unhandled command " + cmd);
+          },
+        };
+      }
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

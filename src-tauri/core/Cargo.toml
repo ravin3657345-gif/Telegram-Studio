@@ -2,7 +2,7 @@
 name = "tstudio-core"
 version = "1.0.0"
 edition = "2021"
-description = "Pure, dependency-light core logic (crypto, license) for TElega Studio. No Tauri deps → fast, CI-friendly unit tests."
+description = "Pure, dependency-light core logic (crypto, license) for Telegram Studio. No Tauri deps → fast, CI-friendly unit tests."
 
 [lib]
 name = "tstudio_core"

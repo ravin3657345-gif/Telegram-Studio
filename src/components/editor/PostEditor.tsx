@@ -62,6 +62,9 @@ interface HistoryNavState {
   // e.g. from the sidebar button — clears every time, not just the first.
   _newPost?: number;
   _createTemplate?: number;
+  // Set by the dashboard's "Создать опрос" quick action — seeds a fresh
+  // poll block right after the blank-session reset.
+  _withPoll?: number;
 }
 
 const ALLOWED_IMAGE = ["image/jpeg", "image/png", "image/webp", "image/gif"];
@@ -343,6 +346,27 @@ export function PostEditor({ draftId: initialDraftId, onEditorReady, active = tr
     if (!initialDraftId) editor?.commands.clearContent(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialDraftId, histState._histId, histState._newPost, histState._createTemplate]);
+
+  // ── "Create poll" quick action ───────────────────────────────────────────
+  // The dashboard's "Создать опрос" navigates to a fresh session with
+  // _withPoll set — seed one poll block (never two — guarded by scanning the
+  // doc, since this effect re-runs whenever the nonce changes).
+  useEffect(() => {
+    if (!editor || !histState._withPoll) return;
+    let found = false;
+    editor.state.doc.descendants((n) => {
+      if (n.type.name === "blockPoll") { found = true; return false; }
+    });
+    if (found) return;
+    // Insert the poll plus a trailing paragraph, so there's always a text
+    // position below the atom block to keep typing in.
+    editor.commands.insertContent([
+      { type: "blockPoll" },
+      { type: "paragraph" },
+    ]);
+    editor.commands.focus("end");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editor, histState._withPoll]);
 
   // ── Auto-save ──────────────────────────────────────────────────────────────
   useAutoSave();

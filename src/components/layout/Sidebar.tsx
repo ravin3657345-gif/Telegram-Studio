@@ -22,6 +22,7 @@ import { useChannelsStore } from "@/store/channelsStore";
 import { useSettingsStore, SIDEBAR_WIDGET_IDS } from "@/store/settingsStore";
 import type { SidebarWidgetId } from "@/store/settingsStore";
 import { t, ti } from "@/lib/i18n";
+import { formatTimeUntil } from "@/lib/formatCountdown";
 import { useState, useEffect } from "react";
 import { getVersion } from "@tauri-apps/api/app";
 import { getScheduledPosts, getTodayStats } from "@/lib/tauriApi";
@@ -356,15 +357,6 @@ function DraftsWidget() {
 }
 
 // ─── Next scheduled post widget ──────────────────────────────────────────────
-
-function formatTimeUntil(target: Date, now: Date): string {
-  const diffMs = target.getTime() - now.getTime();
-  if (diffMs <= 0) return t("sidebar.widget.dueNow");
-  const mins = Math.round(diffMs / 60_000);
-  const h = Math.floor(mins / 60);
-  const m = mins % 60;
-  return h > 0 ? ti("sidebar.widget.inHoursMinutes", { h, m }) : ti("sidebar.widget.inMinutes", { m });
-}
 
 function NextPostWidget() {
   const navigate = useNavigate();
