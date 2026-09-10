@@ -36,3 +36,22 @@ export function sameDay(a: Date, b: Date): boolean {
     a.getDate() === b.getDate()
   );
 }
+
+/**
+ * Distance to `target` split into whole days/hours/minutes, plus which
+ * direction it points. Localization stays with the caller — this is only the
+ * arithmetic behind "через 2 ч 15 мин" (SchedulePage's detail dialog).
+ */
+export function countdownParts(
+  target: Date,
+  now: Date
+): { past: boolean; d: number; h: number; m: number } {
+  const diffMin = Math.round((target.getTime() - now.getTime()) / 60_000);
+  const mins = Math.abs(diffMin);
+  return {
+    past: diffMin < 0,
+    d: Math.floor(mins / 1440),
+    h: Math.floor((mins % 1440) / 60),
+    m: mins % 60,
+  };
+}

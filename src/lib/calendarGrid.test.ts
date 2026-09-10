@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildCalendarGrid, daysInMonth, weekdayMon, sameDay } from "./calendarGrid";
+import { buildCalendarGrid, daysInMonth, weekdayMon, sameDay, countdownParts } from "./calendarGrid";
 
 describe("daysInMonth", () => {
   it("returns 28 for February in a non-leap year", () => {
@@ -64,5 +64,26 @@ describe("sameDay", () => {
   });
   it("is false for the same day/month but different year", () => {
     expect(sameDay(new Date(2025, 6, 4), new Date(2026, 6, 4))).toBe(false);
+  });
+});
+
+describe("countdownParts", () => {
+  const now = new Date(2026, 6, 10, 12, 0);
+
+  it("splits a future gap into days/hours/minutes", () => {
+    // 3 days, 2 hours, 30 minutes ahead
+    expect(countdownParts(new Date(2026, 6, 13, 14, 30), now)).toEqual({ past: false, d: 3, h: 2, m: 30 });
+  });
+
+  it("keeps hours under a day and minutes under an hour", () => {
+    expect(countdownParts(new Date(2026, 6, 11, 13, 5), now)).toEqual({ past: false, d: 1, h: 1, m: 5 });
+  });
+
+  it("flags past targets without going negative", () => {
+    expect(countdownParts(new Date(2026, 6, 9, 9, 0), now)).toEqual({ past: true, d: 1, h: 3, m: 0 });
+  });
+
+  it("rounds a sub-minute gap to zero on every part", () => {
+    expect(countdownParts(new Date(2026, 6, 10, 12, 0, 20), now)).toEqual({ past: false, d: 0, h: 0, m: 0 });
   });
 });
