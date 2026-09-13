@@ -28,6 +28,11 @@ dist-release/
 # Claude Code local settings/lock files — machine-specific
 .claude/
 
+# Credentials for scripts/setup-update-channel.ps1 and scripts/publish-update.ps1
+# (Supabase service key / access token) — machine-local, same idea as
+# sales-bot/token.txt. One KEY=VALUE per line.
+scripts/.secrets.env
+
 # Sales bot — a separate commercial tool (bot, control panel, Supabase
 # functions) with real business/personal data (pricing, seller's Telegram
 # id, tokens) baked into its config and screenshots. Not part of the app.
