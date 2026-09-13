@@ -2,7 +2,9 @@ name: Tests
 
 on:
   push:
-    branches: [master, main]
+    # `app` is the repository's default branch and the one the release workflows
+    # build from — without it here the fresh code would never be tested.
+    branches: [app, master, main]
   pull_request:
   workflow_dispatch: {}
 

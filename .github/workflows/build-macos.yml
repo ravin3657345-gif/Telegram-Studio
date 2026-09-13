@@ -1,5 +1,28 @@
 name: Build macOS
 
+# Builds the universal macOS app and — on the release branch — publishes it to
+# the in-app update channel.
+#
+# Why this lives in Actions: a macOS bundle can only be produced on macOS, and
+# the Windows release script (scripts/publish-update.ps1) cannot cross-compile
+# one. Both halves write the SAME manifest in the bucket, each replacing only its
+# own platform key, so neither can erase the other.
+#
+# Required repository secrets (Settings -> Secrets and variables -> Actions):
+#   TAURI_SIGNING_PRIVATE_KEY           contents of ~/.tauri/telegram-studio.key
+#                                       (the file's CONTENT, not a path; the same
+#                                       key Windows signs with — a different key
+#                                       is rejected by every installed copy)
+#   TAURI_SIGNING_PRIVATE_KEY_PASSWORD  empty (the key has no password); leaving
+#                                       the secret undefined also works, because
+#                                       Actions then sets the variable to an empty
+#                                       string, which is what tauri needs to avoid
+#                                       prompting on a non-interactive runner
+#   SUPABASE_SERVICE_ROLE_KEY           service_role key, for Storage writes
+#
+# Without the signing key the build fails outright: bundle.createUpdaterArtifacts
+# is true, and Tauri refuses to produce unsigned updater artifacts.
+
 on:
   workflow_dispatch: {}
 
@@ -35,7 +58,10 @@ jobs:
         # with cross-platform optional deps like @esbuild/*).
         run: npm install
 
-      - name: Build universal macOS app (.app + .dmg)
+      - name: Build universal macOS app (.app + .dmg + updater .tar.gz)
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: npx tauri build --target universal-apple-darwin
 
       - name: Smoke test — launch the built app
@@ -87,4 +113,16 @@ jobs:
           path: |
             src-tauri/target/universal-apple-darwin/release/bundle/macos/*.app
             src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
+            src-tauri/target/universal-apple-darwin/release/bundle/macos/*.app.tar.gz
+            src-tauri/target/universal-apple-darwin/release/bundle/macos/*.app.tar.gz.sig
           if-no-files-found: error
+
+      - name: Publish to the update channel
+        # Only from the default branch: an update published from a feature
+        # branch would go straight to every installed copy, and only versions
+        # above the installed one are ever offered — so that mistake cannot be
+        # taken back by publishing a smaller number.
+        if: github.ref_name == github.event.repository.default_branch
+        env:
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: node scripts/publish-macos.mjs
