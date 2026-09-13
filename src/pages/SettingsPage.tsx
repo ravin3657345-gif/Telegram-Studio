@@ -6,7 +6,15 @@ import { getVersion } from "@tauri-apps/api/app";
 import { TopBar } from "@/components/layout/TopBar";
 import { useSettingsStore } from "@/store/settingsStore";
 import { EmojiPicker } from "@/components/editor/EmojiPicker";
-import { t, setI18nLanguage, type TranslationKey } from "@/lib/i18n";
+import { t, ti, setI18nLanguage, type TranslationKey } from "@/lib/i18n";
+import { Button } from "@/components/ui/Button";
+import { isInAppUpdateSupported } from "@/lib/updates";
+// Aliased: the local `setAutostart` state setter below would otherwise shadow
+// the API call, and `await setAutostart(next)` would quietly become "pass the
+// result of setting state into setting state".
+import { getAutostartEnabled, setAutostart as writeAutostart } from "@/lib/tauriApi";
+import { toast } from "@/store/uiStore";
+import { useUpdateStore } from "@/store/updateStore";
 import { useIsMobileLayout } from "@/hooks/useIsMobileLayout";
 import type { Theme, Language, DesignTheme } from "@/types/settings";
 import { Dialog, DialogTitle, DialogDescription, VisuallyHidden } from "@/components/ui/Dialog";
@@ -136,6 +144,19 @@ function AppearanceSection() {
   const setShowCharCounter = useSettingsStore((s) => s.setShowCharCounter);
   const setHasSeenOnboardingTour = useSettingsStore((s) => s.setHasSeenOnboardingTour);
   const navigate = useNavigate();
+
+  // Настройки обновлений живут на этой вкладке, а не в блоке «О приложении»:
+  // это настройки приложения, а не сведения о нём. Раньше они показывались на
+  // каждой вкладке сразу, потому что блок «О приложении» рисуется всегда.
+  const supported           = isInAppUpdateSupported();
+  const autoCheckUpdates    = useSettingsStore((s) => s.autoCheckUpdates);
+  const setAutoCheckUpdates = useSettingsStore((s) => s.setAutoCheckUpdates);
+  const updateStatus        = useUpdateStore((s) => s.status);
+  const updateInfo          = useUpdateStore((s) => s.info);
+  const updateError         = useUpdateStore((s) => s.error);
+  const checkForUpdates     = useUpdateStore((s) => s.check);
+  const openUpdateDialog    = useUpdateStore((s) => s.openDialog);
+  const checking            = updateStatus === "checking";
 
   // ── Emoji insertion for the anchor-link-text input ──────────────────────
   const anchorInputRef = useRef<HTMLInputElement>(null);
@@ -350,6 +371,50 @@ function AppearanceSection() {
         </Field>
       </Section>
 
+      {/* ── Обновления ────────────────────────────────────────────────
+          Внутри приложения они возможны только на десктопе — плагина
+          апдейтера для мобильных не существует вовсе (см. lib/updates.ts,
+          commands/app_updates.rs), поэтому на телефоне эти строки не
+          показываем вместо обещания «у вас последняя версия», которое там
+          нечем проверить. */}
+      {supported && (
+        <Section title={t("settings.updates")}>
+          <Field label={t("update.autoCheck")}>
+            <Toggle checked={autoCheckUpdates} onChange={setAutoCheckUpdates} />
+          </Field>
+
+          <Field label={t("update.checkNow")}>
+            <div className="flex items-center gap-2.5">
+              {!checking && updateStatus === "up-to-date" && (
+                <span style={{ fontSize: 12, color: "var(--success)" }}>{t("update.upToDate")}</span>
+              )}
+              {!checking && updateStatus === "error" && (
+                <span style={{ fontSize: 12, color: "var(--danger)", maxWidth: 240, textAlign: "right" }}>
+                  {updateError ?? t("update.error")}
+                </span>
+              )}
+              {updateStatus === "available" && updateInfo ? (
+                // Показываем именно то, что уже предложено диалогом: клик
+                // возвращает пользователя к нему, а не запускает вторую проверку.
+                <Button variant="primary" size="sm" onClick={openUpdateDialog}>
+                  {ti("update.newVersion", { version: updateInfo.version })}
+                </Button>
+              ) : (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  loading={checking}
+                  disabled={checking}
+                  onClick={() => void checkForUpdates()}
+                >
+                  {checking ? t("update.checking") : t("update.checkNow")}
+                </Button>
+              )}
+            </div>
+          </Field>
+        </Section>
+      )}
+
       {showDesignPicker && (
         <DesignThemeDialog
           current={designTheme}
@@ -456,12 +521,57 @@ function AutosaveControl() {
 function PublishSection() {
   const confirmBeforePublish    = useSettingsStore((s) => s.confirmBeforePublish);
   const setConfirmBeforePublish = useSettingsStore((s) => s.setConfirmBeforePublish);
+  const isMobile                = useIsMobileLayout();
+
+  // Autostart lives in the Windows registry, not in our settings table — the
+  // registry is the only thing that actually decides whether Windows starts
+  // us, so mirroring it into SQLite would just create a second source of truth
+  // to drift out of sync. That makes the backend the owner of this value: read
+  // it on mount, and trust what it reports back after a write.
+  const [autostart, setAutostart] = useState(false);
+  const [autostartBusy, setAutostartBusy] = useState(false);
+
+  useEffect(() => {
+    getAutostartEnabled().then(setAutostart).catch(() => setAutostart(false));
+  }, []);
+
+  async function applyAutostart(next: boolean) {
+    setAutostartBusy(true);
+    try {
+      // Trust the returned state rather than the click: the write can fail,
+      // and the toggle must then snap back instead of lying about it.
+      setAutostart(await writeAutostart(next));
+    } catch (e) {
+      toast.error(t("settings.autostartError"), String(e));
+    } finally {
+      setAutostartBusy(false);
+    }
+  }
 
   return (
     <Section title={t("settings.publish")}>
       <Field label={t("settings.confirmPublish")}>
         <Toggle checked={confirmBeforePublish} onChange={setConfirmBeforePublish} />
       </Field>
+
+      {/* The row that makes the scheduler trustworthy overnight: a hidden
+          launch in the tray is what lets queued posts go out after a reboot. */}
+      <div
+        className={isMobile ? "flex flex-col gap-2 px-4 py-3" : "flex items-center justify-between gap-4 px-4 py-3"}
+        style={{ borderColor: "var(--border-subtle)" }}
+      >
+        <div className="min-w-0">
+          <span className="text-sm block" style={{ color: "var(--text-primary)" }}>
+            {t("settings.autostart")}
+          </span>
+          <span className="text-xs block mt-0.5" style={{ color: "var(--text-muted)" }}>
+            {t("settings.autostartHint")}
+          </span>
+        </div>
+        <div style={{ opacity: autostartBusy ? 0.55 : 1, pointerEvents: autostartBusy ? "none" : "auto" }}>
+          <Toggle checked={autostart} onChange={applyAutostart} />
+        </div>
+      </div>
     </Section>
   );
 }
@@ -471,6 +581,7 @@ function PublishSection() {
 function AboutSection() {
   const [appVersion, setAppVersion] = useState("...");
   useEffect(() => { getVersion().then(setAppVersion).catch(() => setAppVersion("1.0.0")); }, []);
+
   return (
     <Section title={t("settings.about")}>
       <div
@@ -510,6 +621,7 @@ function AboutSection() {
           <span>{t("settings.localMode")}</span>
         </div>
       </div>
+
     </Section>
   );
 }

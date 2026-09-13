@@ -1,4 +1,7 @@
+pub mod analytics;
+pub mod app_updates;
 pub mod attachments;
+pub mod autostart;
 pub mod bots;
 pub mod license;
 pub mod channels;
@@ -6,6 +9,7 @@ pub mod dashboard;
 pub mod drafts;
 pub mod history;
 pub mod publish;
+pub mod recurring;
 pub mod settings;
 pub mod snippets;
 pub mod templates;

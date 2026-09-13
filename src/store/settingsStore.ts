@@ -39,6 +39,11 @@ interface SettingsState {
   hasSeenOnboardingTour: boolean;
   // Empty string = use the default translated "👆 Лифт" text.
   anchorLinkText: string;
+  // Проверять обновления при запуске (десктоп). "Позже" в диалоге обновления
+  // ничего сюда не пишет — это сброс на одну сессию, живёт в updateStore.
+  autoCheckUpdates: boolean;
+  // Версия, про которую пользователь попросил больше не напоминать.
+  skipUpdateVersion: string;
 
   setTheme: (theme: Theme) => void;
   setDesignTheme: (design: DesignTheme) => void;
@@ -55,6 +60,8 @@ interface SettingsState {
   setSidebarWidget: (id: SidebarWidgetId) => void;
   setHasSeenOnboardingTour: (v: boolean) => void;
   setAnchorLinkText: (text: string) => void;
+  setAutoCheckUpdates: (v: boolean) => void;
+  setSkipUpdateVersion: (version: string) => void;
 }
 
 export const useSettingsStore = create<SettingsState>()(
@@ -75,6 +82,8 @@ export const useSettingsStore = create<SettingsState>()(
       sidebarWidget:        "clock",
       hasSeenOnboardingTour: false,
       anchorLinkText:       "",
+      autoCheckUpdates:     true,
+      skipUpdateVersion:    "",
 
       setTheme:                (theme)    => set({ theme }),
       setDesignTheme: (design) => {
@@ -101,6 +110,8 @@ export const useSettingsStore = create<SettingsState>()(
       setSidebarWidget: (id) => set({ sidebarWidget: id }),
       setHasSeenOnboardingTour: (v) => set({ hasSeenOnboardingTour: v }),
       setAnchorLinkText: (text) => set({ anchorLinkText: text }),
+      setAutoCheckUpdates: (v) => set({ autoCheckUpdates: v }),
+      setSkipUpdateVersion: (version) => set({ skipUpdateVersion: version }),
     }),
     {
       name: "ts-settings",

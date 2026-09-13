@@ -18,6 +18,7 @@ pub fn run(conn: &Connection) -> Result<()> {
     migrate_v15(conn)?;
     migrate_v16(conn)?;
     migrate_v17(conn)?;
+    migrate_v18(conn)?;
     seed_settings(conn)?;
     Ok(())
 }
@@ -391,6 +392,54 @@ fn migrate_v17(conn: &Connection) -> Result<()> {
         ALTER TABLE publication_history_v17 RENAME TO publication_history;
         CREATE INDEX IF NOT EXISTS idx_history_pub     ON publication_history(published_at DESC);
         CREATE INDEX IF NOT EXISTS idx_history_channel ON publication_history(channel_id);"
+    )?;
+    Ok(())
+}
+
+fn migrate_v18(conn: &Connection) -> Result<()> {
+    // Recurring posts: a standing rule ("каждый день в 09:00") that the
+    // scheduler turns into a concrete row in `scheduled_posts` every time it
+    // comes due. Kept as a separate table rather than a flag on
+    // scheduled_posts because the two have different lifecycles: a materialized
+    // post is sent once and archived in history, while the rule lives on and
+    // keeps producing new ones.
+    //
+    // `recurring_media` owns its own copies of the files (same reasoning as
+    // scheduled_media): cleanup deletes a finished post's directory, and the
+    // rule must not lose its attachments when that happens.
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS recurring_posts (
+            id            TEXT PRIMARY KEY,
+            draft_id      TEXT,
+            channel_id    TEXT NOT NULL,
+            bot_id        TEXT NOT NULL,
+            content_html  TEXT NOT NULL DEFAULT '',
+            frequency     TEXT NOT NULL,
+            weekday       INTEGER NOT NULL DEFAULT 1,
+            day_of_month  INTEGER NOT NULL DEFAULT 1,
+            time_of_day   TEXT NOT NULL,
+            enabled       INTEGER NOT NULL DEFAULT 1,
+            next_run_at   TEXT,
+            last_run_at   TEXT,
+            created_at    TEXT NOT NULL,
+            updated_at    TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_recurring_due ON recurring_posts(enabled, next_run_at);
+
+        CREATE TABLE IF NOT EXISTS recurring_media (
+            id           TEXT PRIMARY KEY,
+            recurring_id TEXT NOT NULL,
+            file_path    TEXT NOT NULL,
+            file_name    TEXT NOT NULL,
+            mime_type    TEXT NOT NULL,
+            media_type   TEXT NOT NULL,
+            file_size    INTEGER NOT NULL,
+            sort_order   INTEGER NOT NULL DEFAULT 0,
+            created_at   TEXT NOT NULL,
+            FOREIGN KEY (recurring_id) REFERENCES recurring_posts(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_recurring_media
+            ON recurring_media(recurring_id, sort_order);",
     )?;
     Ok(())
 }

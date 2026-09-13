@@ -1,15 +1,18 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Send, Clock, CheckCircle2, AlertCircle, Loader2, Layers, Pencil, LayoutTemplate } from "lucide-react";
+import { Send, Clock, CheckCircle2, AlertCircle, Loader2, Layers, Pencil, LayoutTemplate, Repeat } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { SplitButton } from "@/components/ui/SplitButton";
 import { ScheduleDialog } from "@/components/editor/ScheduleDialog";
+import { RecurrenceDialog } from "@/components/editor/RecurrenceDialog";
+import type { RecurrenceSpec } from "@/components/editor/RecurrenceDialog";
 import { PublishConfirmDialog } from "@/components/editor/PublishConfirmDialog";
 import { SaveTemplateDialog } from "@/components/editor/SaveTemplateDialog";
 import { useChannelsStore } from "@/store/channelsStore";
 import { usePublishStore } from "@/store/publishStore";
 import { useEditorStore } from "@/store/editorStore";
-import { publishPost, schedulePost, publishRichPost, republishRichPost, scheduleRichPost, sendPoll, editPublishedPost, upsertDraft, updateScheduledPostContent, saveTemplate } from "@/lib/tauriApi";
+import { publishPost, schedulePost, publishRichPost, republishRichPost, scheduleRichPost, sendPoll, editPublishedPost, upsertDraft, updateScheduledPostContent, saveTemplate, createRecurringPost } from "@/lib/tauriApi";
+import { describeRecurrence } from "@/lib/recurrence";
 import { segmentDocument, splitIntoMessagesAtGaps, splitJsonAtGaps } from "@/lib/htmlConverter";
 import { TELEGRAM_MAX_RICH_BLOCKS } from "@/lib/constants";
 import type { TextSegment, PollSegment } from "@/lib/htmlConverter";
@@ -29,6 +32,10 @@ import type { TemplateCategory } from "@/types/template";
 
 interface PublishPanelProps { draftId?: string }
 
+/** Media as it travels to the backend for a queued (scheduled or recurring)
+ * post — encoded here, persisted to disk there, sent at fire time. */
+type EncodedMedia = { fileName: string; mimeType: string; mediaType: string; dataBase64: string };
+
 export function PublishPanel({ draftId }: PublishPanelProps) {
   const { bots, channels } = useChannelsStore();
   const { selectedChannelIds, status, results, lastError,
@@ -42,6 +49,8 @@ export function PublishPanel({ draftId }: PublishPanelProps) {
   const clearAttachments = useAttachmentStore((s) => s.clearAll);
 
   const [showSchedule, setShowSchedule] = useState(false);
+  const [showRecurring, setShowRecurring] = useState(false);
+  const [creatingRecurring, setCreatingRecurring] = useState(false);
   const [showPublishConfirm, setShowPublishConfirm] = useState(false);
   const [showTemplateDialog, setShowTemplateDialog] = useState(false);
   const [savingTemplate, setSavingTemplate] = useState(false);
@@ -424,63 +433,76 @@ export function PublishPanel({ draftId }: PublishPanelProps) {
     setDraftStatus("scheduled");
   }
 
+  // The post's text as a single HTML string — what both the scheduled and the
+  // recurring paths snapshot for the backend to send later.
+  function currentTextHtml(): string {
+    return segments
+      .filter((s) => s.type === "text")
+      .map((s) => (s as any).html)
+      .join("\n\n")
+      .trim() || "—";
+  }
+
+  // Shared by the schedule and repeat paths: two things are identical in both,
+  // and were worth having once.
+  //
+  //  * A post with no draftId has nowhere to live once it's fired or cancelled
+  //    — it never shows up in Drafts (which only lists rows from the drafts
+  //    table) and reopening it from the calendar has no content to load.
+  //    Autosave normally creates the draft, but it's debounced, so scheduling
+  //    right after typing (or with autosave disabled) can beat it to the
+  //    punch. Make sure one exists here too.
+  //  * The media encoding — inline (image/video/file) segments, same encoding
+  //    used for immediate publish, plus any fresh bottom-panel attachments.
+  //    The backend persists the bytes to disk and sends them at fire time, so
+  //    they have to travel now.
+  async function preparePostForQueue(): Promise<{ draftId: string; media: EncodedMedia[] }> {
+    let targetDraftId = draftId;
+    if (!targetDraftId) {
+      const attachments = await collectInlineAttachments(contentJson || "{}");
+      const draft = await upsertDraft({
+        title: draftTitle,
+        postTitle,
+        contentJson: contentJson || "{}",
+        attachments: attachments.length ? attachments : undefined,
+      });
+      targetDraftId = draft.id;
+      setDraftId(draft.id);
+    }
+
+    const media: EncodedMedia[] = [];
+    for (const seg of segments) {
+      if (seg.type !== "image" && seg.type !== "video" && seg.type !== "file") continue;
+      const file = fileRegistry.getFile(seg.fileId);
+      if (!file) continue;
+      const { base64: dataBase64, mimeType, fileName } = seg.type === "image"
+        ? await normalizeImageToJpeg(file)
+        : { base64: await fileToBase64(file), mimeType: seg.mimeType, fileName: seg.fileName };
+      media.push({ fileName, mimeType, mediaType: seg.type, dataBase64 });
+    }
+    for (const att of useAttachmentStore.getState().files) {
+      const file = fileRegistry.getFile(att.id);
+      if (!file) throw new Error(ti("attach.fileGone", { name: att.name }));
+      media.push({ fileName: att.name, mimeType: att.mimeType, mediaType: "file", dataBase64: await fileToBase64(file) });
+    }
+
+    return { draftId: targetDraftId, media };
+  }
+
   async function handleSchedule(isoDate: string): Promise<ScheduledPostInfo[] | null> {
     if (!canSchedule) return null;
     setShowSchedule(false);
     reset();
     setScheduledInfo(null);
     setStatus("scheduling");
-    const textHtml = segments
-      .filter((s) => s.type === "text")
-      .map((s) => (s as any).html)
-      .join("\n\n")
-      .trim();
     try {
-      // A scheduled post with no draftId has nowhere to live once it's fired
-      // or cancelled — it never shows up in Drafts (which only lists rows
-      // from the drafts table) and reopening it from the calendar has no
-      // content to load. Autosave normally creates the draft, but it's
-      // debounced, so scheduling right after typing (or with autosave
-      // disabled) can beat it to the punch. Make sure one exists here too.
-      let effectiveDraftId = draftId;
-      if (!effectiveDraftId) {
-        const attachments = await collectInlineAttachments(contentJson || "{}");
-        const draft = await upsertDraft({
-          title: draftTitle,
-          postTitle,
-          contentJson: contentJson || "{}",
-          attachments: attachments.length ? attachments : undefined,
-        });
-        effectiveDraftId = draft.id;
-        setDraftId(draft.id);
-      }
-
-      // Encode inline (image/video/file) segments — same encoding used for
-      // immediate publish — plus any fresh bottom-panel attachments. The
-      // scheduler persists these to disk and sends them at fire time.
-      type Encoded = { fileName: string; mimeType: string; mediaType: string; dataBase64: string };
-      const encoded: Encoded[] = [];
-      for (const seg of segments) {
-        if (seg.type !== "image" && seg.type !== "video" && seg.type !== "file") continue;
-        const file = fileRegistry.getFile(seg.fileId);
-        if (!file) continue;
-        const { base64: dataBase64, mimeType, fileName } = seg.type === "image"
-          ? await normalizeImageToJpeg(file)
-          : { base64: await fileToBase64(file), mimeType: seg.mimeType, fileName: seg.fileName };
-        encoded.push({ fileName, mimeType, mediaType: seg.type, dataBase64 });
-      }
-      const freshAttachments = useAttachmentStore.getState().files;
-      for (const att of freshAttachments) {
-        const file = fileRegistry.getFile(att.id);
-        if (!file) throw new Error(ti("attach.fileGone", { name: att.name }));
-        encoded.push({ fileName: att.name, mimeType: att.mimeType, mediaType: "file", dataBase64: await fileToBase64(file) });
-      }
+      const { draftId: effectiveDraftId, media } = await preparePostForQueue();
 
       const infos = await schedulePost({
         botId: bots[0]?.id ?? null,
         channelIds: selectedChannelIds,
-        contentHtml: textHtml || "—",
-        media: encoded,
+        contentHtml: currentTextHtml(),
+        media,
         buttons: [],
         draftId: effectiveDraftId,
         scheduleAt: isoDate,
@@ -493,6 +515,57 @@ export function PublishPanel({ draftId }: PublishPanelProps) {
       setStatus("error");
       toast.error(t("publish.scheduleError"), String(e));
       return null;
+    }
+  }
+
+  // ── Recurring ───────────────────────────────────────────────────────────────
+  // Creates a rule out of what is in the editor right now, exactly like a
+  // single scheduled post: the backend snapshots the content and copies the
+  // media into the rule's own storage, then produces real scheduled posts from
+  // it each time it comes due. Deliberately not followed by reset() — the user
+  // has just set up something long-lived and may well want to keep editing.
+  async function handleRecurring(spec: RecurrenceSpec) {
+    if (!canSchedule || creatingRecurring) return;
+    // Rich posts are composed through tiptapToRichHtml and need their own
+    // media/attach-name plumbing, which the recurring rule does not have. The
+    // normal-mode HTML this handler would snapshot is empty for a Rich post, so
+    // without this guard "Повторять" would queue a post containing just "—" and
+    // lose the whole thing silently. Checked here rather than by disabling the
+    // menu item so the user gets a reason instead of a dead button.
+    if (publishMode === "rich") {
+      setShowRecurring(false);
+      toast.error(t("repeat.error"), t("repeat.richUnsupported"));
+      return;
+    }
+    setCreatingRecurring(true);
+    try {
+      const { draftId: effectiveDraftId, media } = await preparePostForQueue();
+
+      const infos = await createRecurringPost({
+        botId: bots[0]?.id ?? null,
+        channelIds: selectedChannelIds,
+        contentHtml: currentTextHtml(),
+        media,
+        draftId: effectiveDraftId,
+        frequency: spec.frequency,
+        weekday: spec.weekday,
+        dayOfMonth: spec.dayOfMonth,
+        timeOfDay: spec.timeOfDay,
+      });
+
+      setShowRecurring(false);
+      toast.success(
+        t("repeat.created"),
+        ti("repeat.createdFor", {
+          schedule: describeRecurrence(spec, language),
+          channels: infos.map((i) => i.channelTitle).filter(Boolean).join(", "),
+        }),
+        { label: t("publish.openPlanner"), onClick: () => navigate("/schedule") },
+      );
+    } catch (e) {
+      toast.error(t("repeat.error"), String(e));
+    } finally {
+      setCreatingRecurring(false);
     }
   }
 
@@ -986,6 +1059,13 @@ export function PublishPanel({ draftId }: PublishPanelProps) {
                 loading: status === "scheduling",
               },
               {
+                label: t("publish.repeat"),
+                icon: <Repeat size={13} />,
+                onClick: () => setShowRecurring(true),
+                disabled: !canSchedule,
+                loading: creatingRecurring,
+              },
+              {
                 label: t("editor.saveAsTemplate"),
                 icon: <LayoutTemplate size={13} />,
                 onClick: () => setShowTemplateDialog(true),
@@ -1003,6 +1083,15 @@ export function PublishPanel({ draftId }: PublishPanelProps) {
           channelTitles={channels.filter((c) => selectedChannelIds.includes(c.id)).map((c) => c.title)}
           onConfirm={handleScheduleDispatch}
           onClose={() => setShowSchedule(false)}
+        />
+      )}
+
+      {showRecurring && (
+        <RecurrenceDialog
+          channelTitles={channels.filter((c) => selectedChannelIds.includes(c.id)).map((c) => c.title)}
+          busy={creatingRecurring}
+          onConfirm={handleRecurring}
+          onClose={() => setShowRecurring(false)}
         />
       )}
 

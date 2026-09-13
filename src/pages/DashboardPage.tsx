@@ -21,7 +21,8 @@ import { Spinner } from "@/components/ui/Spinner";
 import { Button } from "@/components/ui/Button";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { NewPostChooserDialog } from "@/components/drafts/NewPostChooserDialog";
-import { getTodayStats, getScheduledPosts, getDrafts, cancelScheduledPost } from "@/lib/tauriApi";
+import { getTodayStats, getScheduledPosts, getDrafts, cancelScheduledPost, getPublicationAnalytics } from "@/lib/tauriApi";
+import type { PublicationAnalytics } from "@/types/analytics";
 import { useUiStore, toast } from "@/store/uiStore";
 import { t, ti, type TranslationKey } from "@/lib/i18n";
 import { formatTimeUntil } from "@/lib/formatCountdown";
@@ -433,6 +434,91 @@ function ActivityChart({ history }: { history: DashboardHistoryRow[] | null }) {
       </div>
       {total === 0 && (
         <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 8 }}>{t("dashboard.chartEmpty")}</p>
+      )}
+    </div>
+  );
+}
+
+// ─── Publication analytics ───────────────────────────────────────────────────
+
+function AnalyticsCard() {
+  const [data, setData] = useState<PublicationAnalytics | null>(null);
+
+  // A fortnight is deliberate: "чаще всего вы публикуете в 19:00" has to describe
+  // a habit the user still has, and a wide window would average over posting
+  // patterns they have long since changed.
+  useEffect(() => {
+    getPublicationAnalytics(14).then(setData).catch(() => setData(null));
+  }, []);
+
+  const bestHour = data?.bestHour ?? null;
+  const topChannels = data?.byChannel.slice(0, 3) ?? [];
+
+  return (
+    <div style={cardStyle}>
+      <p style={sectionTitleStyle}>{t("analytics.title")}</p>
+
+      {data === null ? (
+        <div className="flex justify-center py-8">
+          <Spinner size={20} color="var(--text-muted)" />
+        </div>
+      ) : data.published + data.failed === 0 ? (
+        <p style={{ fontSize: 13, color: "var(--text-muted)" }}>{t("analytics.empty")}</p>
+      ) : (
+        <>
+          <div className="flex items-end gap-6">
+            <div>
+              <div style={{ fontSize: 24, fontWeight: 700, color: "var(--text-primary)", lineHeight: 1, fontVariantNumeric: "tabular-nums" }}>
+                {data.published}
+              </div>
+              <div style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 2 }}>
+                {t("analytics.published")}
+              </div>
+            </div>
+            <div>
+              <div
+                style={{
+                  fontSize: 24, fontWeight: 700, lineHeight: 1, fontVariantNumeric: "tabular-nums",
+                  color: data.failed > 0 ? "var(--danger)" : "var(--text-primary)",
+                }}
+              >
+                {data.failed}
+              </div>
+              <div style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 2 }}>
+                {t("analytics.failed")}
+              </div>
+            </div>
+          </div>
+
+          <p style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 8 }}>
+            {t("analytics.last14")}
+          </p>
+
+          {bestHour !== null && (
+            <p style={{ fontSize: 12.5, color: "var(--accent)", marginTop: 10 }}>
+              {ti("analytics.bestHour", { time: `${String(bestHour).padStart(2, "0")}:00` })}
+            </p>
+          )}
+
+          {topChannels.length > 0 && (
+            <div style={{ borderTop: "1px solid var(--border-subtle)", marginTop: 12, paddingTop: 10 }}>
+              {topChannels.map((c) => (
+                <div
+                  key={c.title}
+                  className="flex items-center justify-between gap-3"
+                  style={{ fontSize: 12, marginBottom: 5 }}
+                >
+                  <span className="truncate" style={{ color: "var(--text-secondary)" }} title={c.title}>
+                    {c.title}
+                  </span>
+                  <span style={{ color: "var(--text-primary)", fontWeight: 600, fontVariantNumeric: "tabular-nums", flexShrink: 0 }}>
+                    {c.published}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
       )}
     </div>
   );
@@ -867,7 +953,7 @@ export function DashboardPage() {
               </div>
             </div>
 
-            {/* ── Activity chart + mini calendar + channels ─────────────── */}
+            {/* ── Activity chart + mini calendar + channels + analytics ─── */}
             <div
               style={{
                 display: "grid",
@@ -878,6 +964,7 @@ export function DashboardPage() {
               <ActivityChart history={history} />
               <MiniCalendarCard upcoming={upcoming} />
               <ChannelsCard history={history} />
+              <AnalyticsCard />
             </div>
           </div>
         </div>

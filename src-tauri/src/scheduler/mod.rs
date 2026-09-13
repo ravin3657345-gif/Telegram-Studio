@@ -1,14 +1,22 @@
-use chrono::Utc;
+use chrono::{Local, Utc};
 use tauri::{AppHandle, Manager};
 use tauri_plugin_notification::NotificationExt;
 use tokio::time::{interval, Duration};
+use uuid::Uuid;
 
 use crate::{
     commands::publish::{cleanup_scheduled_media, publish_to_channel, sync_draft_status_on_terminal, PublishPayload},
+    commands::recurring::{copy_media_to_scheduled, to_utc},
     db::{queries::{bots as bots_q, settings as settings_q}, AppState},
     telegram::{client::TelegramClient, methods, methods::MediaItem},
 };
+use tstudio_core::recurrence::{describe_lateness, next_occurrence, parse_time_of_day, Frequency};
 use tstudio_core::retry::{is_permanent_telegram_error, next_retry_decision, RetryDecision};
+
+// How late a post may be before the notification mentions it. A minute or two
+// of tick jitter is normal and not worth remarking on; "опубликован с
+// опозданием на 9 ч" after a night with the machine off is.
+const LATE_THRESHOLD_MINUTES: i64 = 5;
 
 // A transient failure (network blip, Telegram 5xx, timeout) leaves the post
 // 'pending' so the next tick retries it, instead of failing it permanently.
@@ -22,6 +30,12 @@ pub fn start(app: AppHandle) {
 
         loop {
             ticker.tick().await;
+            // Rules first: a recurring post that just came due is materialized
+            // into a real `scheduled_posts` row here, and the very next call
+            // sends it — so it goes out on this tick, not the next one.
+            if let Err(e) = process_recurring(&app).await {
+                log::error!("[scheduler] ошибка повторов: {}", e);
+            }
             if let Err(e) = process_pending(&app).await {
                 log::error!("[scheduler] ошибка: {}", e);
             }
@@ -41,7 +55,7 @@ async fn process_pending(app: &AppHandle) -> Result<(), String> {
         let db = state.db.lock().map_err(|e| e.to_string())?;
         let mut stmt = db
             .prepare(
-                "SELECT id, draft_id, channel_id, bot_id, content_html, retry_count, publish_mode
+                "SELECT id, draft_id, channel_id, bot_id, content_html, retry_count, publish_mode, scheduled_at
                  FROM scheduled_posts
                  WHERE status = 'pending' AND scheduled_at <= ?1",
             )
@@ -55,6 +69,7 @@ async fn process_pending(app: &AppHandle) -> Result<(), String> {
             content_html: Option<String>,
             retry_count: i64,
             publish_mode: String,
+            scheduled_at: String,
         }
 
         let now_ref: &str = &now_str;
@@ -68,6 +83,7 @@ async fn process_pending(app: &AppHandle) -> Result<(), String> {
                     content_html: row.get(4)?,
                     retry_count: row.get(5)?,
                     publish_mode: row.get(6)?,
+                    scheduled_at: row.get(7)?,
                 })
             })
             .map_err(|e| e.to_string())?
@@ -221,7 +237,17 @@ async fn process_pending(app: &AppHandle) -> Result<(), String> {
             update_status(&state, &row.id, "published", None)?;
             cleanup_media_for(&state, &row.id);
             sync_draft_status(&state, row.draft_id.as_deref(), true);
-            notify(app, "Пост опубликован", &channel_title);
+            // Say when a post went out late instead of letting it look like the
+            // schedule was honoured: this is exactly what happens to anything
+            // due while the machine was off.
+            match describe_lateness(&row.scheduled_at, &now_str, LATE_THRESHOLD_MINUTES) {
+                Some(delay) => notify(
+                    app,
+                    "Пост опубликован с опозданием",
+                    &format!("{channel_title} · позже на {delay}"),
+                ),
+                None => notify(app, "Пост опубликован", &channel_title),
+            }
         } else if last_was_transient {
             // Don't permafail on a network blip — leave 'pending' so the next
             // tick retries, up to MAX_TRANSIENT_RETRIES. Only notifies once
@@ -240,6 +266,149 @@ async fn process_pending(app: &AppHandle) -> Result<(), String> {
         }
     }
 
+    Ok(())
+}
+
+/// Turns every due recurring rule into a concrete scheduled post.
+///
+/// Materialize-then-send rather than sending directly: everything downstream —
+/// media encoding, bot fallback, transient retries, history, the "опоздал"
+/// notice — then applies to a recurring post exactly as it does to one the user
+/// scheduled by hand, with no second publishing path to keep in step.
+///
+/// The insert and the rule's advance share one transaction. Without that, a
+/// crash in between would leave `next_run_at` untouched and the rule would fire
+/// again on the next start, publishing the same post twice.
+async fn process_recurring(app: &AppHandle) -> Result<(), String> {
+    let state = app.state::<AppState>();
+    let now_str = Utc::now().to_rfc3339();
+
+    struct Due {
+        id: String,
+        channel_id: String,
+        bot_id: String,
+        content_html: String,
+        frequency: String,
+        weekday: u32,
+        day_of_month: u32,
+        time_of_day: String,
+        next_run_at: String,
+    }
+
+    let due: Vec<Due> = {
+        let db = state.db.lock().map_err(|e| e.to_string())?;
+        let mut stmt = db
+            .prepare(
+                "SELECT id, channel_id, bot_id, content_html, frequency, weekday, day_of_month,\n                        time_of_day, next_run_at\n                 FROM recurring_posts\n                 WHERE enabled = 1 AND next_run_at IS NOT NULL AND next_run_at <= ?1",
+            )
+            .map_err(|e| e.to_string())?;
+        let now_ref: &str = &now_str;
+        // Bound to a local rather than returned straight from the block: the
+        // iterator borrows `stmt`, and a tail expression's temporaries outlive
+        // the block's own bindings.
+        let rows: Vec<Due> = stmt
+            .query_map([now_ref], |r| {
+                Ok(Due {
+                    id: r.get(0)?,
+                    channel_id: r.get(1)?,
+                    bot_id: r.get(2)?,
+                    content_html: r.get(3)?,
+                    frequency: r.get(4)?,
+                    weekday: r.get(5)?,
+                    day_of_month: r.get(6)?,
+                    time_of_day: r.get(7)?,
+                    next_run_at: r.get(8)?,
+                })
+            })
+            .map_err(|e| e.to_string())?
+            .filter_map(|r| r.ok())
+            .collect();
+        rows
+    };
+
+    if due.is_empty() {
+        return Ok(());
+    }
+
+    let now_local = Local::now().naive_local();
+
+    for rule in due {
+        // A rule whose stored fields no longer make sense is switched off
+        // rather than retried forever; nothing else is affected.
+        let (Some(frequency), Some(time_of_day)) = (
+            Frequency::from_parts(&rule.frequency, rule.weekday, rule.day_of_month),
+            parse_time_of_day(&rule.time_of_day),
+        ) else {
+            log::error!("[scheduler] повтор {} некорректен — отключаю", rule.id);
+            let _ = disable_rule(&state, &rule.id);
+            continue;
+        };
+
+        let next_run_at = next_occurrence(frequency, time_of_day, now_local)
+            .and_then(to_utc)
+            .map(|d| d.to_rfc3339());
+
+        let post_id = Uuid::new_v4().to_string();
+        {
+            let mut db = state.db.lock().map_err(|e| e.to_string())?;
+            let tx = db.transaction().map_err(|e| e.to_string())?;
+
+            // `scheduled_at` is the moment the rule was *due*, not now — that
+            // is exactly what makes the "опоздал" notice honest. `draft_id`
+            // stays NULL so a recurring post never marks the source draft
+            // published, and never collides with the edit-a-scheduled-post
+            // replacement logic, which keys off draft_id.
+            tx.execute(
+                "INSERT INTO scheduled_posts\n                 (id, draft_id, channel_id, bot_id, content_html, scheduled_at, status, created_at, updated_at)\n                 VALUES (?1,NULL,?2,?3,?4,?5,'pending',?6,?6)",
+                rusqlite::params![
+                    post_id,
+                    rule.channel_id,
+                    rule.bot_id,
+                    rule.content_html,
+                    rule.next_run_at,
+                    now_str,
+                ],
+            )
+            .map_err(|e| e.to_string())?;
+
+            copy_media_to_scheduled(&tx, &state.app_dir, &rule.id, &post_id, &now_str)?;
+
+            match &next_run_at {
+                Some(next) => {
+                    tx.execute(
+                        "UPDATE recurring_posts SET next_run_at=?1, last_run_at=?2, updated_at=?2 WHERE id=?3",
+                        rusqlite::params![next, now_str, rule.id],
+                    )
+                    .map_err(|e| e.to_string())?;
+                }
+                // Could not work out a next occurrence — stop the rule instead
+                // of leaving it pointing at an instant it would re-fire on
+                // every tick.
+                None => {
+                    tx.execute(
+                        "UPDATE recurring_posts SET enabled=0, next_run_at=NULL, last_run_at=?1, updated_at=?1 WHERE id=?2",
+                        rusqlite::params![now_str, rule.id],
+                    )
+                    .map_err(|e| e.to_string())?;
+                }
+            }
+
+            tx.commit().map_err(|e| e.to_string())?;
+        }
+    }
+
+    Ok(())
+}
+
+/// Switches a rule off — used when its stored fields can no longer be parsed.
+fn disable_rule(state: &AppState, id: &str) -> Result<(), String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let now = Utc::now().to_rfc3339();
+    db.execute(
+        "UPDATE recurring_posts SET enabled=0, next_run_at=NULL, updated_at=?1 WHERE id=?2",
+        rusqlite::params![now, id],
+    )
+    .map_err(|e| e.to_string())?;
     Ok(())
 }
 

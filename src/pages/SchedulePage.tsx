@@ -13,6 +13,7 @@ import { useChannelsStore } from "@/store/channelsStore";
 import { useDraftsStore } from "@/store/draftsStore";
 import { useEditorStore } from "@/store/editorStore";
 import type { ScheduledPostInfo } from "@/types/publish";
+import { RecurringSection } from "@/components/schedule/RecurringSection";
 import { WEEKDAY_BASE_DATES, buildCalendarGrid, sameDay, countdownParts } from "@/lib/calendarGrid";
 import { useIsMobileLayout } from "@/hooks/useIsMobileLayout";
 
@@ -462,6 +463,9 @@ export function SchedulePage() {
                 })}
               </div>
             </div>
+
+            <RecurringSection />
+
           </div>
         )}
       </div>

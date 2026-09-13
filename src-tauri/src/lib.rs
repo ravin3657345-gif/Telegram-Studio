@@ -6,6 +6,7 @@ pub mod fs;
 pub mod image_utils;
 pub mod rate_limit;
 pub mod scheduler;
+pub mod single_instance;
 pub mod telegram;
 
 use db::AppState;
@@ -21,6 +22,14 @@ use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Two copies would run two schedulers over one database and publish the
+    // same post twice — see single_instance.rs. The second copy hands the user
+    // back to the window already running and exits here, before the database
+    // is even opened.
+    if let single_instance::Outcome::AlreadyRunning = single_instance::acquire() {
+        std::process::exit(0);
+    }
+
     tauri::Builder::default()
         .plugin(tauri_plugin_notification::init())
         // Opens external URLs/files in the OS default handler ("Открыть в
@@ -68,6 +77,35 @@ pub fn run() {
 
             // Rate limiter: max 5 bot token validations per 60 seconds
             app.manage(RateLimiter::new(5, 60));
+
+            // ── Окно при запуске ────────────────────────────────────────────────
+            // The window is configured `visible: false`, so an autostart launch
+            // (registered with `--background`, see core/src/autostart.rs) stays
+            // in the tray instead of flashing a window at every login. A normal
+            // launch shows it right here — this is the only place that
+            // distinction lives.
+            let background =
+                std::env::args().any(|a| a == tstudio_core::autostart::BACKGROUND_FLAG);
+            if let Some(win) = app.get_webview_window("main") {
+                if !background {
+                    let _ = win.show();
+                    let _ = win.set_focus();
+                }
+            }
+            // Lets a second launch raise this window on macOS/Linux; Windows
+            // does that through its own mutex instead (see single_instance.rs).
+            single_instance::set_app_handle(app.handle().clone());
+
+            // ── Автообновление (только десктоп) ─────────────────────────────────
+            // Плагин апдейтера существует исключительно для Windows/macOS/Linux;
+            // на Android его инициализация роняла приложение на старте, поэтому
+            // и зависимость (Cargo.toml), и init, и состояние — под cfg(desktop).
+            #[cfg(desktop)]
+            {
+                app.handle()
+                    .plugin(tauri_plugin_updater::Builder::new().build())?;
+                app.manage(commands::app_updates::PendingUpdate::default());
+            }
 
             // Запускаем планировщик отложенных публикаций
             scheduler::start(app.handle().clone());
@@ -170,6 +208,16 @@ pub fn run() {
             commands::license::activate_license,
             commands::winbypass::enable_windows_bypass,
             commands::winbypass::windows_bypass_status,
+            commands::app_updates::check_for_update,
+            commands::app_updates::download_and_install_update,
+            commands::app_updates::restart_app,
+            commands::autostart::get_autostart_enabled,
+            commands::autostart::set_autostart,
+            commands::recurring::create_recurring_post,
+            commands::recurring::get_recurring_posts,
+            commands::recurring::set_recurring_enabled,
+            commands::recurring::delete_recurring_post,
+            commands::analytics::get_publication_analytics,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

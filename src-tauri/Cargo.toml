@@ -39,6 +39,15 @@ base64 = "0.22"
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "gif", "webp", "bmp", "tiff"] }
 url = "2"
 
+# In-app updates ("вышла новая версия" на старте). Desktop-only by necessity:
+# tauri-plugin-updater has no mobile implementation at all, and initializing it
+# for Android is exactly what crashed this app on startup the first time an
+# updater was attempted (see src/lib/notifications.ts and the `#[cfg(desktop)]`
+# guards in lib.rs / commands/app_updates.rs). On Android the check still
+# happens, it just hands the user a download link instead of installing.
+[target.'cfg(any(target_os = "macos", windows, target_os = "linux"))'.dependencies]
+tauri-plugin-updater = "2"
+
 # Windows-only packet-level DPI-bypass fallback (see
 # src/telegram/winbypass.rs). WinDivert itself (the driver `windivert`
 # binds to) is LGPLv3/GPLv2 dual-licensed — vendored as prebuilt binaries

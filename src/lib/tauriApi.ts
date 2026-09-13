@@ -13,6 +13,8 @@ import type {
   ScheduledPostInfo,
   TodayStats,
 } from "@/types/publish";
+import type { RecurringPostInfo, RecurringPostPayload } from "@/types/recurring";
+import type { PublicationAnalytics } from "@/types/analytics";
 
 // ── Боты ────────────────────────────────────────────────────────────────────
 
@@ -215,6 +217,39 @@ export const saveSnippet = (payload: SaveSnippetPayload): Promise<Snippet> =>
 
 export const deleteSnippet = (snippetId: string): Promise<void> =>
   invoke("delete_snippet", { snippetId });
+
+// ── Повторяющиеся публикации ────────────────────────────────────────────────
+
+export const createRecurringPost = (
+  payload: RecurringPostPayload,
+): Promise<RecurringPostInfo[]> => invoke("create_recurring_post", { payload });
+
+export const getRecurringPosts = (): Promise<RecurringPostInfo[]> =>
+  invoke("get_recurring_posts");
+
+export const setRecurringEnabled = (
+  id: string,
+  enabled: boolean,
+): Promise<RecurringPostInfo> => invoke("set_recurring_enabled", { id, enabled });
+
+export const deleteRecurringPost = (id: string): Promise<void> =>
+  invoke("delete_recurring_post", { id });
+
+// ── Аналитика публикаций ─────────────────────────────────────────────────────
+
+export const getPublicationAnalytics = (
+  days: number,
+): Promise<PublicationAnalytics> => invoke("get_publication_analytics", { days });
+
+// ── Автозапуск ───────────────────────────────────────────────────────────────
+// Whether the app is registered to start (hidden, in the tray) with Windows.
+// That is what lets scheduled posts go out when the app was closed overnight.
+
+export const getAutostartEnabled = (): Promise<boolean> =>
+  invoke("get_autostart_enabled");
+
+export const setAutostart = (enabled: boolean): Promise<boolean> =>
+  invoke("set_autostart", { enabled });
 
 // ── Лицензия ─────────────────────────────────────────────────────────────────
 

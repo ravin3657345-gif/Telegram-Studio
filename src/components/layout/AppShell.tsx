@@ -4,6 +4,7 @@ import { Sidebar } from "./Sidebar";
 import { BottomTabBar } from "./BottomTabBar";
 import { OnboardingTour } from "./OnboardingTour";
 import { CommandPalette } from "./CommandPalette";
+import { UpdateChecker } from "@/components/updates/UpdateChecker";
 import { useChannelsStore, dedupeChannels } from "@/store/channelsStore";
 import { useDraftsStore } from "@/store/draftsStore";
 import { getBots, getChannels, getDrafts } from "@/lib/tauriApi";
@@ -68,6 +69,7 @@ export function AppShell() {
       {isMobile && !mobileRail && <BottomTabBar orientation="horizontal" />}
       {!isMobile && <OnboardingTour />}
       <CommandPalette />
+      <UpdateChecker />
     </div>
   );
 }
